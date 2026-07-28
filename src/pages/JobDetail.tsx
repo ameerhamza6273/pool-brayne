@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, MapPin, Clock, User, Wrench, FileText, Camera,
@@ -19,7 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  jobs, jobStatuses, jobTypes, cancellationReasons, rescheduleTypes,
+  jobStatuses, jobTypes, cancellationReasons, rescheduleTypes,
 } from "@/lib/data";
 import { useTranslator } from "@/hooks/use-translator";
 import { useLanguage } from "@/lib/language-context";
@@ -27,6 +27,23 @@ import { Loader2, RefreshCw } from "lucide-react";
 import WaterTestingForm from "@/components/forms/WaterTestingForm";
 import MaintenanceChecklist from "@/components/forms/MaintenanceChecklist";
 import OneOffJobChecklist from "@/components/forms/OneOffJobChecklist";
+import { jobsApi, type JobPartUsed } from "@/lib/api/jobs";
+import { invoicingApi } from "@/lib/api/invoicing";
+import { customersApi } from "@/lib/api/customers";
+import type { Database } from "@/lib/database.types";
+
+type JobRow = Database["public"]["Tables"]["jobs"]["Row"] & {
+  customers: { name: string; phone: string | null; email: string | null } | null;
+  profiles: { name: string; avatar: string | null } | null;
+};
+
+const realStatuses = [
+  { status: "Lead", stage: "lead", label: "Lead", color: "#6366F1" },
+  { status: "Booked", stage: "booked", label: "Booked", color: "#0891B2" },
+  { status: "Dispatched", stage: "dispatched", label: "Dispatched", color: "#F59E0B" },
+  { status: "In Progress", stage: "in_progress", label: "In Progress", color: "#3B82F6" },
+  { status: "Completed", stage: "completed", label: "Completed", color: "#16A34A" },
+] as const;
 
 type Lang = "en" | "es";
 
@@ -88,12 +105,32 @@ const typeBadgeStyle = (type: string): React.CSSProperties => {
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const job = jobs.find((j) => j.id === id);
+  const [job, setJob] = useState<JobRow | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("trip_details");
   const [noteText, setNoteText] = useState("");
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleAt, setRescheduleAt] = useState("");
+  const [rescheduleReason, setRescheduleReason] = useState("");
+  const [invoiceId, setInvoiceId] = useState<string | null>(null);
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+  const [partsUsed, setPartsUsed] = useState<JobPartUsed[]>([]);
   const { lang, setLang, t } = useLanguage();
   const { states: trStates, translateDebounced } = useTranslator();
+
+  const loadJob = () => {
+    if (!id) return;
+    setIsLoading(true);
+    jobsApi.detail(id)
+      .then((data) => setJob(data as unknown as JobRow))
+      .catch(() => setJob(null))
+      .finally(() => setIsLoading(false));
+    invoicingApi.byJob(id).then((data) => setInvoiceId(data?.id ?? null));
+    jobsApi.getParts(id).then(setPartsUsed);
+  };
+
+  useEffect(loadJob, [id]);
 
   // When user types a note, translate to the OTHER language in real time
   const handleNoteChange = (val: string) => {
@@ -111,6 +148,10 @@ export default function JobDetail() {
     }
   };
 
+  if (isLoading) {
+    return <div className="text-center py-20 text-[#64748B]">Loading job...</div>;
+  }
+
   if (!job) {
     return (
       <div className="text-center py-20">
@@ -119,6 +160,62 @@ export default function JobDetail() {
       </div>
     );
   }
+
+  const handleStatusChange = async (statusId: string) => {
+    const s = realStatuses.find((r) => r.stage === statusId);
+    if (!s || !job) return;
+    await jobsApi.update(job.id, { status: s.status, stage: s.stage });
+    loadJob();
+  };
+
+  const handleReschedule = async () => {
+    if (!job || !rescheduleAt) return;
+    const [date, time] = rescheduleAt.split("T");
+    await jobsApi.update(job.id, { scheduled_date: date, scheduled_time: time });
+    setRescheduleOpen(false);
+    setRescheduleAt("");
+    setRescheduleReason("");
+    loadJob();
+  };
+
+  const handleSaveNote = async () => {
+    if (!job || !noteText.trim()) return;
+    setSavingNote(true);
+    await customersApi.addNote(job.customer_id, { text: noteText.trim(), author: job.profiles?.name ?? "Technician" });
+    setSavingNote(false);
+    setNoteText("");
+  };
+
+  const handleMarkComplete = async () => {
+    if (!job) return;
+    setGeneratingInvoice(true);
+    await jobsApi.update(job.id, { status: "Completed", stage: "completed" });
+
+    if (!invoiceId) {
+      const issueDate = new Date().toISOString().slice(0, 10);
+      const dueDate = new Date();
+      dueDate.setDate(dueDate.getDate() + 14);
+      const number = `INV-${issueDate.replace(/-/g, "")}-${job.id.slice(0, 4).toUpperCase()}`;
+      try {
+        const invoice = await invoicingApi.create({
+          customerId: job.customer_id,
+          jobId: job.id,
+          number,
+          issueDate,
+          dueDate: dueDate.toISOString().slice(0, 10),
+          amount: job.amount,
+          status: "Sent",
+        });
+        setGeneratingInvoice(false);
+        navigate(`/invoicing/${invoice.id}`);
+        return;
+      } catch {
+        // fall through to reload below
+      }
+    }
+    setGeneratingInvoice(false);
+    loadJob();
+  };
 
   const contentTabs = [
     { id: "trip_details", label: "Trip Details", icon: Truck },
@@ -142,7 +239,7 @@ export default function JobDetail() {
         </button>
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <h1 className="text-xl font-bold text-[#0F172A]">Job {job.id.toUpperCase()}</h1>
+            <h1 className="text-xl font-bold text-[#0F172A]">Job {job.id.slice(0, 8).toUpperCase()}</h1>
             <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type)}>{job.type}</Badge>
             <Badge className={`${statusBadge(job.status)} text-[10px] px-1.5 py-0`}>{job.status}</Badge>
           </div>
@@ -160,9 +257,15 @@ export default function JobDetail() {
             <Copy className="w-4 h-4" />
             <span className="hidden sm:inline">Clone Job</span>
           </Button>
-          <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9">
+          <Button
+            className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9"
+            disabled={generatingInvoice || job.status === "Completed"}
+            onClick={handleMarkComplete}
+          >
             <CheckCircle2 className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("Mark Complete & Generate Invoice")}</span>
+            <span className="hidden sm:inline">
+              {job.status === "Completed" ? "Job Completed" : generatingInvoice ? "Working..." : t("Mark Complete & Generate Invoice")}
+            </span>
             <span className="sm:hidden">Complete</span>
           </Button>
         </div>
@@ -179,7 +282,7 @@ export default function JobDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Reschedule Type</Label>
-                <Select>
+                <Select value={rescheduleReason} onValueChange={setRescheduleReason}>
                   <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Select reason" /></SelectTrigger>
                   <SelectContent>
                     {rescheduleTypes.map((r) => (
@@ -190,12 +293,12 @@ export default function JobDetail() {
               </div>
               <div>
                 <Label className="text-xs">New Date & Time</Label>
-                <Input type="datetime-local" className="mt-1 h-9" />
+                <Input type="datetime-local" className="mt-1 h-9" value={rescheduleAt} onChange={(e) => setRescheduleAt(e.target.value)} />
               </div>
             </div>
             <Textarea placeholder="Reschedule notes..." className="text-sm" rows={2} />
             <div className="flex gap-2">
-              <Button size="sm" className="bg-[#F59E0B] hover:bg-[#D97706] text-white">Confirm Reschedule</Button>
+              <Button size="sm" className="bg-[#F59E0B] hover:bg-[#D97706] text-white" disabled={!rescheduleAt} onClick={handleReschedule}>Confirm Reschedule</Button>
               <Button size="sm" variant="outline" onClick={() => setRescheduleOpen(false)}>Cancel</Button>
             </div>
           </CardContent>
@@ -218,8 +321,8 @@ export default function JobDetail() {
                   </div>
                   <div>
                     <p className="text-xs text-[#64748B]">{t("Customer")}</p>
-                    <button onClick={() => navigate(`/customers/${job.customerId}`)} className="font-medium text-[#0F172A] hover:text-[#0891B2] transition-colors">
-                      {job.customerName}
+                    <button onClick={() => navigate(`/customers/${job.customer_id}`)} className="font-medium text-[#0F172A] hover:text-[#0891B2] transition-colors">
+                      {job.customers?.name}
                     </button>
                   </div>
                 </div>
@@ -229,7 +332,7 @@ export default function JobDetail() {
                   </div>
                   <div>
                     <p className="text-xs text-[#64748B]">{t("Scheduled")}</p>
-                    <p className="font-medium text-[#0F172A]">{job.date} at {job.time}</p>
+                    <p className="font-medium text-[#0F172A]">{job.scheduled_date} at {job.scheduled_time}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -240,9 +343,9 @@ export default function JobDetail() {
                     <p className="text-xs text-[#64748B]">{t("Assigned")}</p>
                     <div className="flex items-center gap-1.5">
                       <Avatar className="w-5 h-5">
-                        <AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{job.techAvatar}</AvatarFallback>
+                        <AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{job.profiles?.avatar}</AvatarFallback>
                       </Avatar>
-                      <span className="font-medium text-[#0F172A]">{job.tech}</span>
+                      <span className="font-medium text-[#0F172A]">{job.profiles?.name}</span>
                     </div>
                   </div>
                 </div>
@@ -556,37 +659,49 @@ export default function JobDetail() {
                   <div className="flex items-center gap-3">
                     <Wrench className="w-4 h-4 text-[#0891B2]" />
                     <div>
-                      <p className="text-sm font-medium text-[#0F172A]">Labor - {job.type}</p>
-                      <p className="text-xs text-[#64748B]">1.5 hrs @ $85/hr</p>
+                      <p className="text-sm font-medium text-[#0F172A]">{job.type}</p>
                     </div>
                   </div>
-                  <span className="font-semibold text-[#0F172A]">$127.50</span>
-                </div>
-                <div className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-4 h-4 text-[#0891B2]" />
-                    <div>
-                      <p className="text-sm font-medium text-[#0F172A]">Parts & Materials</p>
-                      <p className="text-xs text-[#64748B]">From inventory</p>
-                    </div>
-                  </div>
-                  <span className="font-semibold text-[#0F172A]">$17.50</span>
+                  <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between py-3">
                   <span className="text-sm font-medium text-[#0F172A]">Subtotal</span>
-                  <span className="font-semibold text-[#0F172A]">$145.00</span>
+                  <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between py-3">
                   <span className="text-sm text-[#64748B]">Tax (8.25%)</span>
-                  <span className="text-sm text-[#0F172A]">$11.96</span>
+                  <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
                 </div>
                 <div className="flex items-center justify-between py-3">
                   <span className="text-base font-semibold text-[#0F172A]">Total</span>
-                  <span className="text-base font-bold text-[#0891B2]">$156.96</span>
+                  <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
+
+          {/* Parts Used (auto-deducted from store inventory on job completion) */}
+          {partsUsed.length > 0 && (
+            <Card className="border-[#E2E8F0] shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-[#0F172A]">Parts Used</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="divide-y divide-[#F1F5F9]">
+                  {partsUsed.map((p) => (
+                    <div key={p.id} className="flex items-center justify-between py-2">
+                      <div className="flex items-center gap-2">
+                        <Wrench className="w-4 h-4 text-[#0891B2]" />
+                        <span className="text-sm text-[#0F172A]">{p.item_name}</span>
+                        <span className="text-xs text-[#64748B]">({p.item_sku})</span>
+                      </div>
+                      <span className="text-sm font-medium text-[#0F172A]">Qty: {p.quantity}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Language-aware notes section with real translation */}
           <Card className="border-[#E2E8F0] shadow-sm">
@@ -608,6 +723,7 @@ export default function JobDetail() {
                 rows={4}
               />
               {noteText.trim() && (
+                <>
                 <TranslationPanel
                   lang={lang}
                   states={trStates}
@@ -616,6 +732,10 @@ export default function JobDetail() {
                     translateDebounced(noteText, lang, target, 0);
                   }}
                 />
+                <Button size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={savingNote} onClick={handleSaveNote}>
+                  {savingNote ? "Saving..." : "Save Note to Customer Record"}
+                </Button>
+                </>
               )}
             </CardContent>
           </Card>
@@ -688,11 +808,11 @@ export default function JobDetail() {
               <CardTitle className="text-sm font-semibold text-[#0F172A]">Update Status</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
-              <Select defaultValue={job.status.toLowerCase().replace(/[^a-z]+/g, "_")}>
+              <Select value={job.stage} onValueChange={handleStatusChange}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {jobStatuses.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                  {realStatuses.map((s) => (
+                    <SelectItem key={s.stage} value={s.stage}>
                       <span className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
                         {s.label}
@@ -732,17 +852,37 @@ export default function JobDetail() {
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Quick Actions")}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-2">
-              <Button variant="outline" className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]">
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]"
+                disabled={!job.customers?.phone}
+                onClick={() => job.customers?.phone && (window.location.href = `tel:${job.customers.phone}`)}
+              >
                 <Phone className="w-4 h-4 text-[#0891B2]" /> {t("Call Customer")}
               </Button>
-              <Button variant="outline" className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]">
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]"
+                disabled={!job.customers?.phone}
+                onClick={() => job.customers?.phone && (window.location.href = `sms:${job.customers.phone}`)}
+              >
                 <MessageSquare className="w-4 h-4 text-[#0891B2]" /> {t("Text Customer")}
               </Button>
-              <Button variant="outline" className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]">
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]"
+                disabled={!job.customers?.email}
+                onClick={() => job.customers?.email && (window.location.href = `mailto:${job.customers.email}`)}
+              >
                 <Mail className="w-4 h-4 text-[#0891B2]" /> {t("Email Customer")}
               </Button>
-              <Button variant="outline" className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]">
-                <DollarSign className="w-4 h-4 text-[#0891B2]" /> {t("View Invoice")}
+              <Button
+                variant="outline"
+                className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]"
+                disabled={!invoiceId}
+                onClick={() => invoiceId && navigate(`/invoicing/${invoiceId}`)}
+              >
+                <DollarSign className="w-4 h-4 text-[#0891B2]" /> {invoiceId ? t("View Invoice") : "No Invoice Yet"}
               </Button>
             </CardContent>
           </Card>

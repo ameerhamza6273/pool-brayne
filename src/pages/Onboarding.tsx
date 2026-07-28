@@ -29,20 +29,17 @@ export default function Onboarding() {
   const [selectedPlan, setSelectedPlan] = useState("pro");
   const [completed, setCompleted] = useState(false);
   const [companyName, setCompanyName] = useState("Bryan's Pool Co");
-  const [email, setEmail] = useState("bryan@poolbrayne.com");
+  const [email, setEmail] = useState("");
   const [name, setName] = useState("Bryan");
-  const { login } = useAuth();
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { signUp } = useAuth();
   const navigate = useNavigate();
 
   const getPlanName = () => {
     const plan = plans.find((p) => p.id === selectedPlan);
     return plan ? `PoolBrayne ${plan.name}` : "PoolBrayne";
-  };
-
-  const getTenantId = () => {
-    const existing = localStorage.getItem("poolbrayne_tenant_count");
-    const count = existing ? parseInt(existing, 10) : 1;
-    return `Tenant ${String(count).padStart(3, "0")}`;
   };
 
   const nextStep = () => {
@@ -60,7 +57,6 @@ export default function Onboarding() {
             <CheckCircle2 className="w-10 h-10 text-[#16A34A]" />
           </div>
           <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Welcome to PoolBrayne!</h1>
-          <p className="text-[#64748B] mb-2">You're now {getTenantId()}</p>
           <p className="text-sm text-[#64748B] mb-8">Your company is set up and ready to go. Let's start managing your pool business.</p>
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 rounded-xl bg-[#0891B2] flex items-center justify-center">
@@ -68,17 +64,26 @@ export default function Onboarding() {
             </div>
             <div className="text-left">
               <p className="font-semibold text-[#0F172A]">{companyName}</p>
-              <p className="text-xs text-[#64748B]">{getTenantId()} &middot; {getPlanName()}</p>
+              <p className="text-xs text-[#64748B]">{getPlanName()}</p>
             </div>
           </div>
+          {error && <p className="text-sm text-[#DC2626] mb-4">{error}</p>}
           <Button
+            disabled={isSubmitting}
             className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-12 px-8"
-            onClick={() => {
-              login(email, "password", { name, company: companyName, tenantId: getTenantId() });
-              navigate("/dashboard");
+            onClick={async () => {
+              setError("");
+              setIsSubmitting(true);
+              const result = await signUp(email, password, { name, company: companyName });
+              setIsSubmitting(false);
+              if (result.error) {
+                setError(result.error);
+                return;
+              }
+              navigate(result.needsEmailConfirmation ? "/login" : "/dashboard");
             }}
           >
-            Go to Dashboard
+            {isSubmitting ? "Setting up..." : "Go to Dashboard"}
           </Button>
         </div>
       </div>
@@ -146,6 +151,10 @@ export default function Onboarding() {
                         <Label>Email</Label>
                         <Input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 h-11" placeholder="you@company.com" />
                       </div>
+                    </div>
+                    <div>
+                      <Label>Password</Label>
+                      <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 h-11" placeholder="Min 8 characters" />
                     </div>
                     <div>
                       <Label>Address</Label>

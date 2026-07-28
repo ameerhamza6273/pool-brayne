@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Mail, MessageSquare, CreditCard, FileText, BadgeCheck, Wrench, Hammer, Droplets } from "lucide-react";
@@ -8,7 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { invoices, invoiceLineItems } from "@/lib/data";
+import { invoicingApi } from "@/lib/api/invoicing";
+import type { Database } from "@/lib/database.types";
+
+type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string; address: string | null } | null };
+type LineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
 
 const statusColors: Record<string, string> = {
   Draft: "bg-[#F59E0B]/10 text-[#F59E0B]",
@@ -20,7 +25,31 @@ const statusColors: Record<string, string> = {
 export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const invoice = invoices.find((i) => i.id === id);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [payOpen, setPayOpen] = useState(false);
+
+  const loadInvoice = useCallback(async () => {
+    if (!id) return;
+    setIsLoading(true);
+    try {
+      const bundle = await invoicingApi.detail(id);
+      setInvoice(bundle.invoice as Invoice);
+      setLineItems(bundle.lineItems);
+    } catch {
+      setInvoice(null);
+    }
+    setIsLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    loadInvoice();
+  }, [loadInvoice]);
+
+  if (isLoading) {
+    return <div className="text-center py-20 text-[#64748B]">Loading invoice...</div>;
+  }
 
   if (!invoice) {
     return (
@@ -31,12 +60,20 @@ export default function InvoiceDetail() {
     );
   }
 
-  const lineItems = (id ? invoiceLineItems[id as keyof typeof invoiceLineItems] : undefined) || [
-    { description: `${invoice.status === "Draft" ? "Service" : "Weekly Maintenance"} - ${invoice.customer}`, quantity: 1, rate: invoice.amount, amount: invoice.amount },
-  ] as { description: string; quantity: number; rate: number; amount: number }[];
-  const subtotal = lineItems.reduce((sum: number, li: { amount: number }) => sum + li.amount, 0);
+  const items: { description: string; quantity: number; rate: number; amount: number }[] =
+    lineItems.length > 0
+      ? lineItems
+      : [{ description: `${invoice.status === "Draft" ? "Service" : "Weekly Maintenance"} - ${invoice.customers?.name ?? ""}`, quantity: 1, rate: invoice.amount, amount: invoice.amount }];
+  const subtotal = items.reduce((sum, li) => sum + li.amount, 0);
   const tax = subtotal * 0.0825;
   const total = subtotal + tax;
+
+  const handleCollectPayment = async (method: "Card" | "ACH") => {
+    if (!id) return;
+    await invoicingApi.collectPayment(id, method);
+    setPayOpen(false);
+    loadInvoice();
+  };
 
   return (
     <div className="space-y-4">
@@ -51,7 +88,8 @@ export default function InvoiceDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Dialog>
+          {invoice.status !== "Paid" && (
+          <Dialog open={payOpen} onOpenChange={setPayOpen}>
             <DialogTrigger asChild>
               <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9">
                 <CreditCard className="w-4 h-4" /> Collect Payment
@@ -81,7 +119,7 @@ export default function InvoiceDetail() {
                       <div className="h-10 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center px-3 text-sm text-[#64748B]">***</div>
                     </div>
                   </div>
-                  <Button className="w-full bg-[#16A34A] text-white">Pay ${total.toFixed(2)}</Button>
+                  <Button className="w-full bg-[#16A34A] text-white" onClick={() => handleCollectPayment("Card")}>Pay ${total.toFixed(2)}</Button>
                 </TabsContent>
                 <TabsContent value="ach" className="space-y-4 mt-4">
                   <div className="space-y-2">
@@ -90,11 +128,12 @@ export default function InvoiceDetail() {
                       **** **** **** 9876
                     </div>
                   </div>
-                  <Button className="w-full bg-[#16A34A] text-white">Pay ${total.toFixed(2)} via ACH</Button>
+                  <Button className="w-full bg-[#16A34A] text-white" onClick={() => handleCollectPayment("ACH")}>Pay ${total.toFixed(2)} via ACH</Button>
                 </TabsContent>
               </Tabs>
             </DialogContent>
           </Dialog>
+          )}
         </div>
       </div>
 
@@ -106,7 +145,7 @@ export default function InvoiceDetail() {
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]">
           <MessageSquare className="w-4 h-4 text-[#0891B2]" /> Send via SMS
         </Button>
-        <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]">
+        <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => window.print()}>
           <Download className="w-4 h-4 text-[#0891B2]" /> Download PDF
         </Button>
         <div className="ml-auto flex items-center gap-2">
@@ -144,13 +183,13 @@ export default function InvoiceDetail() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 p-4 rounded-lg bg-[#F8FAFC]">
             <div>
               <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Bill To</p>
-              <p className="font-medium text-[#0F172A]">{invoice.customer}</p>
-              <p className="text-sm text-[#64748B]">Austin, TX</p>
+              <p className="font-medium text-[#0F172A]">{invoice.customers?.name ?? "—"}</p>
+              <p className="text-sm text-[#64748B]">{invoice.customers?.address ?? "Austin, TX"}</p>
             </div>
             <div className="sm:text-right">
               <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Invoice Details</p>
-              <p className="text-sm text-[#0F172A]">Issue Date: <span className="text-[#64748B]">{invoice.issueDate}</span></p>
-              <p className="text-sm text-[#0F172A]">Due Date: <span className="text-[#64748B]">{invoice.dueDate}</span></p>
+              <p className="text-sm text-[#0F172A]">Issue Date: <span className="text-[#64748B]">{invoice.issue_date}</span></p>
+              <p className="text-sm text-[#0F172A]">Due Date: <span className="text-[#64748B]">{invoice.due_date}</span></p>
             </div>
           </div>
 
@@ -166,7 +205,7 @@ export default function InvoiceDetail() {
                 </tr>
               </thead>
               <tbody>
-                {lineItems.map((li: { description: string; quantity: number; rate: number; amount: number }, idx: number) => (
+                {items.map((li, idx: number) => (
                   <tr key={idx} className="border-b border-[#F1F5F9]">
                     <td className="py-3 text-[#0F172A]">{li.description}</td>
                     <td className="text-right py-3 text-[#64748B]">{li.quantity}</td>

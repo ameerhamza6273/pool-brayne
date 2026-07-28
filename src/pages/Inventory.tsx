@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,10 +7,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { inventory, suppliers, purchaseOrders, varianceData } from "@/lib/data";
+import { inventoryApi } from "@/lib/api/inventory";
+import type { Database } from "@/lib/database.types";
+import type { ItemWithStock } from "@/lib/api/inventory";
+
+type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
+type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null };
+type InventoryVariance = Database["public"]["Tables"]["inventory_variance"]["Row"] & { inventory_items: { name: string } | null };
 
 const categories = ["All", "Chemicals", "Parts", "Equipment", "Accessories"];
-const locations = ["All", "Store", "Vehicle 1", "Vehicle 2", "Vehicle 3"];
 
 const statusColors: Record<string, string> = {
   "In Stock": "bg-[#16A34A]/10 text-[#16A34A]",
@@ -27,19 +32,62 @@ const poStatusColors: Record<string, string> = {
 export default function Inventory() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
-  const [locationFilter, setLocationFilter] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
   const [poOpen, setPoOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const filtered = inventory.filter((p) => {
+  const [items, setItems] = useState<ItemWithStock[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [varianceData, setVarianceData] = useState<InventoryVariance[]>([]);
+
+  const [newProduct, setNewProduct] = useState({ name: "", sku: "", category: "Chemicals", unitCost: "" });
+  const [newPo, setNewPo] = useState({ supplierId: "", number: "" });
+
+  const loadInventory = useCallback(async () => {
+    setIsLoading(true);
+    const data = await inventoryApi.summary();
+    setItems(data.items);
+    setSuppliers(data.suppliers);
+    setPurchaseOrders(data.purchaseOrders);
+    setVarianceData(data.varianceData);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadInventory();
+  }, [loadInventory]);
+
+  const handleAddProduct = async () => {
+    if (!newProduct.name || !newProduct.sku) return;
+    await inventoryApi.addItem({
+      name: newProduct.name,
+      sku: newProduct.sku,
+      category: newProduct.category,
+      unitCost: parseFloat(newProduct.unitCost) || 0,
+    });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "" });
+    setAddOpen(false);
+    loadInventory();
+  };
+
+  const handleCreatePo = async () => {
+    if (!newPo.supplierId || !newPo.number) return;
+    await inventoryApi.createPurchaseOrder({ supplierId: newPo.supplierId, number: newPo.number });
+    setNewPo({ supplierId: "", number: "" });
+    setPoOpen(false);
+    loadInventory();
+  };
+
+  const filtered = items.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
-  const totalValue = inventory.reduce((sum, p) => sum + p.total * p.unitCost, 0);
-  const lowStock = inventory.filter((p) => p.status === "Low").length;
-  const outOfStock = inventory.filter((p) => p.status === "Out").length;
+  const totalValue = items.reduce((sum, p) => sum + p.total * p.unit_cost, 0);
+  const lowStock = items.filter((p) => p.status === "Low").length;
+  const outOfStock = items.filter((p) => p.status === "Out").length;
 
   return (
     <div className="space-y-4">
@@ -55,17 +103,18 @@ export default function Inventory() {
             <DialogContent>
               <DialogHeader><DialogTitle>Add Product</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
-                <div><Label>Name</Label><Input className="mt-1" placeholder="Product name" /></div>
-                <div><Label>SKU</Label><Input className="mt-1" placeholder="SKU-123" /></div>
+                <div><Label>Name</Label><Input className="mt-1" placeholder="Product name" value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} /></div>
+                <div><Label>SKU</Label><Input className="mt-1" placeholder="SKU-123" value={newProduct.sku} onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><Label>Category</Label>
-                    <Select><SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                    <Select value={newProduct.category} onValueChange={(v) => setNewProduct((p) => ({ ...p, category: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
                       <SelectContent>{categories.filter(c => c !== "All").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Unit Cost</Label><Input className="mt-1" type="number" placeholder="0.00" /></div>
+                  <div><Label>Unit Cost</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
                 </div>
-                <Button className="w-full bg-[#0891B2] text-white" onClick={() => setAddOpen(false)}>Save Product</Button>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>Save Product</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -74,7 +123,7 @@ export default function Inventory() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Total SKUs", value: inventory.length, icon: Package, color: "text-[#0891B2]", bg: "bg-[#0891B2]/10" },
+          { label: "Total SKUs", value: items.length, icon: Package, color: "text-[#0891B2]", bg: "bg-[#0891B2]/10" },
           { label: "Low Stock", value: lowStock, icon: AlertTriangle, color: "text-[#F59E0B]", bg: "bg-[#F59E0B]/10" },
           { label: "Inventory Value", value: `$${totalValue.toLocaleString()}`, icon: TrendingUp, color: "text-[#16A34A]", bg: "bg-[#16A34A]/10" },
           { label: "Out of Stock", value: outOfStock, icon: Warehouse, color: "text-[#DC2626]", bg: "bg-[#DC2626]/10" },
@@ -94,6 +143,9 @@ export default function Inventory() {
         })}
       </div>
 
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading inventory...</div>}
+
+      {!isLoading && (
       <Tabs defaultValue="catalog" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
           <TabsTrigger value="catalog" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
@@ -120,10 +172,6 @@ export default function Inventory() {
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue placeholder="Category" /></SelectTrigger>
                 <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-              </Select>
-              <Select value={locationFilter} onValueChange={setLocationFilter}>
-                <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue placeholder="Location" /></SelectTrigger>
-                <SelectContent>{locations.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>
@@ -158,10 +206,10 @@ export default function Inventory() {
                       <td className="py-3 px-4 text-[#64748B]">{p.sku}</td>
                       <td className="py-3 px-4"><Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px] px-1.5 py-0">{p.category}</Badge></td>
                       <td className="text-right py-3 px-4 font-medium text-[#0F172A]">{p.storeQty}</td>
-                      <td className="text-right py-3 px-4 text-[#64748B]">{p.v1Qty + p.v2Qty + p.v3Qty}</td>
+                      <td className="text-right py-3 px-4 text-[#64748B]">{p.vehicleQty}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">{p.total}</td>
-                      <td className="text-right py-3 px-4 text-[#64748B]">{p.reorder}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">${p.unitCost.toFixed(2)}</td>
+                      <td className="text-right py-3 px-4 text-[#64748B]">{p.reorder_threshold}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">${p.unit_cost.toFixed(2)}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{p.status}</Badge>
                       </td>
@@ -182,7 +230,6 @@ export default function Inventory() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Supplier</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Contact</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Phone</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Products</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Lead Time</th>
                   </tr>
                 </thead>
@@ -192,8 +239,7 @@ export default function Inventory() {
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{s.name}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.contact}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.phone}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{s.products}</td>
-                      <td className="text-right py-3 px-4"><Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{s.leadTime}</Badge></td>
+                      <td className="text-right py-3 px-4"><Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{s.lead_time}</Badge></td>
                     </tr>
                   ))}
                 </tbody>
@@ -210,12 +256,14 @@ export default function Inventory() {
               </DialogTrigger>
               <DialogContent><DialogHeader><DialogTitle>New Purchase Order</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
+                  <div><Label>PO Number</Label><Input className="mt-1" placeholder="PO-2026-001" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} /></div>
                   <div><Label>Supplier</Label>
-                    <Select><SelectTrigger className="mt-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                    <Select value={newPo.supplierId} onValueChange={(v) => setNewPo((p) => ({ ...p, supplierId: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
                       <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={() => setPoOpen(false)}>Create PO</Button>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreatePo}>Create PO</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -238,11 +286,11 @@ export default function Inventory() {
                   {purchaseOrders.map((po) => (
                     <tr key={po.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{po.number}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{po.supplier}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{po.items}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{po.suppliers?.name ?? "—"}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">{po.item_count}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${po.total.toLocaleString()}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{po.date}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{po.receivedDate || "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{po.order_date}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{po.received_date || "—"}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${poStatusColors[po.status]} text-[10px] px-1.5 py-0`}>{po.status}</Badge>
                       </td>
@@ -270,11 +318,11 @@ export default function Inventory() {
                 <tbody>
                   {varianceData.map((v) => (
                     <tr key={v.id} className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] ${v.flagged ? "bg-[#F59E0B]/5" : ""}`}>
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{v.product}</td>
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{v.inventory_items?.name ?? "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{v.expected}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{v.actual}</td>
-                      <td className={`text-right py-3 px-4 font-semibold ${v.variance < -20 ? "text-[#DC2626]" : v.variance < 0 ? "text-[#F59E0B]" : "text-[#16A34A]"}`}>
-                        {v.variance}%
+                      <td className={`text-right py-3 px-4 font-semibold ${v.variance_pct < -20 ? "text-[#DC2626]" : v.variance_pct < 0 ? "text-[#F59E0B]" : "text-[#16A34A]"}`}>
+                        {v.variance_pct}%
                       </td>
                       <td className="text-center py-3 px-4">
                         {v.flagged && <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Flagged</Badge>}
@@ -287,6 +335,7 @@ export default function Inventory() {
           </div>
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

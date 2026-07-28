@@ -7,20 +7,23 @@ import { Label } from "@/components/ui/label";
 import { Droplets, CheckCircle } from "lucide-react";
 
 export default function Login() {
-  const [email, setEmail] = useState("bryan@poolbrayne.com");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { signIn } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const success = login(email, password);
-    if (success) {
+    setIsSubmitting(true);
+    const signInError = await signIn(email, password);
+    setIsSubmitting(false);
+    if (!signInError) {
       navigate("/dashboard");
     } else {
-      setError("Invalid credentials");
+      setError(signInError);
     }
   };
 
@@ -98,8 +101,8 @@ export default function Login() {
               />
             </div>
             {error && <p className="text-sm text-[#DC2626]">{error}</p>}
-            <Button type="submit" className="w-full h-11 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold">
-              Sign in
+            <Button type="submit" disabled={isSubmitting} className="w-full h-11 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold">
+              {isSubmitting ? "Signing in..." : "Sign in"}
             </Button>
           </form>
 

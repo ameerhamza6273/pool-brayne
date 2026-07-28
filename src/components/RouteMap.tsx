@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MapPin, Navigation, Clock, Car } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { jobsApi } from "@/lib/api/jobs";
 
 type Stop = {
   id: string;
@@ -10,16 +11,7 @@ type Stop = {
   address: string;
   time: string;
   status: "done" | "current" | "upcoming";
-  distance: string;
 };
-
-const route: Stop[] = [
-  { id: "1", customer: "James Thompson", address: "1428 Maple Ridge Dr, Austin, TX 78734", time: "8:00 AM", status: "done", distance: "0 mi" },
-  { id: "2", customer: "Maria & Carlos Rodriguez", address: "3421 Hill Country Blvd, Austin, TX 78738", time: "9:30 AM", status: "done", distance: "2.4 mi" },
-  { id: "3", customer: "The Henderson Family", address: "5678 River Rd, Austin, TX 78746", time: "11:00 AM", status: "current", distance: "5.1 mi" },
-  { id: "4", customer: "Sunset Country Club", address: "8900 Lakeview Pkwy, Austin, TX 78734", time: "1:00 PM", status: "upcoming", distance: "8.3 mi" },
-  { id: "5", customer: "Austin Aquatic Center", address: "1200 Shoal Creek Blvd, Austin, TX 78701", time: "3:00 PM", status: "upcoming", distance: "12.7 mi" },
-];
 
 const statusConfig = {
   done: { color: "bg-[#16A34A] text-white", badge: "bg-[#16A34A]/10 text-[#16A34A]", label: "Completed" },
@@ -27,10 +19,39 @@ const statusConfig = {
   upcoming: { color: "bg-[#CBD5E1] text-[#64748B]", badge: "bg-[#F1F5F9] text-[#64748B]", label: "Upcoming" },
 };
 
+const toStatus = (jobStatus: string): Stop["status"] => {
+  if (jobStatus === "Completed") return "done";
+  if (jobStatus === "In Progress" || jobStatus === "Dispatched") return "current";
+  return "upcoming";
+};
+
 export default function RouteMap() {
-  const [stops] = useState(route);
-  const totalDistance = "12.7 mi";
-  const completedCount = stops.filter(s => s.status === "done").length;
+  const [stops, setStops] = useState<Stop[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadRoute = useCallback(async () => {
+    setIsLoading(true);
+    const data = await jobsApi.today();
+    setStops(
+      data.map((j) => ({
+        id: j.id,
+        customer: j.customers?.name ?? "—",
+        address: j.address ?? "",
+        time: j.scheduled_time ?? "—",
+        status: toStatus(j.status),
+      })),
+    );
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadRoute();
+  }, [loadRoute]);
+
+  const completedCount = stops.filter((s) => s.status === "done").length;
+  const openMapUrl = stops.length > 0
+    ? `https://www.google.com/maps/dir/${stops.map((s) => encodeURIComponent(s.address)).join("/")}`
+    : undefined;
 
   return (
     <Card className="border-[#E2E8F0] shadow-sm">
@@ -41,9 +62,15 @@ export default function RouteMap() {
         </CardTitle>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs gap-1 border-[#E2E8F0]">
-            <Car className="w-3 h-3" /> {totalDistance}
+            <Car className="w-3 h-3" /> {stops.length} stops
           </Badge>
-          <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5 border-[#E2E8F0]">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs gap-1.5 border-[#E2E8F0]"
+            disabled={!openMapUrl}
+            onClick={() => openMapUrl && window.open(openMapUrl, "_blank", "noopener,noreferrer")}
+          >
             <MapPin className="w-3.5 h-3.5" /> Open Map
           </Button>
         </div>
@@ -61,12 +88,19 @@ export default function RouteMap() {
               <p className="text-xs text-[#64748B]">Interactive route map</p>
             </div>
           </div>
-          {/* Route line */}
           <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
             <path d="M 50 100 Q 150 50 250 80 T 450 60" stroke="#0891B2" strokeWidth="2" strokeDasharray="5 5" fill="none" />
           </svg>
         </div>
 
+        {isLoading && <p className="text-xs text-[#64748B] text-center py-4">Loading today's route...</p>}
+
+        {!isLoading && stops.length === 0 && (
+          <p className="text-xs text-[#64748B] text-center py-4">No jobs scheduled for today</p>
+        )}
+
+        {!isLoading && stops.length > 0 && (
+        <>
         {/* Progress bar */}
         <div className="flex items-center gap-2 mb-3">
           <div className="flex-1 h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
@@ -81,7 +115,6 @@ export default function RouteMap() {
             const cfg = statusConfig[stop.status];
             return (
               <div key={stop.id} className="flex gap-3">
-                {/* Timeline */}
                 <div className="flex flex-col items-center">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${cfg.color} shrink-0`}>
                     {idx + 1}
@@ -90,7 +123,6 @@ export default function RouteMap() {
                     <div className={`w-0.5 h-12 ${stop.status === "done" ? "bg-[#16A34A]" : "bg-[#E2E8F0]"}`} />
                   )}
                 </div>
-                {/* Content */}
                 <div className="flex-1 pb-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-[#0F172A]">{stop.customer}</p>
@@ -101,15 +133,14 @@ export default function RouteMap() {
                     <span className="text-xs text-[#64748B] flex items-center gap-1">
                       <Clock className="w-3 h-3" /> {stop.time}
                     </span>
-                    <span className="text-xs text-[#64748B] flex items-center gap-1">
-                      <Car className="w-3 h-3" /> {stop.distance}
-                    </span>
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
+        </>
+        )}
       </CardContent>
     </Card>
   );

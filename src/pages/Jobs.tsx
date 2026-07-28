@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus, Calendar, LayoutDashboard, Truck, User, MapPin, Clock, Search, ChevronLeft, ChevronRight,
@@ -10,7 +10,22 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { jobs, technicians, recurringRoutes, customers, jobTypes, callTypes, callSources } from "@/lib/data";
+import { jobTypes, callTypes, callSources } from "@/lib/data";
+import { jobsApi } from "@/lib/api/jobs";
+import { profilesApi } from "@/lib/api/profiles";
+import { customersApi } from "@/lib/api/customers";
+import { recurringRoutesApi } from "@/lib/api/recurringRoutes";
+import type { Database } from "@/lib/database.types";
+
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type Customer = Database["public"]["Tables"]["customers"]["Row"];
+type Job = Database["public"]["Tables"]["jobs"]["Row"] & {
+  customers: { name: string; address: string | null } | null;
+  profiles: { name: string; avatar: string | null } | null;
+};
+type RecurringRoute = Database["public"]["Tables"]["recurring_routes"]["Row"] & {
+  profiles: { name: string } | null;
+};
 
 const stages = [
   { id: "lead", label: "Lead", color: "bg-[#F59E0B]/10 border-t-[#F59E0B]" },
@@ -30,11 +45,49 @@ export default function Jobs() {
   const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule">("pipeline");
   const [search, setSearch] = useState("");
   const [newJobOpen, setNewJobOpen] = useState(false);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [technicians, setTechnicians] = useState<Profile[]>([]);
+  const [recurringRoutes, setRecurringRoutes] = useState<RecurringRoute[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "" });
   const navigate = useNavigate();
 
+  const loadJobs = useCallback(async () => {
+    const data = await jobsApi.list();
+    setJobs(data ?? []);
+  }, []);
+
+  useEffect(() => {
+    loadJobs();
+    profilesApi.list().then((data) => setTechnicians(data ?? []));
+    customersApi.list().then((data) => setCustomers(data ?? []));
+    recurringRoutesApi.list().then((data) => setRecurringRoutes(data ?? []));
+  }, [loadJobs]);
+
+  const handleCreateJob = async () => {
+    if (!newJob.customerId || !newJob.jobType) return;
+    await jobsApi.create({
+      customerId: newJob.customerId,
+      jobType: newJob.jobType,
+      techId: newJob.techId || null,
+      date: newJob.date || null,
+      time: newJob.time || null,
+      description: newJob.description || null,
+      address: customers.find((c) => c.id === newJob.customerId)?.address ?? null,
+    });
+    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "" });
+    setNewJobOpen(false);
+    loadJobs();
+  };
+
+  const assignTech = async (jobId: string, techId: string) => {
+    await jobsApi.update(jobId, { tech_id: techId, status: "Dispatched", stage: "dispatched" });
+    loadJobs();
+  };
+
   const filteredJobs = jobs.filter((j) =>
-    j.customerName.toLowerCase().includes(search.toLowerCase()) ||
-    j.address.toLowerCase().includes(search.toLowerCase()) ||
+    (j.customers?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (j.address ?? "").toLowerCase().includes(search.toLowerCase()) ||
     j.type.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -57,7 +110,7 @@ export default function Jobs() {
               <div className="space-y-4 pt-2">
                 <div>
                   <Label>Customer</Label>
-                  <Select>
+                  <Select value={newJob.customerId} onValueChange={(v) => setNewJob((p) => ({ ...p, customerId: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
                     <SelectContent>
                       {customers.map((c) => (
@@ -68,11 +121,11 @@ export default function Jobs() {
                 </div>
                 <div>
                   <Label>Job Type</Label>
-                  <Select>
+                  <Select value={newJob.jobType} onValueChange={(v) => setNewJob((p) => ({ ...p, jobType: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Select job type" /></SelectTrigger>
                     <SelectContent>
                       {jobTypes.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
+                        <SelectItem key={t.id} value={t.label}>
                           <span className="flex items-center gap-2">
                             <span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} />
                             {t.label}
@@ -109,16 +162,16 @@ export default function Jobs() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>Date</Label>
-                    <Input type="date" className="mt-1" />
+                    <Input type="date" className="mt-1" value={newJob.date} onChange={(e) => setNewJob((p) => ({ ...p, date: e.target.value }))} />
                   </div>
                   <div>
                     <Label>Time</Label>
-                    <Input type="time" className="mt-1" />
+                    <Input type="time" className="mt-1" value={newJob.time} onChange={(e) => setNewJob((p) => ({ ...p, time: e.target.value }))} />
                   </div>
                 </div>
                 <div>
                   <Label>Assign Technician</Label>
-                  <Select>
+                  <Select value={newJob.techId} onValueChange={(v) => setNewJob((p) => ({ ...p, techId: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder="Select tech" /></SelectTrigger>
                     <SelectContent>
                       {technicians.map((t) => (
@@ -129,9 +182,9 @@ export default function Jobs() {
                 </div>
                 <div>
                   <Label>Notes</Label>
-                  <Input placeholder="Job description..." className="mt-1" />
+                  <Input placeholder="Job description..." className="mt-1" value={newJob.description} onChange={(e) => setNewJob((p) => ({ ...p, description: e.target.value }))} />
                 </div>
-                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => setNewJobOpen(false)}>
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateJob}>
                   Create Job
                 </Button>
               </div>
@@ -195,16 +248,16 @@ export default function Jobs() {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type)}>{job.type}</Badge>
-                          <span className="text-xs text-[#64748B]">{job.time}</span>
+                          <span className="text-xs text-[#64748B]">{job.scheduled_time}</span>
                         </div>
-                        <p className="font-medium text-sm text-[#0F172A] mb-1">{job.customerName}</p>
+                        <p className="font-medium text-sm text-[#0F172A] mb-1">{job.customers?.name}</p>
                         <p className="text-xs text-[#64748B] mb-2 truncate">{job.address}</p>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5">
                             <Avatar className="w-6 h-6">
-                              <AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{job.techAvatar}</AvatarFallback>
+                              <AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{job.profiles?.avatar}</AvatarFallback>
                             </Avatar>
-                            <span className="text-xs text-[#64748B]">{job.tech}</span>
+                            <span className="text-xs text-[#64748B]">{job.profiles?.name}</span>
                           </div>
                           <span className="text-xs font-semibold text-[#0F172A]">${job.amount}</span>
                         </div>
@@ -230,13 +283,13 @@ export default function Jobs() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type)}>{job.type}</Badge>
-                      <span className="text-xs text-[#64748B]">{job.date} {job.time}</span>
+                      <span className="text-xs text-[#64748B]">{job.scheduled_date} {job.scheduled_time}</span>
                     </div>
-                    <p className="font-medium text-sm text-[#0F172A] mt-0.5">{job.customerName}</p>
+                    <p className="font-medium text-sm text-[#0F172A] mt-0.5">{job.customers?.name}</p>
                     <p className="text-xs text-[#64748B] truncate">{job.address}</p>
                   </div>
                   <div className="shrink-0">
-                    <Select>
+                    <Select onValueChange={(v) => assignTech(job.id, v)}>
                       <SelectTrigger className="h-8 w-32 text-xs">
                         <SelectValue placeholder="Assign" />
                       </SelectTrigger>
@@ -279,7 +332,7 @@ export default function Jobs() {
                         <p className="font-medium text-sm text-[#0F172A]">{tech.name}</p>
                         <Badge className={`${statusColors[tech.status] || ""} text-[10px] px-1.5 py-0`}>{tech.status}</Badge>
                       </div>
-                      <p className="text-xs text-[#64748B]">{tech.jobsToday} jobs today</p>
+                      <p className="text-xs text-[#64748B]">{jobs.filter((j) => j.tech_id === tech.id).length} jobs today</p>
                     </div>
                     <div className="shrink-0 text-xs text-[#64748B]">
                       {tech.status === "On a job" && <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> Active</div>}
@@ -321,7 +374,7 @@ export default function Jobs() {
               {Array.from({ length: 30 }, (_, i) => {
                 const day = i + 1;
                 const dayJobs = jobs.filter((j) => {
-                  const jobDay = parseInt(j.date.split("-")[2]);
+                  const jobDay = parseInt((j.scheduled_date ?? "").split("-")[2]);
                   return jobDay === day;
                 });
                 return (
@@ -340,7 +393,7 @@ export default function Jobs() {
                           }`}
                           onClick={() => navigate(`/jobs/${j.id}`)}
                         >
-                          {j.time} {j.customerName.split(" ")[0]}
+                          {j.scheduled_time} {j.customers?.name.split(" ")[0]}
                         </div>
                       ))}
                     </div>
@@ -362,9 +415,9 @@ export default function Jobs() {
                   </div>
                   <div className="space-y-1 text-sm text-[#64748B]">
                     <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {route.day}s</p>
-                    <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {route.tech}</p>
-                    <p className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> {route.customers} customers</p>
-                    <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {route.avgTime}</p>
+                    <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {route.profiles?.name}</p>
+                    <p className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> {route.customer_count} customers</p>
+                    <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {route.avg_time}</p>
                   </div>
                 </div>
               ))}

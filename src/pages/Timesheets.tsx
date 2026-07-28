@@ -1,29 +1,85 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Clock, MapPin, CheckCircle2, Users, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { timesheetData, jobCosting, employees } from "@/lib/data";
+import { timesheetsApi } from "@/lib/api/timesheets";
+import { useAuth } from "@/lib/auth-context";
+import type { Database } from "@/lib/database.types";
+
+type Timesheet = Database["public"]["Tables"]["timesheets"]["Row"] & { profiles: { name: string; role: string; employment_type: string } | null };
+type JobCosting = Database["public"]["Tables"]["job_costing"]["Row"] & { profiles: { name: string } | null };
+
+function mondayOf(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d.toISOString().slice(0, 10);
+}
 
 export default function Timesheets() {
+  const { user } = useAuth();
   const [clockedIn, setClockedIn] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [week] = useState("June 17 - June 23, 2024");
-  const [approvedRows, setApprovedRows] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
+  const [jobCosting, setJobCosting] = useState<JobCosting[]>([]);
+  const [employeeCount, setEmployeeCount] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const weekStart = mondayOf(new Date());
 
-  const totalHours = timesheetData.reduce((sum, t) => sum + t.total, 0);
-  const totalOT = timesheetData.reduce((sum, t) => sum + t.ot, 0);
+  const loadTimesheets = useCallback(async () => {
+    setIsLoading(true);
+    const data = await timesheetsApi.forWeek(weekStart);
+    setTimesheets(data.timesheets);
+    setJobCosting(data.jobCosting);
+    setEmployeeCount(data.employeeCount);
+    setIsLoading(false);
+  }, [weekStart]);
+
+  useEffect(() => {
+    loadTimesheets();
+  }, [loadTimesheets]);
+
+  const totalHours = timesheets.reduce((sum, t) => sum + t.mon + t.tue + t.wed + t.thu + t.fri + t.sat + t.sun, 0);
+  const totalOT = timesheets.reduce((sum, t) => sum + t.overtime_hours, 0);
   const estPayroll = totalHours * 28 + totalOT * 42;
+
+  const handleApprove = async (id: string) => {
+    await timesheetsApi.approve(id);
+    loadTimesheets();
+  };
+
+  const handleApproveWeek = async () => {
+    await timesheetsApi.approveWeek(weekStart);
+    loadTimesheets();
+  };
+
+  const handleClockToggle = async () => {
+    if (!clockedIn) {
+      setClockedIn(true);
+      setElapsed(0);
+      intervalRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+      return;
+    }
+
+    setClockedIn(false);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+
+    await timesheetsApi.clockOut(weekStart, elapsed);
+    loadTimesheets();
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-[#0F172A]">Timesheets</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Week of {week}</p>
+          <p className="text-sm text-[#64748B] mt-0.5">Week of {weekStart}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-10">
+          <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-10" onClick={handleApproveWeek}>
             <CheckCircle2 className="w-4 h-4" /> Approve Week
           </Button>
         </div>
@@ -38,7 +94,7 @@ export default function Timesheets() {
                 <Clock className={`w-7 h-7 ${clockedIn ? "text-[#16A34A]" : "text-[#64748B]"}`} />
               </div>
               <div>
-                <p className="text-sm font-medium text-[#0F172A]">Bryan</p>
+                <p className="text-sm font-medium text-[#0F172A]">{user?.name ?? "—"}</p>
                 <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <MapPin className="w-3 h-3 text-[#0891B2]" />
                   GPS-verified at job site
@@ -53,13 +109,7 @@ export default function Timesheets() {
               </div>
             </div>
             <Button
-              onClick={() => {
-                setClockedIn(!clockedIn);
-                if (!clockedIn) {
-                  const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
-                  setTimeout(() => clearInterval(interval), 100000);
-                }
-              }}
+              onClick={handleClockToggle}
               className={`h-12 px-8 font-semibold ${clockedIn ? "bg-[#DC2626] hover:bg-[#B91C1C] text-white" : "bg-[#16A34A] hover:bg-[#15803D] text-white"}`}
             >
               {clockedIn ? "Clock Out" : "Clock In"}
@@ -68,6 +118,10 @@ export default function Timesheets() {
         </CardContent>
       </Card>
 
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading timesheets...</div>}
+
+      {!isLoading && (
+      <>
       {/* Timesheet Table */}
       <Card className="border-[#E2E8F0] shadow-sm overflow-hidden">
         <CardHeader className="pb-3">
@@ -93,15 +147,16 @@ export default function Timesheets() {
                 </tr>
               </thead>
               <tbody>
-                {timesheetData.map((ts) => {
-                  const isApproved = approvedRows.includes(ts.id);
+                {timesheets.map((ts) => {
+                  const total = ts.mon + ts.tue + ts.wed + ts.thu + ts.fri + ts.sat + ts.sun;
+                  const isApproved = ts.status === "Approved";
                   return (
                     <tr key={ts.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-[#0F172A]">{ts.name}</span>
-                          <Badge className={`${ts.type === "Contractor" ? "bg-[#F59E0B]/10 text-[#F59E0B]" : "bg-[#0891B2]/10 text-[#0891B2]"} text-[10px] px-1.5 py-0`}>
-                            {ts.type}
+                          <span className="font-medium text-[#0F172A]">{ts.profiles?.name ?? "—"}</span>
+                          <Badge className={`${ts.profiles?.employment_type === "Contractor" ? "bg-[#F59E0B]/10 text-[#F59E0B]" : "bg-[#0891B2]/10 text-[#0891B2]"} text-[10px] px-1.5 py-0`}>
+                            {ts.profiles?.employment_type ?? "Employee"}
                           </Badge>
                         </div>
                       </td>
@@ -112,11 +167,11 @@ export default function Timesheets() {
                       <td className="text-center py-3 px-2 text-[#0F172A]">{ts.fri}</td>
                       <td className="text-center py-3 px-2 text-[#0F172A]">{ts.sat}</td>
                       <td className="text-center py-3 px-2 text-[#0F172A]">{ts.sun}</td>
-                      <td className="text-right py-3 px-2 font-semibold text-[#0F172A]">{ts.total}</td>
-                      <td className="text-right py-3 px-2 font-semibold text-[#F59E0B]">{ts.ot > 0 ? ts.ot : "—"}</td>
+                      <td className="text-right py-3 px-2 font-semibold text-[#0F172A]">{total}</td>
+                      <td className="text-right py-3 px-2 font-semibold text-[#F59E0B]">{ts.overtime_hours > 0 ? ts.overtime_hours : "—"}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${isApproved ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F59E0B]/10 text-[#F59E0B]"} text-[10px] px-1.5 py-0`}>
-                          {isApproved ? "Approved" : ts.status}
+                          {ts.status}
                         </Badge>
                       </td>
                       <td className="text-center py-3 px-4">
@@ -124,7 +179,7 @@ export default function Timesheets() {
                           <Button
                             size="sm"
                             className="h-7 bg-[#0891B2] hover:bg-[#0E7490] text-white text-xs"
-                            onClick={() => setApprovedRows([...approvedRows, ts.id])}
+                            onClick={() => handleApprove(ts.id)}
                           >
                             Approve
                           </Button>
@@ -160,10 +215,10 @@ export default function Timesheets() {
                 <tbody>
                   {jobCosting.map((jc) => (
                     <tr key={jc.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-2 px-4 font-medium text-[#0F172A]">{jc.tech}</td>
-                      <td className="py-2 px-4 text-sm text-[#64748B] truncate max-w-[200px]">{jc.job}</td>
+                      <td className="py-2 px-4 font-medium text-[#0F172A]">{jc.profiles?.name ?? "—"}</td>
+                      <td className="py-2 px-4 text-sm text-[#64748B] truncate max-w-[200px]">{jc.job_label}</td>
                       <td className="text-right py-2 px-4 text-[#0F172A]">{jc.hours}</td>
-                      <td className="text-right py-2 px-4 font-semibold text-[#0F172A]">${jc.laborCost}</td>
+                      <td className="text-right py-2 px-4 font-semibold text-[#0F172A]">${jc.labor_cost}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -199,7 +254,7 @@ export default function Timesheets() {
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Employees</p>
-                  <p className="text-xl font-bold text-[#0F172A]">{employees.length}</p>
+                  <p className="text-xl font-bold text-[#0F172A]">{employeeCount}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Est. Payroll</p>
@@ -210,6 +265,8 @@ export default function Timesheets() {
           </CardContent>
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

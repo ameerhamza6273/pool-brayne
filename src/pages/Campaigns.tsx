@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Search, Plus, MessageSquare, Star, Calendar, BarChart3, Send, Zap, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { automations, seasonalCampaigns, smsConversations, reviews, campaignPerformance } from "@/lib/data";
+import { campaignsApi } from "@/lib/api/campaigns";
+import type { Database } from "@/lib/database.types";
+
+type Automation = Database["public"]["Tables"]["automations"]["Row"];
+type SeasonalCampaign = Database["public"]["Tables"]["seasonal_campaigns"]["Row"];
+type SmsConversation = Database["public"]["Tables"]["sms_conversations"]["Row"] & { customers: { name: string } | null };
+type SmsMessage = Database["public"]["Tables"]["sms_messages"]["Row"];
+type Review = Database["public"]["Tables"]["reviews"]["Row"] & { customers: { name: string } | null };
 
 const iconMap: Record<string, React.ElementType> = {
   MessageSquare: MessageSquare,
@@ -26,9 +33,63 @@ const campaignStatusColors: Record<string, string> = {
 };
 
 export default function Campaigns() {
-  const [activeConv, setActiveConv] = useState(smsConversations[0]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [automations, setAutomations] = useState<Automation[]>([]);
+  const [seasonalCampaigns, setSeasonalCampaigns] = useState<SeasonalCampaign[]>([]);
+  const [smsConversations, setSmsConversations] = useState<SmsConversation[]>([]);
+  const [messagesByConv, setMessagesByConv] = useState<Record<string, SmsMessage[]>>({});
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
   const [campaignOpen, setCampaignOpen] = useState(false);
+  const [newCampaign, setNewCampaign] = useState({ name: "", audience: "" });
+
+  const loadCampaigns = useCallback(async () => {
+    setIsLoading(true);
+    const data = await campaignsApi.all();
+    setAutomations(data.automations);
+    setSeasonalCampaigns(data.seasonalCampaigns);
+    setSmsConversations(data.smsConversations);
+    setReviews(data.reviews);
+
+    const grouped: Record<string, SmsMessage[]> = {};
+    for (const m of data.smsMessages) {
+      (grouped[m.conversation_id] ??= []).push(m);
+    }
+    setMessagesByConv(grouped);
+    setActiveConvId((prev) => prev ?? (data.smsConversations.length > 0 ? data.smsConversations[0].id : null));
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadCampaigns();
+  }, [loadCampaigns]);
+
+  const handleCreateCampaign = async () => {
+    if (!newCampaign.name) return;
+    await campaignsApi.createSeasonalCampaign({ name: newCampaign.name, audience: parseInt(newCampaign.audience, 10) || 0 });
+    setNewCampaign({ name: "", audience: "" });
+    setCampaignOpen(false);
+    loadCampaigns();
+  };
+
+  const handleSendReply = async () => {
+    if (!activeConvId || !replyText.trim()) return;
+    await campaignsApi.sendSmsReply(activeConvId, replyText.trim());
+    setReplyText("");
+    loadCampaigns();
+  };
+
+  const activeConv = smsConversations.find((c) => c.id === activeConvId) ?? null;
+  const activeMessages = activeConvId ? messagesByConv[activeConvId] ?? [] : [];
+
+  const performanceCampaigns = seasonalCampaigns.filter((c) => c.sent_date);
+  const performanceChartData = performanceCampaigns.map((c) => ({
+    campaign: c.name,
+    openRate: parseFloat(c.open_rate ?? "0") || 0,
+    replyRate: parseFloat(c.reply_rate ?? "0") || 0,
+    bookings: c.bookings ?? 0,
+  }));
 
   return (
     <div className="space-y-4">
@@ -36,6 +97,9 @@ export default function Campaigns() {
         <h1 className="text-2xl font-bold text-[#0F172A]">Campaigns & Follow-Up</h1>
       </div>
 
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading campaigns...</div>}
+
+      {!isLoading && (
       <Tabs defaultValue="automations" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="automations" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
@@ -59,7 +123,7 @@ export default function Campaigns() {
         <TabsContent value="automations" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {automations.map((a) => {
-              const Icon = iconMap[a.icon] || Zap;
+              const Icon = iconMap[a.icon ?? ""] || Zap;
               return (
                 <Card key={a.id} className="border-[#E2E8F0] shadow-sm">
                   <CardContent className="p-5">
@@ -70,7 +134,7 @@ export default function Campaigns() {
                         </div>
                         <div>
                           <h3 className="font-semibold text-[#0F172A]">{a.name}</h3>
-                          <p className="text-xs text-[#64748B]">{a.trigger}</p>
+                          <p className="text-xs text-[#64748B]">{a.trigger_label}</p>
                         </div>
                       </div>
                       <Switch checked={a.active} />
@@ -83,11 +147,11 @@ export default function Campaigns() {
                       </div>
                       <div>
                         <p className="text-xs text-[#64748B]">Enrolled</p>
-                        <p className="font-medium text-[#0F172A]">{a.enrolled}</p>
+                        <p className="font-medium text-[#0F172A]">{a.enrolled_count}</p>
                       </div>
                       <div>
                         <p className="text-xs text-[#64748B]">Conversion</p>
-                        <p className="font-medium text-[#16A34A]">{a.conversions}</p>
+                        <p className="font-medium text-[#16A34A]">{a.conversion_rate}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -109,9 +173,9 @@ export default function Campaigns() {
               <DialogContent>
                 <DialogHeader><DialogTitle>New Campaign</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div><Label>Name</Label><Input className="mt-1" placeholder="Campaign name" /></div>
-                  <div><Label>Audience</Label><Input className="mt-1" type="number" placeholder="Number of customers" /></div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={() => setCampaignOpen(false)}>Create Campaign</Button>
+                  <div><Label>Name</Label><Input className="mt-1" placeholder="Campaign name" value={newCampaign.name} onChange={(e) => setNewCampaign((p) => ({ ...p, name: e.target.value }))} /></div>
+                  <div><Label>Audience</Label><Input className="mt-1" type="number" placeholder="Number of customers" value={newCampaign.audience} onChange={(e) => setNewCampaign((p) => ({ ...p, audience: e.target.value }))} /></div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateCampaign}>Create Campaign</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -127,21 +191,21 @@ export default function Campaigns() {
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-[#64748B]">Audience</span>
-                      <span className="font-medium text-[#0F172A]">{c.audience}</span>
+                      <span className="font-medium text-[#0F172A]">{c.audience_size}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[#64748B]">Scheduled</span>
-                      <span className="font-medium text-[#0F172A]">{c.scheduledDate}</span>
+                      <span className="font-medium text-[#0F172A]">{c.scheduled_date}</span>
                     </div>
-                    {c.sentDate && (
+                    {c.sent_date && (
                       <>
                         <div className="flex justify-between">
                           <span className="text-[#64748B]">Sent</span>
-                          <span className="font-medium text-[#0F172A]">{c.sentDate}</span>
+                          <span className="font-medium text-[#0F172A]">{c.sent_date}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-[#64748B]">Open Rate</span>
-                          <span className="font-medium text-[#0891B2]">{c.openRate}</span>
+                          <span className="font-medium text-[#0891B2]">{c.open_rate}</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-[#64748B]">Bookings</span>
@@ -175,45 +239,50 @@ export default function Campaigns() {
                   <Input placeholder="Search conversations..." className="pl-9 h-9 bg-[#F8FAFC] border-[#E2E8F0]" />
                 </div>
               </div>
-              {smsConversations.map((conv) => (
-                <button
-                  key={conv.id}
-                  onClick={() => setActiveConv(conv)}
-                  className={`w-full text-left p-3 border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors ${activeConv.id === conv.id ? "bg-[#0891B2]/5" : ""}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-sm text-[#0F172A]">{conv.customer}</p>
-                    {conv.unread > 0 && (
-                      <Badge className="bg-[#DC2626] text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center">{conv.unread}</Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-[#64748B] truncate mt-0.5">{conv.lastMessage}</p>
-                </button>
-              ))}
+              {smsConversations.map((conv) => {
+                const lastMessage = messagesByConv[conv.id]?.[messagesByConv[conv.id].length - 1];
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => setActiveConvId(conv.id)}
+                    className={`w-full text-left p-3 border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors ${activeConvId === conv.id ? "bg-[#0891B2]/5" : ""}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="font-medium text-sm text-[#0F172A]">{conv.customers?.name ?? "—"}</p>
+                      {conv.unread_count > 0 && (
+                        <Badge className="bg-[#DC2626] text-white text-[10px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center">{conv.unread_count}</Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-[#64748B] truncate mt-0.5">{lastMessage?.body ?? ""}</p>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Chat Thread */}
             <div className="lg:col-span-2 flex flex-col">
+              {activeConv && (
+              <>
               <div className="p-3 border-b border-[#E2E8F0] flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-[#0891B2] flex items-center justify-center">
-                  <span className="text-xs text-white font-semibold">{activeConv.customer.split(" ").map(n => n[0]).join("").slice(0, 2)}</span>
+                  <span className="text-xs text-white font-semibold">{(activeConv.customers?.name ?? "—").split(" ").map(n => n[0]).join("").slice(0, 2)}</span>
                 </div>
                 <div>
-                  <p className="font-medium text-sm text-[#0F172A]">{activeConv.customer}</p>
+                  <p className="font-medium text-sm text-[#0F172A]">{activeConv.customers?.name ?? "—"}</p>
                   <p className="text-xs text-[#64748B]">SMS Conversation</p>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {activeConv.messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.from === "business" ? "justify-end" : "justify-start"}`}>
+                {activeMessages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.sender === "business" ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 text-sm ${
-                      msg.from === "business"
+                      msg.sender === "business"
                         ? "bg-[#0891B2] text-white rounded-br-md"
                         : "bg-[#F1F5F9] text-[#0F172A] rounded-bl-md"
                     }`}>
-                      <p>{msg.text}</p>
-                      <p className={`text-[10px] mt-1 ${msg.from === "business" ? "text-white/70" : "text-[#64748B]"}`}>
-                        {msg.time.split(" ")[1]}
+                      <p>{msg.body}</p>
+                      <p className={`text-[10px] mt-1 ${msg.sender === "business" ? "text-white/70" : "text-[#64748B]"}`}>
+                        {new Date(msg.sent_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                       </p>
                     </div>
                   </div>
@@ -227,22 +296,20 @@ export default function Campaigns() {
                   className="flex-1 h-10 bg-[#F8FAFC] border-[#E2E8F0]"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && replyText.trim()) {
-                      setReplyText("");
+                      handleSendReply();
                     }
                   }}
                 />
                 <Button
                   size="sm"
                   className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10 px-4"
-                  onClick={() => {
-                    if (replyText.trim()) {
-                      setReplyText("");
-                    }
-                  }}
+                  onClick={handleSendReply}
                 >
                   <Send className="w-4 h-4" />
                 </Button>
               </div>
+              </>
+              )}
             </div>
           </div>
         </TabsContent>
@@ -259,7 +326,7 @@ export default function Campaigns() {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-semibold text-[#0F172A]">{r.customer}</h3>
+                        <h3 className="font-semibold text-[#0F172A]">{r.customers?.name ?? "—"}</h3>
                         <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px] px-1.5 py-0">{r.platform}</Badge>
                       </div>
                       <div className="flex items-center gap-0.5 mb-2">
@@ -267,9 +334,9 @@ export default function Campaigns() {
                           <Star key={i} className={`w-4 h-4 ${i < r.rating ? "text-[#F59E0B] fill-[#F59E0B]" : "text-[#E2E8F0]"}`} />
                         ))}
                       </div>
-                      <p className="text-sm text-[#0F172A]">{r.text}</p>
+                      <p className="text-sm text-[#0F172A]">{r.body}</p>
                       <div className="mt-2 flex items-center gap-2 text-xs text-[#64748B]">
-                        <span>{r.date}</span>
+                        <span>{r.review_date}</span>
                         <span>&middot;</span>
                         <span className="text-[#0891B2]">Response: {r.response}</span>
                       </div>
@@ -287,7 +354,7 @@ export default function Campaigns() {
             <h3 className="font-semibold text-[#0F172A] mb-4">Campaign Performance</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={campaignPerformance}>
+                <BarChart data={performanceChartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                   <XAxis dataKey="campaign" tick={{ fontSize: 12, fill: "#64748B" }} />
                   <YAxis tick={{ fontSize: 12, fill: "#64748B" }} />
@@ -305,26 +372,22 @@ export default function Campaigns() {
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Campaign</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Sent</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Opened</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Audience</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Open Rate</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Replies</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Reply Rate</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Bookings</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Revenue</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {campaignPerformance.map((cp) => (
-                    <tr key={cp.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{cp.campaign}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{cp.sent}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{cp.opened}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#0891B2]">{cp.openRate}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{cp.replies}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{cp.replyRate}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#16A34A]">{cp.bookings}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#16A34A]">${cp.revenue.toLocaleString()}</td>
+                  {performanceCampaigns.map((c) => (
+                    <tr key={c.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{c.name}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">{c.audience_size}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#0891B2]">{c.open_rate}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">{c.reply_rate}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#16A34A]">{c.bookings}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#16A34A]">${(c.revenue ?? 0).toLocaleString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -333,6 +396,7 @@ export default function Campaigns() {
           </div>
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

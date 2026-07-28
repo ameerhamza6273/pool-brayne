@@ -12,18 +12,28 @@ export default function Signup() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkEmail, setCheckEmail] = useState(false);
+  const { signUp } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     if (!company || !name || !email || !password) {
       setError("Please fill in all fields");
       return;
     }
-    const success = login(email, password, { name, company });
-    if (success) {
+    setIsSubmitting(true);
+    const result = await signUp(email, password, { name, company });
+    setIsSubmitting(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    if (result.needsEmailConfirmation) {
+      setCheckEmail(true);
+    } else {
       navigate("/dashboard");
     }
   };
@@ -93,7 +103,12 @@ export default function Signup() {
               <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 h-11" placeholder="Min 8 characters" />
             </div>
             {error && <p className="text-sm text-[#DC2626]">{error}</p>}
-            <Button type="submit" className="w-full h-11 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold">Get started</Button>
+            {checkEmail && (
+              <p className="text-sm text-[#16A34A]">Account created! Check your email to confirm before signing in.</p>
+            )}
+            <Button type="submit" disabled={isSubmitting} className="w-full h-11 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold">
+              {isSubmitting ? "Creating account..." : "Get started"}
+            </Button>
           </form>
 
           <div className="mt-6 pt-6 border-t border-[#E2E8F0] text-center">

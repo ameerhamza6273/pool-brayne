@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,15 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { invoices, recurringBilling, payments, agedReceivables } from "@/lib/data";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { invoicingApi } from "@/lib/api/invoicing";
+import { customersApi } from "@/lib/api/customers";
+import type { Database } from "@/lib/database.types";
+
+type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null };
+type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
+type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
+type Customer = { id: string; name: string };
 
 const statusColors: Record<string, string> = {
   Draft: "bg-[#F59E0B]/10 text-[#F59E0B]",
@@ -21,20 +29,83 @@ const paymentMethods: Record<string, { icon: typeof CreditCard; label: string }>
   ACH: { icon: FileText, label: "ACH" },
 };
 
+const daysBetween = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
+
 export default function Invoicing() {
   const [search, setSearch] = useState("");
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [recurringBilling, setRecurringBilling] = useState<RecurringBilling[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [newInvoice, setNewInvoice] = useState({ customerId: "", issueDate: "", dueDate: "", amount: "" });
   const navigate = useNavigate();
+
+  const loadInvoicing = useCallback(async () => {
+    setIsLoading(true);
+    const [invoicesData, recurringData, paymentsData, customersData] = await Promise.all([
+      invoicingApi.list(),
+      invoicingApi.recurringBilling(),
+      invoicingApi.payments(),
+      customersApi.list(),
+    ]);
+    setInvoices((invoicesData ?? []) as Invoice[]);
+    setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
+    setPayments((paymentsData ?? []) as Payment[]);
+    setCustomers(customersData ?? []);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadInvoicing();
+  }, [loadInvoicing]);
+
+  const handleCreateInvoice = async () => {
+    if (!newInvoice.customerId || !newInvoice.issueDate) return;
+    const number = `INV-${newInvoice.issueDate.replace(/-/g, "")}-${String(invoices.length + 1).padStart(3, "0")}`;
+    await invoicingApi.create({
+      customerId: newInvoice.customerId,
+      number,
+      issueDate: newInvoice.issueDate,
+      dueDate: newInvoice.dueDate || null,
+      amount: parseFloat(newInvoice.amount) || 0,
+      status: "Draft",
+    });
+    setNewInvoice({ customerId: "", issueDate: "", dueDate: "", amount: "" });
+    setNewInvoiceOpen(false);
+    loadInvoicing();
+  };
 
   const filtered = invoices.filter((inv) =>
     inv.number.toLowerCase().includes(search.toLowerCase()) ||
-    inv.customer.toLowerCase().includes(search.toLowerCase())
+    (inv.customers?.name ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
   const totalOutstanding = invoices.filter((i) => i.status !== "Paid").reduce((sum, i) => sum + i.amount, 0);
   const paidThisMonth = invoices.filter((i) => i.status === "Paid").reduce((sum, i) => sum + i.amount, 0);
   const overdue = invoices.filter((i) => i.status === "Overdue").reduce((sum, i) => sum + i.amount, 0);
-  const avgDays = invoices.filter((i) => i.daysToPay !== null).reduce((sum, i) => sum + (i.daysToPay || 0), 0) / invoices.filter((i) => i.daysToPay !== null).length;
+  const paidWithDays = invoices.filter((i) => i.status === "Paid" && i.paid_date);
+  const avgDays = paidWithDays.length > 0
+    ? paidWithDays.reduce((sum, i) => sum + daysBetween(i.paid_date as string, i.issue_date), 0) / paidWithDays.length
+    : 0;
+
+  const today = new Date();
+  const buckets = [
+    { bucket: "Current", min: -Infinity, max: 0 },
+    { bucket: "1-30", min: 1, max: 30 },
+    { bucket: "31-60", min: 31, max: 60 },
+    { bucket: "61-90", min: 61, max: 90 },
+    { bucket: "90+", min: 91, max: Infinity },
+  ];
+  const agedReceivables = buckets.map((b) => {
+    const matching = invoices.filter((i) => {
+      if (i.status === "Paid" || !i.due_date) return false;
+      const daysPastDue = daysBetween(today.toISOString().slice(0, 10), i.due_date);
+      return daysPastDue > b.min - 1 && daysPastDue <= b.max;
+    });
+    return { bucket: b.bucket, amount: matching.reduce((sum, i) => sum + i.amount, 0), count: matching.length };
+  });
 
   return (
     <div className="space-y-4">
@@ -52,19 +123,26 @@ export default function Invoicing() {
               <div className="space-y-4 pt-2">
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">Customer</label>
-                  <Input className="mt-1" placeholder="Search customer..." />
+                  <Select value={newInvoice.customerId} onValueChange={(v) => setNewInvoice((p) => ({ ...p, customerId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
+                    <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">Issue Date</label>
-                    <Input type="date" className="mt-1" />
+                    <Input type="date" className="mt-1" value={newInvoice.issueDate} onChange={(e) => setNewInvoice((p) => ({ ...p, issueDate: e.target.value }))} />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">Due Date</label>
-                    <Input type="date" className="mt-1" />
+                    <Input type="date" className="mt-1" value={newInvoice.dueDate} onChange={(e) => setNewInvoice((p) => ({ ...p, dueDate: e.target.value }))} />
                   </div>
                 </div>
-                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => setNewInvoiceOpen(false)}>
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Amount</label>
+                  <Input type="number" className="mt-1" placeholder="0.00" value={newInvoice.amount} onChange={(e) => setNewInvoice((p) => ({ ...p, amount: e.target.value }))} />
+                </div>
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateInvoice}>
                   Create Invoice
                 </Button>
               </div>
@@ -136,7 +214,9 @@ export default function Invoicing() {
         })}
       </div>
 
-      {/* Tabs */}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading invoices...</div>}
+
+      {!isLoading && (
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
           <TabsTrigger value="all" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
@@ -174,9 +254,9 @@ export default function Invoicing() {
                   {filtered.map((inv) => (
                     <tr key={inv.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => navigate(`/invoicing/${inv.id}`)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{inv.number}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{inv.customer}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{inv.issueDate}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{inv.dueDate}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{inv.customers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{inv.issue_date}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{inv.due_date}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${inv.amount.toLocaleString()}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[inv.status]} text-[10px] px-1.5 py-0`}>{inv.status}</Badge>
@@ -211,10 +291,10 @@ export default function Invoicing() {
                 <tbody>
                   {recurringBilling.map((rb) => (
                     <tr key={rb.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{rb.customer}</td>
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{rb.customers?.name ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{rb.frequency}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${rb.amount}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{rb.nextCharge}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{rb.next_charge}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{rb.status}</Badge>
                       </td>
@@ -242,14 +322,14 @@ export default function Invoicing() {
                 </thead>
                 <tbody>
                   {payments.map((pay) => {
-                    const method = paymentMethods[pay.method] || { icon: CreditCard, label: pay.method };
+                    const method = paymentMethods[pay.method ?? ""] || { icon: CreditCard, label: pay.method ?? "—" };
                     const MethodIcon = method.icon;
                     return (
                       <tr key={pay.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                        <td className="py-3 px-4 font-medium text-[#0F172A]">{pay.invoice}</td>
-                        <td className="py-3 px-4 text-[#64748B]">{pay.customer}</td>
+                        <td className="py-3 px-4 font-medium text-[#0F172A]">{pay.invoices?.number ?? "—"}</td>
+                        <td className="py-3 px-4 text-[#64748B]">{pay.customers?.name ?? "—"}</td>
                         <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${pay.amount}</td>
-                        <td className="py-3 px-4 text-[#64748B]">{pay.date}</td>
+                        <td className="py-3 px-4 text-[#64748B]">{pay.paid_at}</td>
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1.5">
                             <MethodIcon className="w-4 h-4 text-[#0891B2]" />
@@ -268,6 +348,7 @@ export default function Invoicing() {
           </div>
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

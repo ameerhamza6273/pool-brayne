@@ -38,7 +38,7 @@ const mobileTabs = [
 export default function AppShell() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
@@ -129,7 +129,7 @@ export default function AppShell() {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => navigate("/settings")}>Profile</DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
-                <DropdownMenuItem onClick={logout}>Log out</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -235,7 +235,7 @@ export default function AppShell() {
                       })}
                     </div>
                     <div className="mt-6 pt-4 border-t border-[#E2E8F0]">
-                      <button onClick={logout} className="w-full py-3 text-[#DC2626] font-medium text-sm">
+                      <button onClick={() => signOut()} className="w-full py-3 text-[#DC2626] font-medium text-sm">
                         Log Out
                       </button>
                     </div>

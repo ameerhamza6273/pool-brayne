@@ -1,4 +1,5 @@
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Phone, MessageSquare, Mail, ArrowLeft, MapPin,
   Wrench, FileText, Camera, Plus,
@@ -13,10 +14,15 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { useNavigate } from "react-router-dom";
-import {
-  customers, customerNotes, customerServiceHistory, customerInvoices,
-} from "@/lib/data";
+import { customersApi, type CustomerAttachment } from "@/lib/api/customers";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
+import type { Database } from "@/lib/database.types";
+
+type Customer = Database["public"]["Tables"]["customers"]["Row"];
+type ServiceHistory = Database["public"]["Tables"]["job_service_history"]["Row"];
+type CustomerNote = Database["public"]["Tables"]["customer_notes"]["Row"];
+type Invoice = Database["public"]["Tables"]["invoices"]["Row"];
 
 const tagColors: Record<string, string> = {
   Residential: "bg-[#0891B2]/10 text-[#0891B2]",
@@ -37,7 +43,60 @@ const statusColors: Record<string, string> = {
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const customer = customers.find((c) => c.id === id);
+  const { user, tenantId } = useAuth();
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [history, setHistory] = useState<ServiceHistory[]>([]);
+  const [notes, setNotes] = useState<CustomerNote[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [photos, setPhotos] = useState<CustomerAttachment[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    setIsLoading(true);
+    try {
+      const bundle = await customersApi.detail(id);
+      setCustomer(bundle.customer);
+      setHistory(bundle.history);
+      setNotes(bundle.notes);
+      setInvoices(bundle.invoices);
+      const attachments = await customersApi.getAttachments(id);
+      setPhotos(attachments);
+    } catch {
+      setCustomer(null);
+    }
+    setIsLoading(false);
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!id || !e.target.files) return;
+    for (const file of Array.from(e.target.files)) {
+      const path = `${tenantId}/${id}/photo-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("customer-attachments").upload(path, file);
+      if (error) continue;
+      const { data } = supabase.storage.from("customer-attachments").getPublicUrl(path);
+      const attachment = await customersApi.addAttachment(id, data.publicUrl);
+      setPhotos((prev) => [...prev, attachment]);
+    }
+    e.target.value = "";
+  };
+
+  const handleAddNote = async () => {
+    if (!id || !newNote.trim()) return;
+    await customersApi.addNote(id, { text: newNote.trim(), author: user?.name ?? "You" });
+    setNewNote("");
+    load();
+  };
+
+  if (isLoading) {
+    return <div className="text-center py-20 text-[#64748B]">Loading customer...</div>;
+  }
 
   if (!customer) {
     return (
@@ -49,9 +108,8 @@ export default function CustomerDetail() {
   }
 
   const initials = customer.name.split(" ").map((n) => n[0]).join("").slice(0, 2);
-  const notes = ((id ? customerNotes[id as keyof typeof customerNotes] : undefined) || []) as { id: string; text: string; date: string; author: string }[];
-  const history = ((id ? customerServiceHistory[id as keyof typeof customerServiceHistory] : undefined) || []) as { id: string; date: string; type: string; tech: string; amount: number; status: string }[];
-  const invoices = ((id ? customerInvoices[id as keyof typeof customerInvoices] : undefined) || []) as { id: string; number: string; date: string; amount: number; status: string }[];
+  const equipment = (customer.equipment ?? {}) as Record<string, string>;
+  const gateCodes = (customer.gate_codes ?? {}) as Record<string, string>;
 
   return (
     <div className="space-y-4">
@@ -71,15 +129,30 @@ export default function CustomerDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9">
+          <Button
+            size="sm"
+            className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9"
+            disabled={!customer.phone}
+            onClick={() => customer.phone && (window.location.href = `tel:${customer.phone}`)}
+          >
             <Phone className="w-4 h-4" />
             <span className="hidden sm:inline">Call</span>
           </Button>
-          <Button size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9">
+          <Button
+            size="sm"
+            className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9"
+            disabled={!customer.phone}
+            onClick={() => customer.phone && (window.location.href = `sms:${customer.phone}`)}
+          >
             <MessageSquare className="w-4 h-4" />
             <span className="hidden sm:inline">Text</span>
           </Button>
-          <Button size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9">
+          <Button
+            size="sm"
+            className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9"
+            disabled={!customer.email}
+            onClick={() => customer.email && (window.location.href = `mailto:${customer.email}`)}
+          >
             <Mail className="w-4 h-4" />
             <span className="hidden sm:inline">Email</span>
           </Button>
@@ -137,19 +210,19 @@ export default function CustomerDetail() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Pump</p>
-                  <p className="font-medium text-[#0F172A]">{customer.equipment.pump}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.pump}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Heater</p>
-                  <p className="font-medium text-[#0F172A]">{customer.equipment.heater}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.heater}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Filter</p>
-                  <p className="font-medium text-[#0F172A]">{customer.equipment.filter}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.filter}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Salt System</p>
-                  <p className="font-medium text-[#0F172A]">{customer.equipment.salt}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.salt}</p>
                 </div>
               </div>
             </CardContent>
@@ -164,19 +237,19 @@ export default function CustomerDetail() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">Front Gate Code</p>
-                  <Input placeholder="e.g. #1234" className="h-9 text-sm" defaultValue={customer.gateCodes?.frontGate || ""} />
+                  <Input placeholder="e.g. #1234" className="h-9 text-sm" defaultValue={gateCodes.frontGate || ""} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">House Gate Code</p>
-                  <Input placeholder="e.g. #5678" className="h-9 text-sm" defaultValue={customer.gateCodes?.houseGate || ""} />
+                  <Input placeholder="e.g. #5678" className="h-9 text-sm" defaultValue={gateCodes.houseGate || ""} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">Padlock Code</p>
-                  <Input placeholder="e.g. 0000" className="h-9 text-sm" defaultValue={customer.gateCodes?.padlock || ""} />
+                  <Input placeholder="e.g. 0000" className="h-9 text-sm" defaultValue={gateCodes.padlock || ""} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">Gated Subdivision Entrance</p>
-                  <Select defaultValue={customer.gateCodes?.subdivisionEntrance || "none"}>
+                  <Select defaultValue={gateCodes.subdivisionEntrance || "none"}>
                     <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No gated subdivision</SelectItem>
@@ -191,7 +264,7 @@ export default function CustomerDetail() {
               </div>
               <div>
                 <p className="text-xs text-[#64748B] uppercase mb-1">Access Notes</p>
-                <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} defaultValue={customer.gateCodes?.notes || ""} />
+                <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} defaultValue={gateCodes.notes || ""} />
               </div>
             </CardContent>
           </Card>
@@ -219,7 +292,7 @@ export default function CustomerDetail() {
                             <p className="font-medium text-[#0F172A]">{h.type}</p>
                             <Badge className={`${statusColors[h.status] || ""} text-[10px] px-1.5 py-0`}>{h.status}</Badge>
                           </div>
-                          <p className="text-sm text-[#64748B]">{h.date} &middot; {h.tech}</p>
+                          <p className="text-sm text-[#64748B]">{h.service_date} &middot; {h.tech}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-semibold text-[#0F172A]">${h.amount}</p>
@@ -245,7 +318,7 @@ export default function CustomerDetail() {
                       <div key={h.id} className="flex items-center justify-between p-3 rounded-lg bg-[#F8FAFC]">
                         <div>
                           <p className="font-medium text-[#0F172A]">{h.type}</p>
-                          <p className="text-sm text-[#64748B]">{h.date} &middot; In-store + Service</p>
+                          <p className="text-sm text-[#64748B]">{h.service_date} &middot; In-store + Service</p>
                         </div>
                         <p className="font-semibold text-[#0F172A]">${h.amount}</p>
                       </div>
@@ -262,8 +335,8 @@ export default function CustomerDetail() {
               <Card className="border-[#E2E8F0] shadow-sm">
                 <CardContent className="p-4 space-y-4">
                   <div className="flex items-center gap-2">
-                    <Input placeholder="Add a note..." className="flex-1" />
-                    <Button size="sm" className="bg-[#0891B2] text-white gap-1">
+                    <Input placeholder="Add a note..." className="flex-1" value={newNote} onChange={(e) => setNewNote(e.target.value)} />
+                    <Button size="sm" className="bg-[#0891B2] text-white gap-1" onClick={handleAddNote}>
                       <Plus className="w-4 h-4" /> Add
                     </Button>
                   </div>
@@ -274,7 +347,7 @@ export default function CustomerDetail() {
                         <div className="flex items-center gap-2 mt-2 text-xs text-[#64748B]">
                           <span className="font-medium">{n.author}</span>
                           <span>&middot;</span>
-                          <span>{n.date}</span>
+                          <span>{n.created_at}</span>
                         </div>
                       </div>
                     ))}
@@ -282,20 +355,31 @@ export default function CustomerDetail() {
                       <p className="text-center text-[#64748B] py-4">No notes yet</p>
                     )}
                   </div>
-                  {/* Photo gallery mock */}
+                  {/* Photos */}
                   <div>
                     <p className="text-sm font-medium text-[#0F172A] mb-2 flex items-center gap-2">
                       <Camera className="w-4 h-4" /> Photos
                     </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handlePhotoSelect}
+                    />
                     <div className="grid grid-cols-4 gap-2">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="aspect-square rounded-lg bg-[#F1F5F9] flex items-center justify-center">
-                          <Camera className="w-5 h-5 text-[#64748B]" />
+                      {photos.map((photo) => (
+                        <div key={photo.id} className="aspect-square rounded-lg overflow-hidden bg-[#F1F5F9]">
+                          <img src={photo.url} alt="Customer" className="w-full h-full object-cover" />
                         </div>
                       ))}
-                      <div className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center cursor-pointer hover:bg-[#E2E8F0]">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center cursor-pointer hover:bg-[#E2E8F0]"
+                      >
                         <Plus className="w-5 h-5 text-[#64748B]" />
-                      </div>
+                      </button>
                     </div>
                   </div>
                 </CardContent>
@@ -316,7 +400,7 @@ export default function CustomerDetail() {
                             <p className="font-medium text-[#0F172A]">{inv.number}</p>
                             <Badge className={`${statusColors[inv.status] || ""} text-[10px] px-1.5 py-0`}>{inv.status}</Badge>
                           </div>
-                          <p className="text-sm text-[#64748B]">Issued: {inv.date}</p>
+                          <p className="text-sm text-[#64748B]">Issued: {inv.issue_date}</p>
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-semibold text-[#0F172A]">${inv.amount}</p>
@@ -344,7 +428,7 @@ export default function CustomerDetail() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-[#64748B] uppercase">Lifetime Value</p>
-                <p className="text-lg font-bold text-[#0F172A]">${customer.lifetimeValue.toLocaleString()}</p>
+                <p className="text-lg font-bold text-[#0F172A]">${customer.lifetime_value.toLocaleString()}</p>
               </div>
               <div>
                 <p className="text-xs text-[#64748B] uppercase">Total Jobs</p>
@@ -352,11 +436,11 @@ export default function CustomerDetail() {
               </div>
               <div>
                 <p className="text-xs text-[#64748B] uppercase">Customer Since</p>
-                <p className="text-sm font-medium text-[#0F172A]">{customer.customerSince}</p>
+                <p className="text-sm font-medium text-[#0F172A]">{customer.customer_since}</p>
               </div>
               <div>
                 <p className="text-xs text-[#64748B] uppercase">Last Contact</p>
-                <p className="text-sm font-medium text-[#0F172A]">{customer.lastContact}</p>
+                <p className="text-sm font-medium text-[#0F172A]">{customer.last_contact}</p>
               </div>
             </div>
           </CardContent>

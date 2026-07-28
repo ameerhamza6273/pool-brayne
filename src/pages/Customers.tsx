@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Plus, Phone, MessageSquare, Mail, LayoutGrid, Table2, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { customers } from "@/lib/data";
+import { customersApi } from "@/lib/api/customers";
+import type { Database } from "@/lib/database.types";
+
+type Customer = Database["public"]["Tables"]["customers"]["Row"];
 
 const tagFilters = ["All", "Residential", "Commercial", "VIP", "Lapsed", "Seasonal"];
 const tagColors: Record<string, string> = {
@@ -23,12 +26,41 @@ export default function Customers() {
   const [tagFilter, setTagFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [addOpen, setAddOpen] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [newCustomer, setNewCustomer] = useState({ firstName: "", lastName: "", email: "", phone: "", address: "", type: "Residential" });
   const navigate = useNavigate();
+
+  const loadCustomers = useCallback(async () => {
+    setIsLoading(true);
+    const data = await customersApi.list();
+    setCustomers(data ?? []);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadCustomers();
+  }, [loadCustomers]);
+
+  const handleAddCustomer = async () => {
+    if (!newCustomer.firstName || !newCustomer.lastName) return;
+    await customersApi.create({
+      name: `${newCustomer.firstName} ${newCustomer.lastName}`,
+      type: newCustomer.type,
+      tags: [newCustomer.type],
+      email: newCustomer.email || null,
+      phone: newCustomer.phone || null,
+      address: newCustomer.address || null,
+    });
+    setNewCustomer({ firstName: "", lastName: "", email: "", phone: "", address: "", type: "Residential" });
+    setAddOpen(false);
+    loadCustomers();
+  };
 
   const filtered = customers.filter((c) => {
     const matchesSearch =
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.address.toLowerCase().includes(search.toLowerCase());
+      (c.address ?? "").toLowerCase().includes(search.toLowerCase());
     const matchesTag = tagFilter === "All" || c.tags.includes(tagFilter);
     return matchesSearch && matchesTag;
   });
@@ -52,33 +84,43 @@ export default function Customers() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>First Name</Label>
-                  <Input placeholder="First" className="mt-1" />
+                  <Input placeholder="First" className="mt-1" value={newCustomer.firstName} onChange={(e) => setNewCustomer((p) => ({ ...p, firstName: e.target.value }))} />
                 </div>
                 <div>
                   <Label>Last Name</Label>
-                  <Input placeholder="Last" className="mt-1" />
+                  <Input placeholder="Last" className="mt-1" value={newCustomer.lastName} onChange={(e) => setNewCustomer((p) => ({ ...p, lastName: e.target.value }))} />
                 </div>
               </div>
               <div>
                 <Label>Email</Label>
-                <Input placeholder="customer@email.com" className="mt-1" />
+                <Input placeholder="customer@email.com" className="mt-1" value={newCustomer.email} onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))} />
               </div>
               <div>
                 <Label>Phone</Label>
-                <Input placeholder="(512) 555-0000" className="mt-1" />
+                <Input placeholder="(512) 555-0000" className="mt-1" value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} />
               </div>
               <div>
                 <Label>Property Address</Label>
-                <Input placeholder="123 Main St, Austin, TX" className="mt-1" />
+                <Input placeholder="123 Main St, Austin, TX" className="mt-1" value={newCustomer.address} onChange={(e) => setNewCustomer((p) => ({ ...p, address: e.target.value }))} />
               </div>
               <div>
                 <Label>Customer Type</Label>
                 <div className="flex gap-2 mt-2">
-                  <Badge className="cursor-pointer bg-[#0891B2]/10 text-[#0891B2]">Residential</Badge>
-                  <Badge className="cursor-pointer bg-[#F59E0B]/10 text-[#F59E0B]">Commercial</Badge>
+                  <Badge
+                    className={`cursor-pointer ${newCustomer.type === "Residential" ? "bg-[#0891B2] text-white" : "bg-[#0891B2]/10 text-[#0891B2]"}`}
+                    onClick={() => setNewCustomer((p) => ({ ...p, type: "Residential" }))}
+                  >
+                    Residential
+                  </Badge>
+                  <Badge
+                    className={`cursor-pointer ${newCustomer.type === "Commercial" ? "bg-[#F59E0B] text-white" : "bg-[#F59E0B]/10 text-[#F59E0B]"}`}
+                    onClick={() => setNewCustomer((p) => ({ ...p, type: "Commercial" }))}
+                  >
+                    Commercial
+                  </Badge>
                 </div>
               </div>
-              <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => setAddOpen(false)}>
+              <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleAddCustomer}>
                 Save Customer
               </Button>
             </div>
@@ -128,8 +170,10 @@ export default function Customers() {
         </div>
       </div>
 
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading customers...</div>}
+
       {/* Table View */}
-      {viewMode === "table" && (
+      {!isLoading && viewMode === "table" && (
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -170,17 +214,29 @@ export default function Customers() {
                       </div>
                     </td>
                     <td className="py-3 px-4 text-[#64748B] max-w-[200px] truncate">{c.address}</td>
-                    <td className="py-3 px-4 text-[#64748B]">{c.lastService}</td>
-                    <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${c.lifetimeValue.toLocaleString()}</td>
+                    <td className="py-3 px-4 text-[#64748B]">{c.last_service}</td>
+                    <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${c.lifetime_value.toLocaleString()}</td>
                     <td className="text-center py-3 px-4">
                       <div className="flex items-center justify-center gap-1">
-                        <button className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2]" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2] disabled:opacity-30"
+                          disabled={!c.phone}
+                          onClick={(e) => { e.stopPropagation(); if (c.phone) window.location.href = `tel:${c.phone}`; }}
+                        >
                           <Phone className="w-4 h-4" />
                         </button>
-                        <button className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2]" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2] disabled:opacity-30"
+                          disabled={!c.phone}
+                          onClick={(e) => { e.stopPropagation(); if (c.phone) window.location.href = `sms:${c.phone}`; }}
+                        >
                           <MessageSquare className="w-4 h-4" />
                         </button>
-                        <button className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2]" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2] disabled:opacity-30"
+                          disabled={!c.email}
+                          onClick={(e) => { e.stopPropagation(); if (c.email) window.location.href = `mailto:${c.email}`; }}
+                        >
                           <Mail className="w-4 h-4" />
                         </button>
                       </div>
@@ -197,7 +253,7 @@ export default function Customers() {
       )}
 
       {/* Grid View */}
-      {viewMode === "grid" && (
+      {!isLoading && viewMode === "grid" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((c) => (
             <div
@@ -235,11 +291,11 @@ export default function Customers() {
               <div className="mt-3 pt-3 border-t border-[#F1F5F9] flex items-center justify-between">
                 <div>
                   <p className="text-xs text-[#64748B]">Lifetime Value</p>
-                  <p className="text-lg font-bold text-[#0F172A]">${c.lifetimeValue.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-[#0F172A]">${c.lifetime_value.toLocaleString()}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-[#64748B]">Last Service</p>
-                  <p className="text-sm font-medium text-[#0F172A]">{c.lastService}</p>
+                  <p className="text-sm font-medium text-[#0F172A]">{c.last_service}</p>
                 </div>
               </div>
             </div>

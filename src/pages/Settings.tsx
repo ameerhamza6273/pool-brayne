@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Upload, Users, Plus, BookOpen, MapPin, CreditCard, Mail, MessageSquare, Shield, Bell, CheckCircle2, Globe, Forward, Trash2, Filter, Inbox, AlertCircle, Wrench, Settings2, Tag, Phone, RotateCw, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,13 +9,26 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { teamMembers, integrations, billingHistory, subscriptionPlans, jobTypes, jobStatuses, estimateStatuses, cancellationReasons, callTypes, callSources, rescheduleTypes, contentCategories } from "@/lib/data";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { settingsApi } from "@/lib/api/settings";
+import { profilesApi } from "@/lib/api/profiles";
+import type { Database } from "@/lib/database.types";
+import { jobTypes, jobStatuses, estimateStatuses, cancellationReasons, callTypes, callSources, rescheduleTypes, contentCategories } from "@/lib/data";
+
+type Profile = Database["public"]["Tables"]["profiles"]["Row"];
+type Integration = Database["public"]["Tables"]["integrations"]["Row"];
+type SubscriptionPlan = Database["public"]["Tables"]["subscription_plans"]["Row"];
+type BillingHistoryRow = Database["public"]["Tables"]["billing_history"]["Row"];
 
 const roleColors: Record<string, string> = {
   Owner: "bg-[#0891B2]/10 text-[#0891B2]",
   Manager: "bg-[#F59E0B]/10 text-[#F59E0B]",
   Technician: "bg-[#16A34A]/10 text-[#16A34A]",
+  Contractor: "bg-[#F59E0B]/10 text-[#F59E0B]",
+  "Office Manager": "bg-[#7C3AED]/10 text-[#7C3AED]",
 };
+
+const formatRole = (role: string) => role.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 
 const iconMap: Record<string, React.ElementType> = {
   BookOpen: BookOpen,
@@ -28,7 +41,43 @@ const iconMap: Record<string, React.ElementType> = {
 
 export default function Settings() {
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState("plan2");
+  const [isLoading, setIsLoading] = useState(true);
+  const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
+  const [billingHistory, setBillingHistory] = useState<BillingHistoryRow[]>([]);
+  const [tenantName, setTenantName] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+
+  const loadSettings = useCallback(async () => {
+    setIsLoading(true);
+    const data = await settingsApi.all();
+    setTeamMembers(data.teamMembers);
+    setIntegrations(data.integrations);
+    setSubscriptionPlans(data.subscriptionPlans);
+    setBillingHistory(data.billingHistory);
+    setTenantName(data.tenantName);
+    setSelectedPlan(data.planId);
+    setIsLoading(false);
+  }, []);
+
+  const handleEmploymentTypeChange = async (profileId: string, employmentType: "Employee" | "Contractor") => {
+    await profilesApi.updateEmploymentType(profileId, employmentType);
+    setTeamMembers((prev) => prev.map((m) => (m.id === profileId ? { ...m, employment_type: employmentType } : m)));
+  };
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
+
+  const handleSaveCompany = async () => {
+    await settingsApi.saveCompany(tenantName);
+  };
+
+  const handleSelectPlan = async (planId: string) => {
+    setSelectedPlan(planId);
+    await settingsApi.selectPlan(planId);
+  };
 
   return (
     <div className="space-y-4">
@@ -36,6 +85,9 @@ export default function Settings() {
         <h1 className="text-2xl font-bold text-[#0F172A]">Settings</h1>
       </div>
 
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading settings...</div>}
+
+      {!isLoading && (
       <Tabs defaultValue="company" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="company" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
@@ -67,7 +119,7 @@ export default function Settings() {
             <CardContent className="p-5 space-y-6">
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-xl bg-[#0891B2] flex items-center justify-center">
-                  <span className="text-xl font-bold text-white">BC</span>
+                  <span className="text-xl font-bold text-white">{tenantName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
                 </div>
                 <div>
                   <Button variant="outline" className="h-9 border-[#E2E8F0] text-[#0F172A] gap-2">
@@ -79,7 +131,7 @@ export default function Settings() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-[#0F172A]">Company Name</Label>
-                  <Input defaultValue="Bryan's Pool Co" className="mt-1 h-10" />
+                  <Input value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-[#0F172A]">Phone</Label>
@@ -98,7 +150,7 @@ export default function Settings() {
                   <Input defaultValue="Austin, Cedar Park, Round Rock, Pflugerville" className="mt-1 h-10" />
                 </div>
               </div>
-              <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10">Save Changes</Button>
+              <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany}>Save Changes</Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -140,6 +192,7 @@ export default function Settings() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">User</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Email</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Role</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Type</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
                   </tr>
                 </thead>
@@ -149,14 +202,23 @@ export default function Settings() {
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <Avatar className="w-8 h-8">
-                            <AvatarFallback className="bg-[#0891B2] text-white text-xs">{u.avatar}</AvatarFallback>
+                            <AvatarFallback className="bg-[#0891B2] text-white text-xs">{u.avatar ?? u.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}</AvatarFallback>
                           </Avatar>
                           <span className="font-medium text-[#0F172A]">{u.name}</span>
                         </div>
                       </td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{u.email}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${roleColors[u.role] || "bg-[#E2E8F0] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{u.role}</Badge>
+                        <Badge className={`${roleColors[formatRole(u.role)] || "bg-[#E2E8F0] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{formatRole(u.role)}</Badge>
+                      </td>
+                      <td className="text-center py-3 px-4">
+                        <Select value={u.employment_type} onValueChange={(v) => handleEmploymentTypeChange(u.id, v as "Employee" | "Contractor")}>
+                          <SelectTrigger className="h-8 w-[110px] text-xs mx-auto"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Employee">Employee</SelectItem>
+                            <SelectItem value="Contractor">Contractor</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </td>
                       <td className="text-center py-3 px-4">
                         <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{u.status}</Badge>
@@ -173,7 +235,7 @@ export default function Settings() {
         <TabsContent value="integrations" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {integrations.map((int) => {
-              const Icon = iconMap[int.icon] || Shield;
+              const Icon = iconMap[int.icon ?? ""] || Shield;
               return (
                 <Card key={int.id} className="border-[#E2E8F0] shadow-sm">
                   <CardContent className="p-5">
@@ -212,11 +274,10 @@ export default function Settings() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-lg font-bold text-[#0F172A]">PoolBrayne Pro</h3>
+                    <h3 className="text-lg font-bold text-[#0F172A]">{subscriptionPlans.find((p) => p.id === selectedPlan)?.name ?? "No plan selected"}</h3>
                     <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">Current</Badge>
                   </div>
-                  <p className="text-sm text-[#64748B]">$299/month via Stripe</p>
-                  <p className="text-sm text-[#64748B]">Next billing: July 1, 2024</p>
+                  <p className="text-sm text-[#64748B]">${subscriptionPlans.find((p) => p.id === selectedPlan)?.price ?? 0}/month via Stripe</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-[#64748B]" />
@@ -234,7 +295,7 @@ export default function Settings() {
                 className={`border-[#E2E8F0] shadow-sm cursor-pointer transition-all ${
                   selectedPlan === plan.id ? "ring-2 ring-[#0891B2] border-[#0891B2]" : "hover:shadow-md"
                 }`}
-                onClick={() => setSelectedPlan(plan.id)}
+                onClick={() => handleSelectPlan(plan.id)}
               >
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between mb-2">
@@ -282,7 +343,7 @@ export default function Settings() {
                   <tbody>
                     {billingHistory.map((bh) => (
                       <tr key={bh.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                        <td className="py-3 px-4 text-[#64748B]">{bh.date}</td>
+                        <td className="py-3 px-4 text-[#64748B]">{bh.billed_date}</td>
                         <td className="py-3 px-4 text-[#0F172A]">{bh.description}</td>
                         <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${bh.amount}</td>
                         <td className="text-center py-3 px-4">
@@ -619,6 +680,7 @@ export default function Settings() {
           </Card>
         </TabsContent>
       </Tabs>
+      )}
     </div>
   );
 }

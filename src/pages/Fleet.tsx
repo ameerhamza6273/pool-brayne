@@ -1,9 +1,14 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Truck, Navigation, AlertTriangle, Clock, Route, Gauge } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { vehicles, tripHistory, geofenceAlerts } from "@/lib/data";
+import { fleetApi } from "@/lib/api/fleet";
+import type { Database } from "@/lib/database.types";
+
+type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"] & { profiles: { name: string } | null };
+type TripHistory = Database["public"]["Tables"]["trip_history"]["Row"] & { vehicles: { name: string; number: string } | null };
+type GeofenceAlert = Database["public"]["Tables"]["geofence_alerts"]["Row"] & { vehicles: { name: string; number: string } | null };
 
 const statusColors: Record<string, string> = {
   Moving: "bg-[#16A34A]/10 text-[#16A34A]",
@@ -11,8 +16,27 @@ const statusColors: Record<string, string> = {
   Parked: "bg-[#0891B2]/10 text-[#0891B2]",
 };
 
+const formatTime = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—");
+
 export default function Fleet() {
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [tripHistory, setTripHistory] = useState<TripHistory[]>([]);
+  const [geofenceAlerts, setGeofenceAlerts] = useState<GeofenceAlert[]>([]);
+
+  const loadFleet = useCallback(async () => {
+    setIsLoading(true);
+    const data = await fleetApi.all();
+    setVehicles(data.vehicles);
+    setTripHistory(data.tripHistory);
+    setGeofenceAlerts(data.geofenceAlerts);
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadFleet();
+  }, [loadFleet]);
 
   return (
     <div className="space-y-4">
@@ -26,6 +50,10 @@ export default function Fleet() {
         <p className="text-sm font-medium">Live GPS inside PoolBrayne — no separate login. Vendor-agnostic API layer.</p>
       </div>
 
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading fleet...</div>}
+
+      {!isLoading && (
+      <>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Map Placeholder */}
         <div className="lg:col-span-2 space-y-4">
@@ -50,7 +78,7 @@ export default function Fleet() {
                   { x: 520, y: 160 },
                   { x: 650, y: 280 },
                 ];
-                const pos = positions[i];
+                const pos = positions[i % positions.length];
                 const isSelected = selectedVehicle === v.id;
                 return (
                   <button
@@ -104,13 +132,13 @@ export default function Fleet() {
                     <p className="font-medium text-sm text-[#0F172A]">{v.name}</p>
                     <Badge className={`${statusColors[v.status]} text-[10px] px-1.5 py-0`}>{v.status}</Badge>
                   </div>
-                  <p className="text-xs text-[#64748B] truncate">{v.location}</p>
+                  <p className="text-xs text-[#64748B] truncate">{v.location_label ?? v.profiles?.name ?? "—"}</p>
                   <div className="flex items-center gap-3 mt-1 text-xs text-[#64748B]">
                     <span className="flex items-center gap-1"><Gauge className="w-3 h-3" />{v.speed} mph</span>
-                    <span className="flex items-center gap-1"><Route className="w-3 h-3" />{v.mileage} mi</span>
+                    <span className="flex items-center gap-1"><Route className="w-3 h-3" />{v.mileage_today} mi</span>
                   </div>
                 </div>
-                <div className="shrink-0 text-[10px] text-[#64748B]">{v.lastUpdate}</div>
+                <div className="shrink-0 text-[10px] text-[#64748B]">{formatTime(v.last_update)}</div>
               </div>
             </button>
           ))}
@@ -159,13 +187,13 @@ export default function Fleet() {
                 <tbody>
                   {tripHistory.map((tr) => (
                     <tr key={tr.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{tr.vehicle}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{tr.start}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{tr.end}</td>
-                      <td className="py-3 px-4 text-[#64748B] text-sm">{tr.startLoc}</td>
-                      <td className="py-3 px-4 text-[#64748B] text-sm">{tr.endLoc}</td>
-                      <td className="text-right py-3 px-4 font-medium text-[#0F172A]">{tr.distance} mi</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{tr.duration}</td>
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{tr.vehicles?.number ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{formatTime(tr.start_time)}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{formatTime(tr.end_time)}</td>
+                      <td className="py-3 px-4 text-[#64748B] text-sm">{tr.start_location}</td>
+                      <td className="py-3 px-4 text-[#64748B] text-sm">{tr.end_location}</td>
+                      <td className="text-right py-3 px-4 font-medium text-[#0F172A]">{tr.distance_miles} mi</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">{tr.duration_minutes} min</td>
                     </tr>
                   ))}
                 </tbody>
@@ -183,13 +211,13 @@ export default function Fleet() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="font-medium text-sm text-[#0F172A]">{g.vehicle}</p>
+                    <p className="font-medium text-sm text-[#0F172A]">{g.vehicles?.number ?? "—"}</p>
                     <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{g.severity}</Badge>
                   </div>
                   <p className="text-sm text-[#64748B]">{g.message}</p>
                 </div>
                 <div className="shrink-0 text-xs text-[#64748B] flex items-center gap-1">
-                  <Clock className="w-3 h-3" /> {g.time}
+                  <Clock className="w-3 h-3" /> {formatTime(g.occurred_at)}
                 </div>
               </div>
             ))}
@@ -199,6 +227,8 @@ export default function Fleet() {
           </div>
         </TabsContent>
       </Tabs>
+      </>
+      )}
     </div>
   );
 }

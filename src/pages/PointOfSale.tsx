@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, CreditCard,
   Banknote, FileText, Receipt, Percent, User, Package,
@@ -11,7 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { posProducts, posTransactions } from "@/lib/data";
+import { posApi } from "@/lib/api/pos";
+import { customersApi } from "@/lib/api/customers";
+import type { Database } from "@/lib/database.types";
+
+type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"];
+type PosOrder = Database["public"]["Tables"]["pos_orders"]["Row"] & { customers: { name: string } | null; item_count: number };
+
+type Product = InventoryItem & { stock: number };
 
 type CartItem = {
   id: string;
@@ -35,11 +42,18 @@ const categoryColors: Record<string, string> = {
 const TAX_RATE = 0.0825;
 
 export default function PointOfSale() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [transactions, setTransactions] = useState<PosOrder[]>([]);
+  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("Walk-in");
+  const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerOpen, setCustomerOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Card" | "ACH" | null>(null);
   const [discount, setDiscount] = useState(0);
@@ -52,11 +66,30 @@ export default function PointOfSale() {
 
   const categories = ["All", "Chemicals", "Test Kits", "Accessories", "Parts", "Equipment", "Services"];
 
-  const filtered = posProducts.filter((p) => {
+  const loadPos = useCallback(async () => {
+    setIsLoading(true);
+    const [productsData, transactionsData, customersData] = await Promise.all([
+      posApi.catalog(),
+      posApi.transactions(),
+      customersApi.list(),
+    ]);
+    setProducts(productsData);
+    setTransactions(transactionsData as PosOrder[]);
+    setCustomers(customersData.map((c) => ({ id: c.id, name: c.name })));
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadPos();
+  }, [loadPos]);
+
+  const filtered = products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
     const matchesCat = category === "All" || p.category === category;
     return matchesSearch && matchesCat;
   });
+
+  const filteredCustomers = ["Walk-in", ...customers.map((c) => c.name)].filter((n) => n.toLowerCase().includes(customerSearch.toLowerCase()));
 
   const subtotal = useMemo(() => cart.reduce((s, i) => s + i.price * i.qty, 0), [cart]);
   const discountAmount = useMemo(() => {
@@ -70,11 +103,11 @@ export default function PointOfSale() {
   const tax = useMemo(() => Math.max(0, taxableAmount * TAX_RATE), [taxableAmount]);
   const total = useMemo(() => subtotal - discountAmount + tax, [subtotal, discountAmount, tax]);
 
-  const addToCart = (p: typeof posProducts[number]) => {
+  const addToCart = (p: Product) => {
     setCart((prev) => {
       const existing = prev.find((i) => i.id === p.id);
       if (existing) return prev.map((i) => i.id === p.id ? { ...i, qty: i.qty + 1 } : i);
-      return [...prev, { id: p.id, name: p.name, sku: p.sku, price: p.price, qty: 1, taxable: p.taxable, unit: p.unit }];
+      return [...prev, { id: p.id, name: p.name, sku: p.sku, price: p.price ?? 0, qty: 1, taxable: p.taxable, unit: p.unit ?? "ea" }];
     });
   };
 
@@ -90,25 +123,43 @@ export default function PointOfSale() {
     setCart([]);
     setDiscount(0);
     setCustomerName("Walk-in");
+    setCustomerId(null);
   };
 
-  const completeSale = () => {
+  const completeSale = async () => {
     if (!paymentMethod) return;
-    const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(posTransactions.length + 1).padStart(3, "0")}`;
+    const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(transactions.length + 1).padStart(3, "0")}`;
+
+    await posApi.checkout({
+      customerId,
+      subtotal,
+      tax,
+      total,
+      paymentMethod,
+      items: cart.map((item) => ({
+        id: item.id,
+        name: item.name,
+        qty: item.qty,
+        price: item.price,
+        isService: products.find((p) => p.id === item.id)?.category === "Services",
+      })),
+    });
+
     setCompletedSale({ number: num, total, payment: paymentMethod, items: cart.reduce((s, i) => s + i.qty, 0) });
     setPaymentOpen(false);
     setReceiptOpen(true);
     setCart([]);
     setDiscount(0);
     setCustomerName("Walk-in");
+    setCustomerId(null);
     setPaymentMethod(null);
+    loadPos();
   };
 
-  const todaySales = posTransactions
-    .filter((t) => t.date === "2024-06-22")
-    .reduce((s, t) => s + t.total, 0);
-  const weekSales = posTransactions.reduce((s, t) => s + t.total, 0);
-  const avgTicket = posTransactions.reduce((s, t) => s + t.total, 0) / posTransactions.length;
+  const today = new Date().toISOString().slice(0, 10);
+  const todaySales = transactions.filter((t) => t.created_at.slice(0, 10) === today).reduce((s, t) => s + t.total, 0);
+  const weekSales = transactions.reduce((s, t) => s + t.total, 0);
+  const avgTicket = transactions.length > 0 ? transactions.reduce((s, t) => s + t.total, 0) / transactions.length : 0;
 
   return (
     <div className="space-y-4">
@@ -140,7 +191,7 @@ export default function PointOfSale() {
           { label: "Today's Sales", value: `$${todaySales.toFixed(2)}`, icon: DollarSign, color: "#0891B2" },
           { label: "Week Sales", value: `$${weekSales.toFixed(2)}`, icon: TrendingUp, color: "#16A34A" },
           { label: "Avg Ticket", value: `$${avgTicket.toFixed(2)}`, icon: Receipt, color: "#F59E0B" },
-          { label: "Transactions", value: posTransactions.length.toString(), icon: ShoppingCart, color: "#7C3AED" },
+          { label: "Transactions", value: transactions.length.toString(), icon: ShoppingCart, color: "#7C3AED" },
         ].map((k) => {
           const Icon = k.icon;
           return (
@@ -157,6 +208,9 @@ export default function PointOfSale() {
         })}
       </div>
 
+      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading register...</div>}
+
+      {!isLoading && (
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
         {/* Product Grid */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
@@ -190,8 +244,8 @@ export default function PointOfSale() {
           <div className="p-4 max-h-[560px] overflow-y-auto">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {filtered.map((p) => {
-                const out = p.inventory === 0;
-                const isService = p.inventory === -1;
+                const isService = p.category === "Services";
+                const out = !isService && p.stock === 0;
                 return (
                   <button
                     key={p.id}
@@ -211,15 +265,15 @@ export default function PointOfSale() {
                         <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">Out</Badge>
                       ) : isService ? (
                         <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">Service</Badge>
-                      ) : p.inventory <= 5 ? (
-                        <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Low: {p.inventory}</Badge>
+                      ) : p.stock <= 5 ? (
+                        <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Low: {p.stock}</Badge>
                       ) : (
-                        <span className="text-[10px] text-[#64748B] font-medium">{p.inventory} in stock</span>
+                        <span className="text-[10px] text-[#64748B] font-medium">{p.stock} in stock</span>
                       )}
                     </div>
                     <p className="text-sm font-semibold text-[#0F172A] leading-snug mb-1 line-clamp-2">{p.name}</p>
                     <p className="text-[10px] text-[#64748B] font-mono">{p.sku}</p>
-                    <p className="text-base font-bold text-[#0891B2] mt-2">${p.price.toFixed(2)}</p>
+                    <p className="text-base font-bold text-[#0891B2] mt-2">${(p.price ?? 0).toFixed(2)}</p>
                   </button>
                 );
               })}
@@ -344,6 +398,7 @@ export default function PointOfSale() {
           )}
         </div>
       </div>
+      )}
 
       {/* Recent Transactions */}
       <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
@@ -355,7 +410,6 @@ export default function PointOfSale() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Receipt #</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Date</th>
                 <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-[#64728B] uppercase">Items</th>
@@ -366,20 +420,22 @@ export default function PointOfSale() {
               </tr>
             </thead>
             <tbody>
-              {posTransactions.map((tx) => (
+              {transactions.map((tx) => (
                 <tr key={tx.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                  <td className="py-3 px-4 font-mono text-xs font-medium text-[#0891B2]">{tx.number}</td>
-                  <td className="py-3 px-4 text-[#64748B]">{tx.date}</td>
-                  <td className="py-3 px-4 font-medium text-[#0F172A]">{tx.customer}</td>
-                  <td className="py-3 px-4 text-right text-[#0F172A]">{tx.items}</td>
+                  <td className="py-3 px-4 text-[#64748B]">{new Date(tx.created_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}</td>
+                  <td className="py-3 px-4 font-medium text-[#0F172A]">{tx.customers?.name ?? "Walk-in"}</td>
+                  <td className="py-3 px-4 text-right text-[#0F172A]">{tx.item_count}</td>
                   <td className="py-3 px-4 text-right text-[#0F172A]">${tx.subtotal.toFixed(2)}</td>
                   <td className="py-3 px-4 text-right text-[#0F172A]">${tx.tax.toFixed(2)}</td>
                   <td className="py-3 px-4 text-right font-semibold text-[#0F172A]">${tx.total.toFixed(2)}</td>
                   <td className="py-3 px-4 text-center">
-                    <Badge className={`text-[10px] px-2 py-0 ${tx.payment === "Cash" ? "bg-[#16A34A]/10 text-[#16A34A]" : tx.payment === "Card" ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#7C3AED]/10 text-[#7C3AED]"}`}>{tx.payment}</Badge>
+                    <Badge className={`text-[10px] px-2 py-0 ${tx.payment_method === "Cash" ? "bg-[#16A34A]/10 text-[#16A34A]" : tx.payment_method === "Card" ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#7C3AED]/10 text-[#7C3AED]"}`}>{tx.payment_method}</Badge>
                   </td>
                 </tr>
               ))}
+              {transactions.length === 0 && (
+                <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No transactions yet</td></tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -394,13 +450,18 @@ export default function PointOfSale() {
           <div className="space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-              <Input placeholder="Search customers..." className="pl-9" autoFocus />
+              <Input placeholder="Search customers..." className="pl-9" autoFocus value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
             </div>
             <div className="space-y-1 max-h-60 overflow-y-auto">
-              {["Walk-in", "James Thompson", "Michael Chen", "Steven Clark", "Emily Brooks", "Patricia Reyes"].map((name) => (
+              {filteredCustomers.map((name) => (
                 <button
                   key={name}
-                  onClick={() => { setCustomerName(name); setCustomerOpen(false); }}
+                  onClick={() => {
+                    setCustomerName(name);
+                    setCustomerId(name === "Walk-in" ? null : customers.find((c) => c.name === name)?.id ?? null);
+                    setCustomerOpen(false);
+                    setCustomerSearch("");
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-[#F8FAFC] text-left"
                 >
                   <Avatar className="w-8 h-8">
