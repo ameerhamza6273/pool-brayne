@@ -14,6 +14,7 @@ import timesheetsRoutes from "./routes/timesheets.js";
 import campaignsRoutes from "./routes/campaigns.js";
 import settingsRoutes from "./routes/settings.js";
 import dashboardRoutes from "./routes/dashboard.js";
+import quickbooksRoutes from "./routes/quickbooks.js";
 
 const app = Fastify({ logger: true });
 
@@ -23,6 +24,9 @@ app.get("/health", async () => ({ ok: true }));
 
 app.addHook("onRequest", async (req, reply) => {
   if (req.url === "/health") return;
+  // Intuit redirects the browser here directly after OAuth consent, so it carries no Bearer
+  // token — identity is instead recovered from the `state` param (see routes/quickbooks.ts).
+  if (req.url.startsWith("/api/quickbooks/callback")) return;
   await requireAuth(req, reply);
 });
 
@@ -38,6 +42,7 @@ await app.register(timesheetsRoutes, { prefix: "/api/timesheets" });
 await app.register(campaignsRoutes, { prefix: "/api/campaigns" });
 await app.register(settingsRoutes, { prefix: "/api/settings" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
+await app.register(quickbooksRoutes, { prefix: "/api/quickbooks" });
 
 const port = Number(process.env.PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

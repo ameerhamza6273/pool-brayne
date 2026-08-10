@@ -312,6 +312,7 @@ export type Database = {
           icon: string | null
           id: string
           name: string
+          provider: string | null
           status: string
           tenant_id: string
         }
@@ -320,6 +321,7 @@ export type Database = {
           icon?: string | null
           id?: string
           name: string
+          provider?: string | null
           status?: string
           tenant_id: string
         }
@@ -328,6 +330,7 @@ export type Database = {
           icon?: string | null
           id?: string
           name?: string
+          provider?: string | null
           status?: string
           tenant_id?: string
         }

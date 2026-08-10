@@ -833,3 +833,97 @@ gaps mile jo turant fix kar diye ("sab ok kr do" — bina further confirmation k
   gaps (Twilio/Stripe/QuickBooks/GPS/Gusto), global search bar + real notifications panel
   (feature-scope decisions). Sab kuch abhi tak commit nahi hua.
   ---
+
+### 2026-08-10/11 — QuickBooks Online OAuth integration — real, end-to-end tested
+
+Client se pehle bheji gayi integrations-request SMS ka jawab aaya: sirf **QuickBooks access** mili
+(baaqi Twilio/Stripe/SendGrid/GPS/Gusto/hosting abhi bhi pending). Client ne apna **QuickBooks
+login (username/password)** diya tha — user ne poocha kya karna hai, maine clarify kiya ke client
+ka real login use karna best practice nahi hai. User ne khud client ko message kiya, jawab mila:
+**client ne kaha "apna developer account use karo"** — yehi asal/standard QuickBooks OAuth tareeqa
+hai (ek developer app kisi bhi client company se OAuth consent ke zariye connect ho sakti hai,
+developer ko kabhi client ka password nahi chahiye).
+
+**Kya hua (poora QuickBooks sandbox OAuth flow ban gaya, browser mein live test kiya):**
+- User ke is machine ke browser mein **pehle se ek purana/alag client ka Intuit account login
+  tha** (galti se khul gaya) — user ne khud pehchana aur sign out kiya, phir apna naya Intuit
+  Developer account banaya (browser mein main sirf guide/navigate karta raha, account
+  creation/password khud user ne kiya — meri safety rules ke mutabiq).
+- **developer.intuit.com** par naya workspace + app ("PoolBrayne") banaya. **Keys & Credentials**
+  se Sandbox **Client ID** aur **Client Secret** nikale. **Redirect URI**
+  (`http://localhost:4000/api/quickbooks/callback`) set ki. Intuit har naye developer account ke
+  liye automatically ek **default sandbox test company** bhi bana deta hai ("Sandbox Company US
+  3d4f") — iski **Realm ID (9341457689932010)** bhi mil gayi, alag se "Connect to QuickBooks" step
+  ki zaroorat nahi padi.
+- Yeh sab `backend/.env` mein save kiye: `QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`,
+  `QBO_ENVIRONMENT=sandbox`, `QBO_REDIRECT_URI`, `QBO_SANDBOX_REALM_ID`.
+- **DB migration** (`supabase/migrations/20260811090000_quickbooks_oauth.sql`): `integrations`
+  table mein `provider` (text slug — `quickbooks`/`gps`/`gusto`/`twilio`/`sendgrid`/`stripe` —
+  taake code display-name ki jagah reliable slug se row dhoonde) + token-storage columns
+  (`access_token`, `refresh_token`, `realm_id`, `token_expires_at`) add kiye. QuickBooks ka row
+  jaan-boojh kar `status = 'Not Connected'` set kiya (pehle seed script se fake "Connected" tha —
+  ab yeh real integration hai, isliye honest status chahiye jab tak real OAuth na ho).
+- **Naya backend module** `backend/src/routes/quickbooks.ts`:
+  - `GET /api/quickbooks/connect-url` (authenticated) — Intuit ka authorize URL banata hai, ek
+    random `state` generate karta hai jo in-memory `Map` mein `userId` se bind hota hai (10 min
+    TTL) — is se callback ko pata chalta hai kaunsa user/tenant connect kar raha hai.
+  - `GET /api/quickbooks/callback` (**unauthenticated** — Intuit seedha browser redirect karta hai
+    yahan, koi Bearer token nahi hota) — `state` se `userId` recover karta hai, authorization
+    `code` ko Intuit ke token endpoint se access+refresh token mein exchange karta hai, phir
+    `withTenantContext` se us tenant ke `integrations` row mein save karta hai, aur frontend
+    (`/settings?qbo=connected` ya `?qbo=error`) par redirect kar deta hai.
+  - `POST /api/quickbooks/disconnect` (authenticated) — tokens clear, status wapas "Not Connected".
+  - `server.ts` ke global auth hook mein `/api/quickbooks/callback` ko explicitly exempt kiya
+    (jaisa `/health` already tha) — yehi ek route hai jo Supabase JWT ke bina aata hai.
+- **Security fix:** `backend/src/routes/settings.ts` ka `GET /` pehle `select * from integrations`
+  karta tha — is se access/refresh tokens frontend/browser ko expose ho jate (chhupa hua security
+  bug jo is session mein hi introduce hokar turant pakड़ा gaya). Fix: explicit column list
+  (`id, tenant_id, name, status, description, icon, provider`) — tokens kabhi backend se bahar
+  nahi jate.
+- **Frontend:** `src/lib/api/quickbooks.ts` (naya), `src/pages/Settings.tsx` ke Integrations tab
+  mein sirf QuickBooks card ka button real wire kiya (`Connect` → naya tab redirect Intuit consent
+  screen par; `Disconnect` → real API call) — baaqi 5 cards (Twilio/Stripe/SendGrid/GPS/Gusto)
+  jaan-boojh kar decorative hi chhode (woh abhi bhi fake hain, real credentials milne tak). URL
+  `?qbo=connected`/`?qbo=error` query param se success/error banner + Integrations tab
+  auto-select hota hai. `src/lib/database.types.ts` mein `integrations.provider` field manually
+  add kiya (schema regenerate karne ke liye `SUPABASE_ACCESS_TOKEN` nahi tha, jaisa pehle bhi hua
+  hai — is baar bhi direct DB approach use kiya).
+- **Real bug mila aur fix kiya (is session mein khud introduce hua tha):** `src/lib/apiClient.ts`
+  ka `request()` helper **hamesha** `Content-Type: application/json` header bhejta tha, chahe body
+  ho ya na ho — jab `quickbooksApi.disconnect()` (`api.post()` bina body ke) call hota, Fastify
+  "Body cannot be empty when content-type is set to application/json" error deta (400). Fix:
+  header sirf tab set karo jab `options.body` mojood ho. Koi aur existing endpoint is bug se
+  affected nahi tha (grep se confirm kiya — sirf naya disconnect call hi bodyless POST tha).
+- **Network gotcha (is machine/environment-specific):** direct Supabase DB host
+  (`db.zesllxjijkwxmjiwjmdc.supabase.co`) sirf **IPv6** resolve karta hai, aur is session ke
+  network/shell environment mein IPv6 connectivity nahi thi (`ENOTFOUND` error migration script
+  chalate waqt) — **Supabase ka connection pooler** (`aws-0-us-east-1.pooler.supabase.com:5432`,
+  username `postgres.<project-ref>` format) use kiya jo IPv4 resolve karta hai. `backend/.env` ka
+  `DATABASE_URL` ab isi pooler URL par point karta hai (pehle direct host tha) — agar kabhi phir
+  DB connection ENOTFOUND de, yehi fix yaad rakhna.
+- **Poora flow browser mein live end-to-end test kiya** (login bryan@poolbrayne.com →
+  Settings → Integrations → "Connect" → real Intuit OAuth consent screen ("Connecting PoolBrayne
+  to Sandbox Company US 3d4f") → "Connect" click → real redirect wapas app par → "QuickBooks
+  connected successfully" banner, badge "Connected", button "Disconnect"). DB mein directly verify
+  kiya ke real `access_token`/`refresh_token`/`realm_id` save hue. **Disconnect bhi test kiya**
+  (status wapas Not Connected, tokens clear), phir dobara **Connect** kiya taake final state
+  "Connected" rahe (Intuit ne dobara consent screen nahi maanga kyunki pehle se authorize tha —
+  seedha redirect ho gaya).
+- Frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) dono clean.
+- **Baaqi/pending:**
+  1. **Sirf tokens save hote hain abhi — koi real QuickBooks data sync (customers/invoices push ya
+     pull) nahi likha gaya is session mein.** Agla step: Invoicing module se real QBO API calls
+     (customer create, invoice create/update) — access token expire hone par refresh_token se
+     naya access token lena bhi abhi implement nahi hua (token_expires_at column bana di gayi hai
+     future refresh logic ke liye, lekin koi auto-refresh code nahi likha).
+  2. Sandbox se production QuickBooks keys par switch karna baaqi hai jab launch ke qareeb ho
+     (Intuit developer app ke "Production" tab mein alag keys hain, `QBO_ENVIRONMENT` env var se
+     switch karna hoga).
+  3. Baaqi 5 integrations (Twilio/Stripe/SendGrid/GPS/Gusto) + Railway/Vercel hosting decision —
+     ab bhi client se pending, follow-up SMS pehle hi bheja ja chuka hai.
+  4. Sab kuch abhi tak commit nahi hua — is session ke changes (naya backend route, migration,
+     frontend wiring, `apiClient.ts` bug fix, `.env` pooler switch) commit se pehle user se
+     confirm lena.
+- **Dev servers is session ke end tak:** frontend `localhost:5174`, backend `localhost:4000` dono
+  background mein chal rahe hain.
+  ---

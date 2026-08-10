@@ -6,7 +6,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, async (tx) => {
       const [teamMembers, integrations, subscriptionPlans, billingHistory, tenantRows] = await Promise.all([
         tx`select * from profiles order by name`,
-        tx`select * from integrations order by name`,
+        tx`select id, tenant_id, name, status, description, icon, provider from integrations order by name`,
         tx`select * from subscription_plans order by price`,
         tx`select * from billing_history order by billed_date desc`,
         tx`select name, plan_id from tenants where id = current_tenant_id() limit 1`,

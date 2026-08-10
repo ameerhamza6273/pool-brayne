@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { settingsApi } from "@/lib/api/settings";
 import { profilesApi } from "@/lib/api/profiles";
+import { quickbooksApi } from "@/lib/api/quickbooks";
 import type { Database } from "@/lib/database.types";
 import { jobTypes, jobStatuses, estimateStatuses, cancellationReasons, callTypes, callSources, rescheduleTypes, contentCategories } from "@/lib/data";
 
@@ -48,6 +49,7 @@ export default function Settings() {
   const [billingHistory, setBillingHistory] = useState<BillingHistoryRow[]>([]);
   const [tenantName, setTenantName] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const qboStatus = new URLSearchParams(window.location.search).get("qbo");
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
@@ -79,6 +81,16 @@ export default function Settings() {
     await settingsApi.selectPlan(planId);
   };
 
+  const handleQuickbooksConnect = async () => {
+    const { url } = await quickbooksApi.getConnectUrl();
+    window.location.href = url;
+  };
+
+  const handleQuickbooksDisconnect = async () => {
+    await quickbooksApi.disconnect();
+    await loadSettings();
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -88,7 +100,7 @@ export default function Settings() {
       {isLoading && <div className="text-center py-8 text-[#64748B]">Loading settings...</div>}
 
       {!isLoading && (
-      <Tabs defaultValue="company" className="w-full">
+      <Tabs defaultValue={qboStatus ? "integrations" : "company"} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="company" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Globe className="w-4 h-4" /> Company
@@ -233,9 +245,21 @@ export default function Settings() {
 
         {/* Integrations */}
         <TabsContent value="integrations" className="mt-4">
+          {qboStatus === "connected" && (
+            <div className="mb-4 p-3 rounded-lg bg-[#16A34A]/10 border border-[#16A34A]/20 text-sm text-[#16A34A]">
+              QuickBooks connected successfully.
+            </div>
+          )}
+          {qboStatus === "error" && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+              QuickBooks connection failed — please try again.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {integrations.map((int) => {
               const Icon = iconMap[int.icon ?? ""] || Shield;
+              const isQuickbooks = int.provider === "quickbooks";
+              const isConnected = int.status === "Connected";
               return (
                 <Card key={int.id} className="border-[#E2E8F0] shadow-sm">
                   <CardContent className="p-5">
@@ -246,14 +270,25 @@ export default function Settings() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <h3 className="font-semibold text-[#0F172A]">{int.name}</h3>
-                          <Badge className={`${int.status === "Connected" ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F59E0B]/10 text-[#F59E0B]"} text-[10px] px-1.5 py-0`}>
+                          <Badge className={`${isConnected ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F59E0B]/10 text-[#F59E0B]"} text-[10px] px-1.5 py-0`}>
                             {int.status}
                           </Badge>
                         </div>
                         <p className="text-sm text-[#64748B] mt-1">{int.description}</p>
-                        <Button variant="outline" size="sm" className="mt-3 h-8 border-[#E2E8F0] text-[#0F172A]">
-                          {int.status === "Connected" ? "Manage" : "Connect"}
-                        </Button>
+                        {isQuickbooks ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 h-8 border-[#E2E8F0] text-[#0F172A]"
+                            onClick={isConnected ? handleQuickbooksDisconnect : handleQuickbooksConnect}
+                          >
+                            {isConnected ? "Disconnect" : "Connect"}
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" className="mt-3 h-8 border-[#E2E8F0] text-[#0F172A]">
+                            {isConnected ? "Manage" : "Connect"}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
