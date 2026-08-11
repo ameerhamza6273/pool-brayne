@@ -29,6 +29,8 @@ export default function InvoiceDetail() {
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [payOpen, setPayOpen] = useState(false);
+  const [qboSyncing, setQboSyncing] = useState(false);
+  const [qboError, setQboError] = useState<string | null>(null);
 
   const loadInvoice = useCallback(async () => {
     if (!id) return;
@@ -73,6 +75,19 @@ export default function InvoiceDetail() {
     await invoicingApi.collectPayment(id, method);
     setPayOpen(false);
     loadInvoice();
+  };
+
+  const handleSyncToQuickbooks = async () => {
+    if (!id) return;
+    setQboSyncing(true);
+    setQboError(null);
+    try {
+      await invoicingApi.syncToQuickbooks(id);
+      await loadInvoice();
+    } catch (err) {
+      setQboError(err instanceof Error ? err.message : "QuickBooks sync failed");
+    }
+    setQboSyncing(false);
   };
 
   return (
@@ -149,10 +164,19 @@ export default function InvoiceDetail() {
           <Download className="w-4 h-4 text-[#0891B2]" /> Download PDF
         </Button>
         <div className="ml-auto flex items-center gap-2">
-          <BadgeCheck className="w-4 h-4 text-[#16A34A]" />
-          <span className="text-xs text-[#64748B]">Synced two-way with QuickBooks</span>
+          {invoice.qbo_invoice_id ? (
+            <>
+              <BadgeCheck className="w-4 h-4 text-[#16A34A]" />
+              <span className="text-xs text-[#64748B]">Synced to QuickBooks</span>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0] text-[#0F172A]" onClick={handleSyncToQuickbooks} disabled={qboSyncing}>
+              <BadgeCheck className="w-4 h-4 text-[#0891B2]" /> {qboSyncing ? "Syncing..." : "Sync to QuickBooks"}
+            </Button>
+          )}
         </div>
       </div>
+      {qboError && <div className="text-xs text-red-600 -mt-2">{qboError}</div>}
 
       {/* Invoice Document */}
       <Card className="border-[#E2E8F0] shadow-sm">

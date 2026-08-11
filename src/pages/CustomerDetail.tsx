@@ -51,6 +51,8 @@ export default function CustomerDetail() {
   const [photos, setPhotos] = useState<CustomerAttachment[]>([]);
   const [newNote, setNewNote] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [qboSyncing, setQboSyncing] = useState(false);
+  const [qboError, setQboError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -92,6 +94,19 @@ export default function CustomerDetail() {
     await customersApi.addNote(id, { text: newNote.trim(), author: user?.name ?? "You" });
     setNewNote("");
     load();
+  };
+
+  const handleSyncToQuickbooks = async () => {
+    if (!id) return;
+    setQboSyncing(true);
+    setQboError(null);
+    try {
+      await customersApi.syncToQuickbooks(id);
+      await load();
+    } catch (err) {
+      setQboError(err instanceof Error ? err.message : "QuickBooks sync failed");
+    }
+    setQboSyncing(false);
   };
 
   if (isLoading) {
@@ -156,8 +171,18 @@ export default function CustomerDetail() {
             <Mail className="w-4 h-4" />
             <span className="hidden sm:inline">Email</span>
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]"
+            onClick={handleSyncToQuickbooks}
+            disabled={qboSyncing || !!customer.qbo_customer_id}
+          >
+            {customer.qbo_customer_id ? "Synced to QuickBooks" : qboSyncing ? "Syncing..." : "Sync to QuickBooks"}
+          </Button>
         </div>
       </div>
+      {qboError && <div className="text-xs text-red-600">{qboError}</div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Left Column */}

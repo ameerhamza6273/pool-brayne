@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
+import { withQuickbooksConnection, pushInvoice } from "../lib/quickbooks.js";
+import { syncCustomerToQuickbooks } from "./customers.js";
 
 export default async function invoicingRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -77,6 +79,23 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       `;
       return updated;
     });
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/quickbooks-sync", async (req) => {
+    const { id } = req.params;
+    const invoice = await withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`select * from invoices where id = ${id} limit 1`;
+      return row as { id: string; customer_id: string; number: string; due_date: string | null; amount: number; qbo_invoice_id: string | null } | undefined;
+    });
+    if (!invoice) throw new Error("Invoice not found");
+    if (invoice.qbo_invoice_id) return { qboInvoiceId: invoice.qbo_invoice_id };
+
+    const qboCustomerId = await syncCustomerToQuickbooks(req.userId, invoice.customer_id);
+    const qboInvoiceId = await withQuickbooksConnection(req.userId, (conn) =>
+      pushInvoice(conn, qboCustomerId, { number: invoice.number, dueDate: invoice.due_date, amount: invoice.amount }),
+    );
+    await withTenantContext(req.userId, (tx) => tx`update invoices set qbo_invoice_id = ${qboInvoiceId} where id = ${id}`);
+    return { qboInvoiceId };
   });
 
   app.get("/recurring-billing/list", async (req) => {

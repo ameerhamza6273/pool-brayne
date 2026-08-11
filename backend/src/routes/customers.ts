@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
+import { withQuickbooksConnection, pushCustomer } from "../lib/quickbooks.js";
 
 export default async function customersRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -77,4 +78,29 @@ export default async function customersRoutes(app: FastifyInstance) {
       return row;
     });
   });
+
+  app.post<{ Params: { id: string } }>("/:id/quickbooks-sync", async (req) => {
+    const qboCustomerId = await syncCustomerToQuickbooks(req.userId, req.params.id);
+    return { qboCustomerId };
+  });
+}
+
+// Pushes a customer to QuickBooks as a Customer record (creating it once — a customer that's
+// already synced just returns its existing QBO Id rather than creating a duplicate). Exported so
+// the invoices route can auto-sync a customer before syncing one of their invoices.
+export async function syncCustomerToQuickbooks(userId: string, customerId: string): Promise<string> {
+  const [customer] = await withTenantContext(userId, (tx) => tx`select * from customers where id = ${customerId} limit 1`) as unknown as {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    address: string | null;
+    qbo_customer_id: string | null;
+  }[];
+  if (!customer) throw new Error("Customer not found");
+  if (customer.qbo_customer_id) return customer.qbo_customer_id;
+
+  const qboCustomerId = await withQuickbooksConnection(userId, (conn) => pushCustomer(conn, customer));
+  await withTenantContext(userId, (tx) => tx`update customers set qbo_customer_id = ${qboCustomerId} where id = ${customerId}`);
+  return qboCustomerId;
 }

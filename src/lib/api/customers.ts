@@ -30,4 +30,6 @@ export const customersApi = {
 
   addAttachment: (customerId: string, url: string) =>
     api.post<CustomerAttachment>(`/api/customers/${customerId}/attachments`, { url }),
+
+  syncToQuickbooks: (customerId: string) => api.post<{ qboCustomerId: string }>(`/api/customers/${customerId}/quickbooks-sync`, {}),
 };

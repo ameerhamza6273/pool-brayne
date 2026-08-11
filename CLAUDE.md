@@ -927,3 +927,55 @@ developer ko kabhi client ka password nahi chahiye).
 - **Dev servers is session ke end tak:** frontend `localhost:5174`, backend `localhost:4000` dono
   background mein chal rahe hain.
   ---
+
+### 2026-08-11 (continued) — QuickBooks customer + invoice sync (real push, sandbox-tested)
+
+User ne poocha "client ke real account se kaise connect hoga" — samjhaya ke wahi app reuse hogi,
+bas production keys + client khud "Connect" karega (apna login kabhi humein nahi dega). Phir
+poocha "sync code kab likhenge" — user ne kaha "jo acha lage karo", isliye **customers/invoices ko
+QuickBooks push karne wala real feature ban gaya** (sandbox company ke sath, jaisa Developer Brief
+gap-list mein "Module 6 — real QBO sync" pending tha):
+
+- **Migration** (`20260811100000_quickbooks_sync_ids.sql`): `customers.qbo_customer_id`,
+  `invoices.qbo_invoice_id` columns — track karte hain ke kaunsa record already QuickBooks mein
+  push ho chuka hai (dobara sync par duplicate nahi banta).
+- **Naya `backend/src/lib/quickbooks.ts`**: `withQuickbooksConnection()` — tenant ka access token
+  fetch karta hai, agar expire ho chuka ho (ya 1 min ke andar hone wala ho) to `refresh_token` se
+  naya access token le kar DB update karta hai (auto-refresh, jo pichli baar sirf column bana kar
+  chhoda gaya tha). `pushCustomer()` — QBO `Customer` create karta hai (name/email/phone/address).
+  `pushInvoice()` — QBO `Invoice` create karta hai; **known simplification**: poore invoice ko
+  ek hi line-item ke tor par bhejta hai (total amount), kyunki QBO ka har line ek `ItemRef`
+  (Product/Service) maangta hai aur humara inventory QBO Items se mapped nahi hai — `Item`
+  table se pehla available item dhoondh kar us par bill karta hai (har QBO company mein kam se kam
+  ek default item hota hai).
+- **Routes:** `POST /api/customers/:id/quickbooks-sync` (naya export `syncCustomerToQuickbooks()`
+  bhi banaya customers.ts se, taake invoices route usko reuse kar sake) aur
+  `POST /api/invoices/:id/quickbooks-sync` (customer already sync nahi hai to pehle usko auto-sync
+  karta hai, phir invoice). Dono idempotent hain — agar `qbo_*_id` already set hai to naya push
+  nahi karte, seedha existing id return karte hain.
+- **Frontend:** `CustomerDetail.tsx` header mein "Sync to QuickBooks" button, `InvoiceDetail.tsx`
+  ke action bar mein bhi — dono ka pehle se maujood **fake decorative badge tha** ("Synced from
+  QuickBooks" / "Synced two-way with QuickBooks") jo hamesha green dikhta tha chahe kuch bhi ho,
+  ab real `qbo_customer_id`/`qbo_invoice_id` state se driven hai. `Invoicing.tsx` (list page) ka
+  "SYNC" column bhi fix kiya — pehle har row par hardcoded "Synced" badge tha, ab per-invoice real
+  status; top banner card ("QuickBooks Online... Two-way sync active. Last synced 4 min ago.") bhi
+  ab `settingsApi.all()` se real connection status leta hai.
+- **Browser + direct QBO API se end-to-end verify kiya:** Angela Torres ko sync kiya → real QBO
+  Customer bana (Id 58, seedha QuickBooks sandbox API se GET karke confirm kiya — naam/address/
+  phone/email sab match). Michael Chen ki invoice INV-20260728-3F57 sync ki → customer pehle se
+  sync nahi tha isliye auto-sync hua (Id 59), phir real QBO Invoice bana (Id 145, $145, sahi
+  CustomerRef/DueDate/DocNumber — seedha QBO API se GET karke confirm kiya).
+- Frontend aur backend dono typecheck clean.
+- **Baaqi/pending:**
+  1. Sirf **push** direction hai (PoolBrayne → QuickBooks). Pull/two-way (QBO se data wapas laana,
+     jaise Module 1 ka "Purchases tab — Synced from QuickBooks" jo abhi bhi `job_service_history`
+     dikhata hai, real QBO data nahi) is session mein nahi hua.
+  2. Line-item breakdown QBO mein nahi jaata (sirf total ek line mein) — agar future mein
+     per-product/service granularity chahiye ho to PoolBrayne inventory items ko QBO Items se map
+     karna hoga.
+  3. Sync abhi **manual** hai (button click) — auto-sync (e.g. invoice create/paid hone par
+     automatically push) nahi likha, jaan-boojh kar simple/explicit rakha.
+  4. Sandbox mein hi hai — production switch tab hoga jab Railway deploy + production keys
+     unlock ho chuke hon (pehle hi discuss ho chuka hai).
+  5. Sab kuch abhi tak commit nahi hua.
+  ---

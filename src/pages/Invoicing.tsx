@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { invoicingApi } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
+import { settingsApi } from "@/lib/api/settings";
 import type { Database } from "@/lib/database.types";
 
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null };
@@ -40,20 +41,23 @@ export default function Invoicing() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newInvoice, setNewInvoice] = useState({ customerId: "", issueDate: "", dueDate: "", amount: "" });
+  const [qboConnected, setQboConnected] = useState(false);
   const navigate = useNavigate();
 
   const loadInvoicing = useCallback(async () => {
     setIsLoading(true);
-    const [invoicesData, recurringData, paymentsData, customersData] = await Promise.all([
+    const [invoicesData, recurringData, paymentsData, customersData, settingsData] = await Promise.all([
       invoicingApi.list(),
       invoicingApi.recurringBilling(),
       invoicingApi.payments(),
       customersApi.list(),
+      settingsApi.all(),
     ]);
     setInvoices((invoicesData ?? []) as Invoice[]);
     setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
     setPayments((paymentsData ?? []) as Payment[]);
     setCustomers(customersData ?? []);
+    setQboConnected(settingsData.integrations.some((i) => i.provider === "quickbooks" && i.status === "Connected"));
     setIsLoading(false);
   }, []);
 
@@ -156,18 +160,22 @@ export default function Invoicing() {
 
       {/* QB Connected + Aged Receivables */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card className="lg:col-span-1 border-[#E2E8F0] shadow-sm bg-[#16A34A]/5">
+        <Card className={`lg:col-span-1 border-[#E2E8F0] shadow-sm ${qboConnected ? "bg-[#16A34A]/5" : "bg-[#F59E0B]/5"}`}>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-[#16A34A]/10 flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-[#16A34A]" />
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${qboConnected ? "bg-[#16A34A]/10" : "bg-[#F59E0B]/10"}`}>
+                <BookOpen className={`w-5 h-5 ${qboConnected ? "text-[#16A34A]" : "text-[#F59E0B]"}`} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <p className="font-semibold text-sm text-[#0F172A]">QuickBooks Online</p>
-                  <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">Connected</Badge>
+                  <Badge className={`${qboConnected ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F59E0B]/10 text-[#F59E0B]"} text-[10px] px-1.5 py-0`}>
+                    {qboConnected ? "Connected" : "Not Connected"}
+                  </Badge>
                 </div>
-                <p className="text-xs text-[#64748B]">Two-way sync active. Last synced 4 min ago.</p>
+                <p className="text-xs text-[#64748B]">
+                  {qboConnected ? "Sync invoices from each invoice's detail page." : "Connect it from Settings > Integrations."}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -262,7 +270,11 @@ export default function Invoicing() {
                         <Badge className={`${statusColors[inv.status]} text-[10px] px-1.5 py-0`}>{inv.status}</Badge>
                       </td>
                       <td className="text-center py-3 px-4">
-                        <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">Synced</Badge>
+                        {inv.qbo_invoice_id ? (
+                          <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">Synced</Badge>
+                        ) : (
+                          <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Not synced</Badge>
+                        )}
                       </td>
                       <td className="text-center py-3 px-4">
                         <ArrowRight className="w-4 h-4 text-[#64748B]" />

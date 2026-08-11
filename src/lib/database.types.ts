@@ -216,6 +216,7 @@ export type Database = {
           lifetime_value: number
           name: string
           phone: string | null
+          qbo_customer_id: string | null
           tags: string[]
           tenant_id: string
           type: string
@@ -233,6 +234,7 @@ export type Database = {
           lifetime_value?: number
           name: string
           phone?: string | null
+          qbo_customer_id?: string | null
           tags?: string[]
           tenant_id: string
           type?: string
@@ -250,6 +252,7 @@ export type Database = {
           lifetime_value?: number
           name?: string
           phone?: string | null
+          qbo_customer_id?: string | null
           tags?: string[]
           tenant_id?: string
           type?: string
@@ -577,6 +580,7 @@ export type Database = {
           number: string
           paid_date: string | null
           payment_method: string | null
+          qbo_invoice_id: string | null
           status: string
           tenant_id: string
         }
@@ -591,6 +595,7 @@ export type Database = {
           number: string
           paid_date?: string | null
           payment_method?: string | null
+          qbo_invoice_id?: string | null
           status?: string
           tenant_id: string
         }
@@ -605,6 +610,7 @@ export type Database = {
           number?: string
           paid_date?: string | null
           payment_method?: string | null
+          qbo_invoice_id?: string | null
           status?: string
           tenant_id?: string
         }

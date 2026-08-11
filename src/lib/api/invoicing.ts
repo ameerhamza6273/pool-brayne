@@ -22,4 +22,6 @@ export const invoicingApi = {
   recurringBilling: () => api.get<RecurringBilling[]>("/api/invoices/recurring-billing/list"),
 
   payments: () => api.get<Payment[]>("/api/invoices/payments/list"),
+
+  syncToQuickbooks: (id: string) => api.post<{ qboInvoiceId: string }>(`/api/invoices/${id}/quickbooks-sync`, {}),
 };
