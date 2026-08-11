@@ -979,3 +979,79 @@ gap-list mein "Module 6 — real QBO sync" pending tha):
      unlock ho chuke hon (pehle hi discuss ho chuka hai).
   5. Sab kuch abhi tak commit nahi hua.
   ---
+
+### 2026-08-11 (continued) — 🚀 Production deploy ho gaya: Vercel + Railway (apna account) + SPA/login fixes
+
+User ne poocha "railway apna account banaye ya client ka wait karein" — advice di gayi: apna
+account bana kar abhi deploy karo (client ke account par baad mein move karna easy hai — sirf
+GitHub repo dobara connect + same env vars copy, koi real "migration" nahi chahiye kyunki actual
+data Supabase mein hai, Railway sirf stateless backend chalata hai). User ne "han open kro browser
+men" kaha — is session mein poora deployment loop complete hua:
+
+- **Pehle Vercel blank-page bug fix hua:** user ne bataya `pool-brayne.vercel.app` par kuch nahi
+  dikh raha — check kiya (WebFetch se) to sirf `<title>PoolBrayne</title>` reh gaya tha, baaqi
+  React crash ho raha tha. Wajah: `.env` gitignored hai isliye Vercel ke paas
+  `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` nahi thay, `createClient(undefined, undefined)`
+  load hote hi crash ho jata. User ne khud Vercel Environment Variables mein yeh 2 client-safe
+  values add kar ke redeploy kiya — fix ho gaya.
+- **Phir "Invalid login credentials" issue:** turant clarify ho gaya ke yeh sirf browser ka
+  autofill-guessed password tha (login field mein dots the jo sahi password nahi thay) — asal
+  credentials (`bryan@poolbrayne.com` / `PoolBrayne2026!`) se turant login ho gaya, koi backend
+  config issue nahi tha.
+- **SPA routing 404 bug mila aur fix hua:** direct URL (`/login`, `/jobs` waghera) navigate/refresh
+  karne par Vercel apna generic **404: NOT_FOUND** deta tha (sirf `/` root kaam karta tha) —
+  wajah: koi `vercel.json` nahi tha, isliye Vercel client-side routes (React Router) ko static
+  files samajh kar 404 deta. Fix: naya `vercel.json` (repo root) with
+  `{"rewrites":[{"source":"/(.*)","destination":"/index.html"}]}` — standard Vite+React-Router-on-
+  Vercel fix. User ne commit + push kiya, confirm hua `/jobs` bhi ab load hota hai.
+- **Login.tsx mein password show/hide (eye icon) add kiya** — user ki request par, `Eye`/`EyeOff`
+  lucide icons se `showPassword` state toggle, input `type` dynamically "text"/"password".
+- **Railway par naya account bana kar backend deploy kiya** (user ne khud GitHub OAuth se sign in
+  kiya browser mein, main sirf navigate/configure karta raha — koi account creation/password khud
+  nahi kiya, safety rules ke mutabiq):
+  - Naya project ("content-commitment" — Railway ka auto-generated naam) + service "pool-brayne",
+    `ameerhamza6273/pool-brayne` GitHub repo se connect hua.
+  - **Critical fix:** default Root Directory khali thi (matlab repo **root**, frontend) — humara
+    backend `backend/` folder mein hai. Settings → Source → Root Directory ko `/backend` set kiya.
+  - **Environment Variables** Raw Editor se ek sath paste kiye: `DATABASE_URL` (pooler wala, jo
+    is machine ke network se resolve hota hai), `SUPABASE_URL`, `CORS_ORIGIN=https://pool-brayne.
+    vercel.app` (production frontend URL), `QBO_CLIENT_ID`/`QBO_CLIENT_SECRET`/`QBO_ENVIRONMENT`/
+    `QBO_REDIRECT_URI`/`QBO_SANDBOX_REALM_ID` (abhi bhi `localhost:4000` wala redirect URI hai —
+    **production mein QuickBooks connect abhi kaam nahi karega** jab tak yeh aur Intuit app ke
+    redirect-URIs list dono update na hon — agla follow-up). `PORT` jaan-boojh kar set nahi kiya —
+    Railway khud inject karta hai, backend code already `process.env.PORT ?? 4000` handle karta hai.
+  - Root Directory + saare env vars ek hi "Deploy Changes" se apply kiye (9 changes ek sath) —
+    build/start logs se confirm kiya `> node dist/server.js` chala aur
+    `Server listening at http://127.0.0.1:8080` (Railway ne khud PORT=8080 assign kiya).
+  - **Public domain generate kiya** (Settings → Networking → Generate Domain):
+    `pool-brayne-production.up.railway.app` — `curl /health` se `{"ok":true}` confirm kiya.
+  - Vercel mein naya `VITE_API_URL=https://pool-brayne-production.up.railway.app` add kiya, phir
+    latest deployment **Redeploy** kiya (env var change lagu karne ke liye naya build zaroori hota
+    hai, purane build mein baked-in nahi hota).
+  - **End-to-end live verify kiya:** `pool-brayne.vercel.app/jobs` par real jobs data load hua
+    (David Foster, Sarah Mitchell, etc.) — poori chain (Vercel → Railway → Supabase) production
+    mein kaam kar rahi hai.
+- **Non-obvious gotcha is session ka:** Railway ke UI mein settings-diff panel khula ho (pending
+  changes) to us waqt tab-navigation links (jaise "Variables" tab) silently click ignore kar dete
+  hain (shayad unsaved-changes guard) — seedhi URL navigate karna reliable raha. Isi tarah
+  Vercel ke "Add Environment Variable" / dropdown menus React portals mein render hote hain jo
+  kabhi accessibility-tree/`get_page_text` capture mein miss ho jate hain — `javascript_tool` se
+  seedha DOM query + native value setter (`Object.getOwnPropertyDescriptor(...).set` + dispatch
+  `input` event, taake React controlled-input state update ho) zyada reliable raha in dono
+  platforms (Railway + Vercel) ke complex dashboards ke liye is session mein.
+- **User ne explicitly kaha screenshots na loon** ("na mujhe na client ko zaroorat hoti hai") — is
+  poori Railway/Vercel session mein `get_page_text` + `javascript_tool` se hi kaam chalaya, koi
+  screenshot tool call nahi ki.
+- **Baaqi/pending:**
+  1. **QuickBooks production redirect URI** — abhi `QBO_REDIRECT_URI` Railway par bhi
+     `localhost:4000` hai, isko `https://pool-brayne-production.up.railway.app/api/quickbooks/
+     callback` par update karna hai, **aur** Intuit developer app (Keys & OAuth → Redirect URIs)
+     mein yeh naya URL add karna hai — tab jaake production se QuickBooks connect kaam karega
+     (abhi sirf local dev se kaam karta hai).
+  2. **Client ke Railway account par move karna** (jab wo account de) — sirf naya service usi
+     GitHub repo se connect karna, same env vars copy karna, naya Railway URL milega to
+     `VITE_API_URL` (Vercel) usko point karna — 5-10 min ka kaam, koi complex migration nahi.
+  3. Baaqi 5 integrations (Twilio/Stripe/SendGrid/GPS/Gusto) — client se abhi bhi pending.
+  4. Railway **free trial credit** use ho raha hai abhi ($5/30 din) — uske baad Hobby plan
+     ($5/month) lagega agar continue karna ho.
+  ---
