@@ -1710,23 +1710,32 @@ export type Database = {
       }
       tenants: {
         Row: {
+          address: string | null
           created_at: string
           id: string
+          invoice_business_name: string | null
           name: string
+          phone: string | null
           plan_id: string | null
           subscription_status: string
         }
         Insert: {
+          address?: string | null
           created_at?: string
           id?: string
+          invoice_business_name?: string | null
           name: string
+          phone?: string | null
           plan_id?: string | null
           subscription_status?: string
         }
         Update: {
+          address?: string | null
           created_at?: string
           id?: string
+          invoice_business_name?: string | null
           name?: string
+          phone?: string | null
           plan_id?: string | null
           subscription_status?: string
         }

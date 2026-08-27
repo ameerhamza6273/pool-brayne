@@ -27,6 +27,7 @@ export default function InvoiceDetail() {
   const navigate = useNavigate();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; invoice_business_name: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [payOpen, setPayOpen] = useState(false);
   const [qboSyncing, setQboSyncing] = useState(false);
@@ -39,6 +40,7 @@ export default function InvoiceDetail() {
       const bundle = await invoicingApi.detail(id);
       setInvoice(bundle.invoice as Invoice);
       setLineItems(bundle.lineItems);
+      setBusiness(bundle.business);
     } catch {
       setInvoice(null);
     }
@@ -188,11 +190,10 @@ export default function InvoiceDetail() {
                 <div className="w-8 h-8 rounded-lg bg-[#0891B2] flex items-center justify-center">
                   <FileText className="w-4 h-4 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-[#0F172A]">PoolBrayne</h2>
+                <h2 className="text-xl font-bold text-[#0F172A]">{business?.invoice_business_name || business?.name || "—"}</h2>
               </div>
-              <p className="text-sm text-[#64748B]">Bryan's Pool Co</p>
-              <p className="text-sm text-[#64748B]">Austin, TX 78701</p>
-              <p className="text-sm text-[#64748B]">(512) 555-1000</p>
+              {business?.address && <p className="text-sm text-[#64748B]">{business.address}</p>}
+              {business?.phone && <p className="text-sm text-[#64748B]">{business.phone}</p>}
             </div>
             <div className="text-right">
               <h3 className="text-2xl font-bold text-[#0F172A]">INVOICE</h3>

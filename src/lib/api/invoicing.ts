@@ -11,7 +11,12 @@ export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & {
 export const invoicingApi = {
   list: () => api.get<Invoice[]>("/api/invoices"),
 
-  detail: (id: string) => api.get<{ invoice: Invoice; lineItems: LineItem[] }>(`/api/invoices/${id}`),
+  detail: (id: string) =>
+    api.get<{
+      invoice: Invoice;
+      lineItems: LineItem[];
+      business: { name: string; phone: string | null; address: string | null; invoice_business_name: string | null } | null;
+    }>(`/api/invoices/${id}`),
 
   byJob: (jobId: string) => api.get<{ id: string } | null>(`/api/invoices/by-job?job_id=${jobId}`),
 

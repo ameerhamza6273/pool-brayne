@@ -48,6 +48,9 @@ export default function Settings() {
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
   const [billingHistory, setBillingHistory] = useState<BillingHistoryRow[]>([]);
   const [tenantName, setTenantName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
+  const [invoiceBusinessName, setInvoiceBusinessName] = useState("");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const qboStatus = new URLSearchParams(window.location.search).get("qbo");
 
@@ -59,6 +62,9 @@ export default function Settings() {
     setSubscriptionPlans(data.subscriptionPlans);
     setBillingHistory(data.billingHistory);
     setTenantName(data.tenantName);
+    setPhone(data.phone);
+    setAddress(data.address);
+    setInvoiceBusinessName(data.invoiceBusinessName);
     setSelectedPlan(data.planId);
     setIsLoading(false);
   }, []);
@@ -73,7 +79,7 @@ export default function Settings() {
   }, [loadSettings]);
 
   const handleSaveCompany = async () => {
-    await settingsApi.saveCompany(tenantName);
+    await settingsApi.saveCompany({ name: tenantName, phone, address, invoiceBusinessName });
   };
 
   const handleSelectPlan = async (planId: string) => {
@@ -147,11 +153,21 @@ export default function Settings() {
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-[#0F172A]">Phone</Label>
-                  <Input defaultValue="(512) 555-1000" className="mt-1 h-10" />
+                  <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="text-sm font-medium text-[#0F172A]">Address</Label>
-                  <Input defaultValue="1200 Warehouse Blvd, Austin, TX 78701" className="mt-1 h-10" />
+                  <Input value={address} onChange={(e) => setAddress(e.target.value)} className="mt-1 h-10" />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label className="text-sm font-medium text-[#0F172A]">Invoice Business Name</Label>
+                  <Input
+                    value={invoiceBusinessName}
+                    onChange={(e) => setInvoiceBusinessName(e.target.value)}
+                    placeholder="Same as Company Name if left blank"
+                    className="mt-1 h-10"
+                  />
+                  <p className="text-xs text-[#64748B] mt-1">Shown on invoices — use this if your legal/billing name is different from your Company Name above (e.g. a DBA).</p>
                 </div>
                 <div>
                   <Label className="text-sm font-medium text-[#0F172A]">Business Hours</Label>

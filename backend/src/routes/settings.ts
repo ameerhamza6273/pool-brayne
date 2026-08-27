@@ -9,9 +9,11 @@ export default async function settingsRoutes(app: FastifyInstance) {
         tx`select id, tenant_id, name, status, description, icon, provider from integrations order by name`,
         tx`select * from subscription_plans order by price`,
         tx`select * from billing_history order by billed_date desc`,
-        tx`select name, plan_id from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, plan_id, phone, address, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
       ]);
-      const tenant = tenantRows[0] as { name: string; plan_id: string | null } | undefined;
+      const tenant = tenantRows[0] as {
+        name: string; plan_id: string | null; phone: string | null; address: string | null; invoice_business_name: string | null;
+      } | undefined;
       return {
         teamMembers,
         integrations,
@@ -19,13 +21,19 @@ export default async function settingsRoutes(app: FastifyInstance) {
         billingHistory,
         tenantName: tenant?.name ?? "",
         planId: tenant?.plan_id ?? null,
+        phone: tenant?.phone ?? "",
+        address: tenant?.address ?? "",
+        invoiceBusinessName: tenant?.invoice_business_name ?? "",
       };
     });
   });
 
-  app.patch<{ Body: { name: string } }>("/company", async (req) => {
-    const { name } = req.body;
-    return withTenantContext(req.userId, (tx) => tx`update tenants set name = ${name} where id = current_tenant_id() returning *`);
+  app.patch<{ Body: { name: string; phone: string; address: string; invoiceBusinessName: string } }>("/company", async (req) => {
+    const { name, phone, address, invoiceBusinessName } = req.body;
+    return withTenantContext(req.userId, (tx) => tx`
+      update tenants set name = ${name}, phone = ${phone}, address = ${address}, invoice_business_name = ${invoiceBusinessName}
+      where id = current_tenant_id() returning *
+    `);
   });
 
   app.patch<{ Body: { planId: string } }>("/plan", async (req) => {

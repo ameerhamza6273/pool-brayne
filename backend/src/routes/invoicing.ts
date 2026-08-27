@@ -23,15 +23,16 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     const result = await withTenantContext(req.userId, async (tx) => {
-      const [invoiceRows, lineItems] = await Promise.all([
+      const [invoiceRows, lineItems, tenantRows] = await Promise.all([
         tx`
           select i.*, jsonb_build_object('name', c.name, 'address', c.address) as customers
           from invoices i left join customers c on c.id = i.customer_id
           where i.id = ${id} limit 1
         `,
         tx`select * from invoice_line_items where invoice_id = ${id}`,
+        tx`select name, phone, address, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
       ]);
-      return { invoice: invoiceRows[0] ?? null, lineItems };
+      return { invoice: invoiceRows[0] ?? null, lineItems, business: tenantRows[0] ?? null };
     });
     if (!result.invoice) {
       reply.code(404).send({ error: "Invoice not found" });

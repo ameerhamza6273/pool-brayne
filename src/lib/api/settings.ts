@@ -14,9 +14,13 @@ export const settingsApi = {
     billingHistory: BillingHistoryRow[];
     tenantName: string;
     planId: string | null;
+    phone: string;
+    address: string;
+    invoiceBusinessName: string;
   }>("/api/settings"),
 
-  saveCompany: (name: string) => api.patch("/api/settings/company", { name }),
+  saveCompany: (data: { name: string; phone: string; address: string; invoiceBusinessName: string }) =>
+    api.patch("/api/settings/company", data),
 
   selectPlan: (planId: string) => api.patch("/api/settings/plan", { planId }),
 };
