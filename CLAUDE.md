@@ -1262,8 +1262,61 @@ wait — dekho upar wala push-blocked note):
   bhi real payment processing (Invoicing/POS "Collect Payment" abhi simulate hoti hai) par kaam
   ho, **Authorize.net sandbox use karna hai, Stripe nahi**.
 - **Baaqi/pending (is continuation ke end tak):**
-  1. Fleet.tsx ka GPS7000 link change abhi commit/push/deploy nahi hua — agla turant kaam.
+  1. ~~Fleet.tsx ka GPS7000 link~~ — **commit `b3b5158` ho gaya, browser-tested, dev par confirm.**
+     (push abhi bhi user khud karega, classifier block karta hai)
   2. Resale/pluggable-integrations scope reply client ko bhejna baaqi hai (draft ban chuka hai).
   3. Authorize.net integration kaam abhi shuru nahi hua — sirf record kiya gaya hai.
   4. Baaqi sab pehle jaisa pending hai (software info emails, Railway/Vercel handover, etc.)
+  ---
+
+### 2026-08-27 (continued) — Real customer-list file mila (mixed business — NOT imported), Estimates + Vendor Bills built
+
+- User ne bataya Downloads mein ek naya file hai (client ne bheja) — `customer list 8-27-26.xlsx`,
+  3630 rows, real customer data (CustomerName/Account/Phone/Email/Address/Lead Status/Notes/QB
+  Reward ID). **Isko import nahi kiya** — file mein commercial/restaurant-type accounts
+  ("American Deli", "Beef Grill", "Captain D's") REAL homeowner names ke saath mix hain, jo
+  strongly suggest karta hai ke yeh shayad **dono businesses (PoolBrayne + Engage/hydrovac) ka
+  shared/combined customer export hai**, sirf PoolBrayne ka nahi (dekho [[client_two_projects]]
+  memory — same client ke 2 alag businesses hain). 3630 real PII records ko galat project mein
+  bulk-import karna genuinely risky/irreversible hota, isliye client ko pehle clarify karne wala
+  sawal draft kiya (bheja gaya ya nahi confirm nahi hua is session mein) — **koi import script
+  nahi likha, koi DB mutation nahi ki is file ke against.**
+- **Estimates aur Vendor Bills (Accounts Payable) real bana diye** (client ki 2 nayi requests
+  se — "Clear Pool CRM jaisa estimates create karna" aur "Invoicing mein customers/vendors ke
+  2 alag columns") — commit `083cc36`:
+  - Naya `estimates` + `estimate_line_items` (customer_id, job_id nullable, number, issue_date,
+    expiry_date, amount, status Draft/Sent/Accepted/Declined/**Converted**,
+    `converted_invoice_id`) — pehle "Estimate/Quote" sirf ek job **type** label tha, koi real
+    document/workflow nahi tha. Ab Invoicing page mein naya "Estimates" tab hai jahan estimate
+    banti hai (customer/dates/amount), aur **"Convert to Invoice"** button ek real Draft invoice
+    bana kar us par navigate kar deta hai (estimate.status = 'Converted' ho jata hai, dobara
+    convert nahi hota — idempotent).
+  - Naya `vendor_bills` + `vendor_bill_line_items` (supplier_id, number, dates, amount, status
+    Draft/Received/Paid/Overdue) — Invoicing page mein naya "Vendor Bills" tab (existing
+    `suppliers` table reuse kiya, jo pehle sirf Inventory ke Purchase Orders mein use hoti thi —
+    naya `GET /api/inventory/suppliers` endpoint banaya taake Invoicing bhi wahi list use kar
+    sake). "Mark Paid" action real status update karta hai.
+  - Dono ke liye poori tarah nayi RLS policies (`tenant_isolation`, do-block loop se, jaisa baaqi
+    tables ka pattern hai).
+  - Pehle se maujood **dead "Duplicate Estimate" button** (jo kabhi kaam nahi karta tha) ko
+    **"New Estimate"** real button se replace kiya.
+  - Invoicing.tsx ka pehla tab "All Invoices" se **"Customer Invoices"** rename kiya (client ke
+    literal "1 column for customers, 1 for vendors" ask ko satisfy karne ke liye do alag tabs:
+    Customer Invoices vs Vendor Bills).
+  - **Real bug pakड़ा aur fix kiya migration likhte waqt:** `estimate.issue_date.toISOString()`
+    likhne wala tha convert-to-invoice route mein — lekin `db.ts` ka custom `date` type parser
+    already `date` columns ko plain "YYYY-MM-DD" **string** deta hai (Date object nahi), isliye
+    `.toISOString()` call karne se crash hota. Fix se pehle hi pakड़ liya gaya (`new Date()`
+    current date use kiya invoice number banane ke liye, estimate ka apna issue_date reuse nahi
+    kiya).
+  - Browser mein poora end-to-end verify kiya (dev): estimate banayi → invoice mein convert ki
+    (real Draft invoice bana, sahi customer/amount) → vendor bill banayi (real supplier "Pentair
+    Direct" se) → "Mark Paid" click kiya → status real update hua. Saara test data (estimate,
+    converted invoice, vendor bill) turant DB se delete kar diya.
+  - Frontend + backend dono typecheck clean.
+- **Baaqi/pending:**
+  1. Customer-list clarification abhi bhi client se chahiye (import se pehle).
+  2. Resale/pluggable-integrations scope reply, Authorize.net kaam — dono abhi bhi pending
+     (pehle se noted).
+  3. Yeh commit (`083cc36`) bhi abhi tak push nahi hua — user khud karega.
   ---
