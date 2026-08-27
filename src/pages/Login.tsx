@@ -43,7 +43,7 @@ export default function Login() {
           <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-8">
             <Droplets className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-4xl font-bold mb-4">PoolBrayne</h1>
+          <h1 className="text-4xl font-bold mb-4">Clear Pool CRM</h1>
           <p className="text-xl text-white/90 mb-8 font-medium">Built by a tradesman. Built for the trades.</p>
           <div className="space-y-3 text-left bg-white/10 backdrop-blur rounded-xl p-6">
             <div className="flex items-center gap-3">
@@ -70,13 +70,13 @@ export default function Login() {
               <Droplets className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-[#0F172A]">PoolBrayne</h1>
+              <h1 className="text-xl font-bold text-[#0F172A]">Clear Pool CRM</h1>
               <p className="text-xs text-[#64748B]">Built by a tradesman. Built for the trades.</p>
             </div>
           </div>
 
           <h2 className="text-2xl font-bold text-[#0F172A] mb-2">Sign in</h2>
-          <p className="text-sm text-[#64748B] mb-6">Welcome back to PoolBrayne</p>
+          <p className="text-sm text-[#64748B] mb-6">Welcome back to Clear Pool CRM</p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

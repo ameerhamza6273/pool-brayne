@@ -40,7 +40,7 @@ export default function SalesPortal() {
               <Droplets className="w-7 h-7 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">PoolBrayne</h1>
+              <h1 className="text-2xl font-bold">Clear Pool CRM</h1>
               <p className="text-xs text-white/60 uppercase tracking-wider">Powered by Brayne AI</p>
             </div>
           </div>
@@ -117,7 +117,7 @@ export default function SalesPortal() {
                 <Droplets className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-bold">PoolBrayne</p>
+                <p className="font-bold">Clear Pool CRM</p>
                 <p className="text-xs text-white/60">All modules, one screen</p>
               </div>
             </div>
@@ -268,7 +268,7 @@ export default function SalesPortal() {
               <Droplets className="w-4 h-4 text-white" />
             </div>
             <div>
-              <p className="font-bold text-white text-sm">PoolBrayne</p>
+              <p className="font-bold text-white text-sm">Clear Pool CRM</p>
               <p className="text-xs text-white/50">Powered by Brayne AI</p>
             </div>
           </div>
