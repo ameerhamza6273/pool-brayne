@@ -1320,3 +1320,47 @@ wait — dekho upar wala push-blocked note):
      (pehle se noted).
   3. Yeh commit (`083cc36`) bhi abhi tak push nahi hua — user khud karega.
   ---
+
+### 2026-08-27 (continued) — Product rebrand: PoolBrayne → Clear Pool CRM + tenant-customizable invoice letterhead
+
+- Client ne **"Let's start referring to Pool Brayne as Clear Pool"** kaha — **pehli baar isko
+  maine khud hi rename samajh kar poore codebase mein "ClearPool" kar diya tha bina client se
+  confirm kiye**, user ne turant sahi tarike se roka ("tumne moqa dekh kr sabmen change kr
+  diya", "us se puchna tha") — is se pehle main us hi outgoing SMS mein "PoolBrayne" likh chuka
+  tha jo inconsistent tha. **Fix:** us pehle rename commit ko `git revert` se undo kiya (kabhi
+  push nahi hua tha), aur client ko seedha explicit sawal poocha ("app rename ya sirf
+  conversation ke liye"). **Lesson for future: ambiguous branding/naming instructions par seedha
+  implement mat karo, pehle explicit confirm karo — is baar khud se decide karna galat tha.**
+- Client ne phir explicit confirm kar diya: **"Yes, everything is going to be Clear Pool CRM...
+  No more Pool Brayne."** — is baar poora rename kiya (commit `70590d8`), exact naam **"Clear
+  Pool CRM"** (client ke apne wording ke mutabiq, na ke "ClearPool" jo maine pehli baar khud
+  guess kiya tha). Sirf user-facing text (login/signup/sidebar/invoice-placeholder/onboarding/
+  sales-portal/mock-data) — repo name, Supabase project, Vercel/Railway project names, domain
+  jaan-boojh kar touch nahi kiye (alag/bada decision hai, flag kiya gaya hai).
+- **Client ne saath hi ek genuinely naya architecture point uthaya:** "for invoicing, it should
+  be Pool Supply Atlanta... Invoicing should be customizable as we're going to be selling it to
+  other pool stores." Turant discover hua ke `InvoiceDetail.tsx` ka poora header
+  (**"Bryan's Pool Co" / "Austin, TX 78701" / "(512) 555-1000"**) **hardcoded tha**, kisi tenant
+  data se nahi aata tha — resale ke liye yeh genuinely blocking gap tha. Fix kiya (commit
+  `8c8da8a`):
+  - `tenants` table mein 3 naye columns: `phone`, `address`, `invoice_business_name` (migration
+    `20260827140000_tenant_invoice_letterhead.sql`).
+  - Settings > Company tab ke Phone/Address fields jo pehle **static `defaultValue` (kabhi save
+    nahi hote the)** thay, ab real state + persistence (`settingsApi.saveCompany` ab
+    `{name, phone, address, invoiceBusinessName}` sab bhejta hai). Naya field **"Invoice Business
+    Name"** add kiya — jaan-boojh kar `tenants.name` (general company/CRM name) se **alag**
+    rakha, kyunki client ka legal/billing naam ("Pool Supply Atlanta") uske general company naam
+    ("Bryan's Pool Co") se different hai — bilkul real-world DBA (doing-business-as) scenario.
+  - `GET /api/invoices/:id` ab `business` object bhi return karta hai (tenant ka
+    name/phone/address/invoice_business_name), `InvoiceDetail.tsx` header ab isse render karta
+    hai (`business.invoice_business_name || business.name` fallback chain).
+  - Is tenant ke liye real Settings save flow se hi **"Pool Supply Atlanta"** set kiya (browser
+    se, koi direct DB hack nahi) — browser mein confirm kiya invoice header ab "Pool Supply
+    Atlanta" + real address/phone dikhata hai.
+  - **Yeh feature client ke rebrand se independent hai** — resale ke liye zaroori tha chahe naam
+    "PoolBrayne" rehta ya "Clear Pool CRM" ban jata, isliye alag commit rakha.
+- Frontend + backend dono typecheck clean, sab kuch browser mein verify kiya.
+- **Baaqi/pending:** customer-list clarification, resale/pluggable-integrations reply,
+  Authorize.net — sab pehle jaisa pending. Yeh 2 naye commits (`70590d8`, `8c8da8a`) bhi push
+  nahi hue abhi.
+  ---
