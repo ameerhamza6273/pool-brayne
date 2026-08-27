@@ -1055,3 +1055,86 @@ men" kaha — is session mein poora deployment loop complete hua:
   4. Railway **free trial credit** use ho raha hai abhi ($5/30 din) — uske baad Hobby plan
      ($5/month) lagega agar continue karna ho.
   ---
+
+### 2026-08-27 — Client feature-request backlog collected; "multiple customers per address" built
+
+User ne boss/client se aayi ek nayi feature-request list share ki (customer/jobs-dispatch/inventory
+items — residential/commercial customer "+"" add, address autocomplete, drag-drop photo notes,
+color-by-tech calendar, hover job description, jobs map view, inventory long/short description +
+department/manufacturer, Avery/Zebra label printing, QBO COGS/Income/Asset mapping, daily route
+view, sales/tax reports) — poori list ko actual code ke against audit kiya, koi bhi already
+implemented nahi mila (sab genuinely naye gaps hain). "Software info 1-4" emails (July 1, pics ke
+sath) is session mein kabhi available nahi hue (user ko khud email nahi mili) — un specific items
+(reports/labels/QBO account mapping/route view) ka scope abhi bhi unclear/unconfirmed hai jab tak
+woh email milti hai.
+
+**Client se do sawal SMS se poochay gaye** (draft is session mein banaya, user ne bheja):
+1. PoolBrayne ki pool-service trucks ke liye GPS/fleet provider — abhi bhi pending, client ne kaha
+   "I will get right back to you on that."
+2. "Multiple customers per address" ka matlab kya hai — client ne jawab diya: **"There could be
+   multiple customer names, phone numbers, etc., under the same address"** — matlab ek hi property
+   address par alag-alag separate customer contacts (jaise landlord + tenant), na ke ek customer
+   ke multiple properties/sites (jo Engage/yardward-pro project ke "multi-site customer" jaisa
+   hota, lekin wahi ek alag project hai — dekho [[client_two_projects]] memory).
+
+**Feature built end-to-end based on that answer** — "Add Customer" ab ek shared property address
+par multiple separate customer contacts (name/phone/email each) add karne deta hai, "+" button se:
+- Migration `20260827090000_customer_household.sql` — `customers.household_id` (nullable uuid,
+  indexed) add kiya. Koi alag "household" table nahi banayi — yeh sirf ek shared grouping key hai,
+  normalized entity nahi. **Access token nahi tha, isliye pehle jaisa hi `DATABASE_URL` se seedha
+  `postgres` package se run kiya** (temp script `backend/_tmp-run-migration.ts`, run karke turant
+  delete kar diya — yeh pattern future migrations ke liye bhi yaad rakhna jab access token na ho).
+- Backend `backend/src/routes/customers.ts`: `POST /api/customers` ab `{ contacts: [...], type,
+  tags, address }` accept karta hai (pehle single `{name, type, tags, email, phone, address}` tha)
+  — jitne contacts utni rows insert karta hai, sab ek naye `household_id` se linked (agar
+  contacts.length > 1; single contact ka case household_id null hi rehta hai — backward compatible
+  behavior). `GET /:id` ab `household` array bhi return karta hai (same household_id ke baaqi
+  customers, name/phone/email only).
+- Frontend `Customers.tsx`: Add Customer dialog redesign — shared Property Address + Type fields
+  upar, phir repeatable "Customer N" cards (First/Last/Phone/Email) jinhe "+ Add Another Customer
+  at This Address" se add kiya ja sakta hai, har card par "x" se remove bhi ho sakta hai. Save
+  button label singular/plural ("Save Customer" vs "Save Customers") contacts count ke hisaab se.
+- Frontend `CustomerDetail.tsx`: naya "Also at This Address" card (Contact Info ke neeche) jo
+  household ke baaqi members dikhata hai, click se unke profile par navigate karta hai (dono
+  directions verified).
+- `database.types.ts` mein `household_id` field manually add kiya (schema regenerate ke liye phir
+  se access token nahi tha).
+- **Dev-server port gotcha is session ka:** dono `5173` AND `5174` par is baar **yardward-pro**
+  chal raha tha (do alag vite processes, ek explicit `--port 5173` ke sath jo khud-ba-khud 5174
+  par shift ho gaya kyunki 5173 already li hui thi ek doosre yardward-pro process ne) — PoolBrayne
+  ke liye is baar **port 5175** use kiya (`--port 5175 --strictPort`), aur backend ka
+  `CORS_ORIGIN` (`backend/.env`) bhi `5174` se `5175` update karna pada (warna browser
+  "Failed to fetch" deta rehta, silently — koi CORS error console mein explicit nahi dikhta jab
+  tak network requests check na karo). **Agli baar bhi yehi check karna:** blindly kisi bhi port
+  ko assume mat karo, netstat + process cmdline dono verify karo, aur agar frontend port badlo to
+  `backend/.env` ka `CORS_ORIGIN` bhi saath mein update karna yaad rakhna.
+- Browser mein end-to-end verify kiya (device "ameer hamza" wale Chrome mein, dobara confirm karke
+  kyunki sirf ek hi browser is baar connected tha): 2 contacts (TestLandlord One + TestTenant Two)
+  ek hi address par add kiye, list mein separate rows dikhe, dono ka "Also at This Address" link
+  dono directions mein kaam kiya. Single-contact add bhi test kiya (backward-compatible path,
+  koi household_id nahi banta jab sirf ek contact ho). Saara test data cleanup kiya (direct DB
+  delete via temp script, turant delete).
+- Frontend aur backend dono typecheck clean.
+- **Naya important context: PoolBrayne ka client, `D:\React\yardward-pro` (Engage CRM) ka bhi
+  wahi client hai** — do alag businesses/fleets, ek hi insaan. Is session mein memory files
+  update ki gayin (`reference_yardward_pro.md`, naya `client_two_projects.md`) taake future
+  sessions confusion na karein ke Engage thread ka jawab (jaise Geotab GPS) PoolBrayne par bhi
+  apply hota hai — nahi hota, alag fleets hain.
+- **Baaqi/pending:**
+  1. Commercial customer type ke liye bhi wahi "+" flow use hota hai (address abhi bhi single
+     shared field hai, jaisa client ne confirm kiya) — agar future mein client kahe ke commercial
+     accounts ko multiple *sites* bhi chahiye (Engage-jaisa multi-site), woh ek alag/bada feature
+     hoga, abhi scope mein nahi.
+  2. GPS vendor (PoolBrayne-specific) — client se abhi bhi pending jawab.
+  3. "Software info 1-4" emails (reports, Avery/Zebra label printing, QBO COGS/Income/Asset
+     mapping per inventory item, daily route view, sales/tax reports, color-by-tech calendar,
+     hover-job-description, jobs map view, address autocomplete, drag-drop photo) — koi bhi is
+     session mein build nahi hua, sirf audit kiya ke pehle se nahi bana hua tha. Email milne ka
+     wait hai kuch items (khaas kar reports/labels) ke exact scope confirm karne ke liye.
+  4. Sab kuch abhi tak commit nahi hua (household_id migration + customers.ts + Customers.tsx +
+     CustomerDetail.tsx + database.types.ts changes) — commit se pehle user se confirm lena.
+- **Dev servers is session ke end tak:** frontend `localhost:5175` (`--strictPort`), backend
+  `localhost:4000` — dono background mein chal rahe hain. Agla session shuru karte waqt port
+  conflict phir check karna (netstat + process cmdline), aur `backend/.env` CORS_ORIGIN us port
+  se match karna chahiye jis par frontend chal raha ho.
+  ---

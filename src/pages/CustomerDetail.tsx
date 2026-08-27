@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { customersApi, type CustomerAttachment } from "@/lib/api/customers";
+import { customersApi, type CustomerAttachment, type CustomerDetailBundle } from "@/lib/api/customers";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
@@ -49,6 +49,7 @@ export default function CustomerDetail() {
   const [notes, setNotes] = useState<CustomerNote[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [photos, setPhotos] = useState<CustomerAttachment[]>([]);
+  const [household, setHousehold] = useState<CustomerDetailBundle["household"]>([]);
   const [newNote, setNewNote] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [qboSyncing, setQboSyncing] = useState(false);
@@ -64,6 +65,7 @@ export default function CustomerDetail() {
       setHistory(bundle.history);
       setNotes(bundle.notes);
       setInvoices(bundle.invoices);
+      setHousehold(bundle.household);
       const attachments = await customersApi.getAttachments(id);
       setPhotos(attachments);
     } catch {
@@ -225,6 +227,29 @@ export default function CustomerDetail() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Other contacts at the same address */}
+          {household.length > 0 && (
+            <Card className="border-[#E2E8F0] shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-[#0F172A]">Also at This Address</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-0">
+                {household.map((h) => (
+                  <button
+                    key={h.id}
+                    className="w-full text-left p-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] flex items-center justify-between"
+                    onClick={() => navigate(`/customers/${h.id}`)}
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-[#0F172A]">{h.name}</p>
+                      <p className="text-xs text-[#64748B]">{h.phone || h.email || ""}</p>
+                    </div>
+                  </button>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Equipment on File */}
           <Card className="border-[#E2E8F0] shadow-sm">

@@ -8,11 +8,14 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"];
 
 export type CustomerAttachment = { id: string; customer_id: string; url: string; created_at: string };
 
+export type HouseholdMember = { id: string; name: string; phone: string | null; email: string | null };
+
 export type CustomerDetailBundle = {
   customer: Customer;
   history: ServiceHistory[];
   notes: CustomerNote[];
   invoices: Invoice[];
+  household: HouseholdMember[];
 };
 
 export const customersApi = {
@@ -20,8 +23,12 @@ export const customersApi = {
 
   detail: (id: string) => api.get<CustomerDetailBundle>(`/api/customers/${id}`),
 
-  create: (data: { name: string; type: string; tags: string[]; email: string | null; phone: string | null; address: string | null }) =>
-    api.post<Customer>("/api/customers", data),
+  create: (data: {
+    contacts: { name: string; email: string | null; phone: string | null }[];
+    type: string;
+    tags: string[];
+    address: string | null;
+  }) => api.post<Customer[]>("/api/customers", data),
 
   addNote: (customerId: string, data: { text: string; author: string }) =>
     api.post<CustomerNote>(`/api/customers/${customerId}/notes`, data),

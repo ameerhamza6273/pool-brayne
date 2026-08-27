@@ -16,7 +16,10 @@ export default async function customersRoutes(app: FastifyInstance) {
         tx`select * from customer_notes where customer_id = ${id} order by created_at desc`,
         tx`select * from invoices where customer_id = ${id} order by issue_date desc`,
       ]);
-      return { customer: customer[0] ?? null, history, notes, invoices };
+      const household = customer[0]?.household_id
+        ? await tx`select id, name, phone, email from customers where household_id = ${customer[0].household_id} and id != ${id} order by name`
+        : [];
+      return { customer: customer[0] ?? null, history, notes, invoices, household };
     });
 
     if (!result.customer) {
@@ -26,21 +29,34 @@ export default async function customersRoutes(app: FastifyInstance) {
     return result;
   });
 
-  app.post<{ Body: { name: string; type: string; tags: string[]; email: string | null; phone: string | null; address: string | null } }>(
-    "/",
-    async (req) => {
-      const { name, type, tags, email, phone, address } = req.body;
-      return withTenantContext(req.userId, async (tx) => {
-        const [tenant] = await tx`select current_tenant_id() as id`;
+  // Supports adding multiple customer contacts (name/phone/email) sharing one property address
+  // in a single submit (client-confirmed 2026-08-27) -- each contact becomes its own `customers`
+  // row, linked by a shared `household_id` when there's more than one.
+  app.post<{
+    Body: {
+      contacts: { name: string; email: string | null; phone: string | null }[];
+      type: string;
+      tags: string[];
+      address: string | null;
+    };
+  }>("/", async (req) => {
+    const { contacts, type, tags, address } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [householdRow] = contacts.length > 1 ? await tx`select gen_random_uuid() as id` : [{ id: null }];
+      const householdId = householdRow.id;
+      const rows = [];
+      for (const contact of contacts) {
         const [row] = await tx`
-          insert into customers (tenant_id, name, type, tags, email, phone, address)
-          values (${tenant.id}, ${name}, ${type}, ${tags}, ${email}, ${phone}, ${address})
+          insert into customers (tenant_id, name, type, tags, email, phone, address, household_id)
+          values (${tenant.id}, ${contact.name}, ${type}, ${tags}, ${contact.email}, ${contact.phone}, ${address}, ${householdId})
           returning *
         `;
-        return row;
-      });
-    },
-  );
+        rows.push(row);
+      }
+      return rows;
+    });
+  });
 
   app.post<{ Params: { id: string }; Body: { text: string; author: string } }>("/:id/notes", async (req) => {
     const { id } = req.params;

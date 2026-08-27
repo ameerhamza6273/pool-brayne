@@ -210,6 +210,7 @@ export type Database = {
           email: string | null
           equipment: Json
           gate_codes: Json
+          household_id: string | null
           id: string
           last_contact: string | null
           last_service: string | null
@@ -228,6 +229,7 @@ export type Database = {
           email?: string | null
           equipment?: Json
           gate_codes?: Json
+          household_id?: string | null
           id?: string
           last_contact?: string | null
           last_service?: string | null
@@ -246,6 +248,7 @@ export type Database = {
           email?: string | null
           equipment?: Json
           gate_codes?: Json
+          household_id?: string | null
           id?: string
           last_contact?: string | null
           last_service?: string | null

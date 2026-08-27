@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, Phone, MessageSquare, Mail, LayoutGrid, Table2, MapPin } from "lucide-react";
+import { Search, Plus, Phone, MessageSquare, Mail, LayoutGrid, Table2, MapPin, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,8 @@ export default function Customers() {
   const [addOpen, setAddOpen] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [newCustomer, setNewCustomer] = useState({ firstName: "", lastName: "", email: "", phone: "", address: "", type: "Residential" });
+  const emptyContact = { firstName: "", lastName: "", email: "", phone: "" };
+  const [newCustomer, setNewCustomer] = useState({ address: "", type: "Residential", contacts: [{ ...emptyContact }] });
   const navigate = useNavigate();
 
   const loadCustomers = useCallback(async () => {
@@ -43,18 +44,36 @@ export default function Customers() {
   }, [loadCustomers]);
 
   const handleAddCustomer = async () => {
-    if (!newCustomer.firstName || !newCustomer.lastName) return;
+    const validContacts = newCustomer.contacts.filter((c) => c.firstName && c.lastName);
+    if (validContacts.length === 0) return;
     await customersApi.create({
-      name: `${newCustomer.firstName} ${newCustomer.lastName}`,
+      contacts: validContacts.map((c) => ({
+        name: `${c.firstName} ${c.lastName}`,
+        email: c.email || null,
+        phone: c.phone || null,
+      })),
       type: newCustomer.type,
       tags: [newCustomer.type],
-      email: newCustomer.email || null,
-      phone: newCustomer.phone || null,
       address: newCustomer.address || null,
     });
-    setNewCustomer({ firstName: "", lastName: "", email: "", phone: "", address: "", type: "Residential" });
+    setNewCustomer({ address: "", type: "Residential", contacts: [{ ...emptyContact }] });
     setAddOpen(false);
     loadCustomers();
+  };
+
+  const updateContact = (index: number, field: keyof typeof emptyContact, value: string) => {
+    setNewCustomer((p) => ({
+      ...p,
+      contacts: p.contacts.map((c, i) => (i === index ? { ...c, [field]: value } : c)),
+    }));
+  };
+
+  const addContactRow = () => {
+    setNewCustomer((p) => ({ ...p, contacts: [...p.contacts, { ...emptyContact }] }));
+  };
+
+  const removeContactRow = (index: number) => {
+    setNewCustomer((p) => ({ ...p, contacts: p.contacts.filter((_, i) => i !== index) }));
   };
 
   const filtered = customers.filter((c) => {
@@ -76,33 +95,11 @@ export default function Customers() {
               Add Customer
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Customer</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>First Name</Label>
-                  <Input placeholder="First" className="mt-1" value={newCustomer.firstName} onChange={(e) => setNewCustomer((p) => ({ ...p, firstName: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>Last Name</Label>
-                  <Input placeholder="Last" className="mt-1" value={newCustomer.lastName} onChange={(e) => setNewCustomer((p) => ({ ...p, lastName: e.target.value }))} />
-                </div>
-              </div>
-              <div>
-                <Label>Email</Label>
-                <Input placeholder="customer@email.com" className="mt-1" value={newCustomer.email} onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Phone</Label>
-                <Input placeholder="(512) 555-0000" className="mt-1" value={newCustomer.phone} onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))} />
-              </div>
-              <div>
-                <Label>Property Address</Label>
-                <Input placeholder="123 Main St, Austin, TX" className="mt-1" value={newCustomer.address} onChange={(e) => setNewCustomer((p) => ({ ...p, address: e.target.value }))} />
-              </div>
               <div>
                 <Label>Customer Type</Label>
                 <div className="flex gap-2 mt-2">
@@ -120,8 +117,56 @@ export default function Customers() {
                   </Badge>
                 </div>
               </div>
+              <div>
+                <Label>Property Address</Label>
+                <Input placeholder="123 Main St, Austin, TX" className="mt-1" value={newCustomer.address} onChange={(e) => setNewCustomer((p) => ({ ...p, address: e.target.value }))} />
+                <p className="text-xs text-[#64748B] mt-1">Shared by every contact added below.</p>
+              </div>
+
+              <div className="space-y-3">
+                {newCustomer.contacts.map((contact, index) => (
+                  <div key={index} className="rounded-lg border border-[#E2E8F0] p-3 space-y-3 relative">
+                    {newCustomer.contacts.length > 1 && (
+                      <button
+                        type="button"
+                        className="absolute top-2 right-2 p-1 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+                        onClick={() => removeContactRow(index)}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <p className="text-xs font-semibold text-[#64748B] uppercase">
+                      {newCustomer.contacts.length > 1 ? `Customer ${index + 1}` : "Customer"}
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label>First Name</Label>
+                        <Input placeholder="First" className="mt-1" value={contact.firstName} onChange={(e) => updateContact(index, "firstName", e.target.value)} />
+                      </div>
+                      <div>
+                        <Label>Last Name</Label>
+                        <Input placeholder="Last" className="mt-1" value={contact.lastName} onChange={(e) => updateContact(index, "lastName", e.target.value)} />
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Phone</Label>
+                      <Input placeholder="(512) 555-0000" className="mt-1" value={contact.phone} onChange={(e) => updateContact(index, "phone", e.target.value)} />
+                    </div>
+                    <div>
+                      <Label>Email</Label>
+                      <Input placeholder="customer@email.com" className="mt-1" value={contact.email} onChange={(e) => updateContact(index, "email", e.target.value)} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Button variant="outline" className="w-full gap-2 border-dashed border-[#0891B2] text-[#0891B2]" onClick={addContactRow}>
+                <Plus className="w-4 h-4" />
+                Add Another Customer at This Address
+              </Button>
+
               <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleAddCustomer}>
-                Save Customer
+                Save Customer{newCustomer.contacts.length > 1 ? "s" : ""}
               </Button>
             </div>
           </DialogContent>
