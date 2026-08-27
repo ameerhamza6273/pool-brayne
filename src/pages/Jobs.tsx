@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Plus, Calendar, LayoutDashboard, Truck, User, MapPin, Clock, Search, ChevronLeft, ChevronRight,
+  Plus, Calendar, LayoutDashboard, Truck, User, MapPin, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,12 +15,15 @@ import { jobsApi } from "@/lib/api/jobs";
 import { profilesApi } from "@/lib/api/profiles";
 import { customersApi } from "@/lib/api/customers";
 import { recurringRoutesApi } from "@/lib/api/recurringRoutes";
+import { geocodeAddress } from "@/lib/geocode";
 import type { Database } from "@/lib/database.types";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type Job = Database["public"]["Tables"]["jobs"]["Row"] & {
-  customers: { name: string; address: string | null } | null;
+  customers: { name: string; address: string | null; lat?: number | null; lng?: number | null } | null;
   profiles: { name: string; avatar: string | null } | null;
 };
 type RecurringRoute = Database["public"]["Tables"]["recurring_routes"]["Row"] & {
@@ -61,7 +64,7 @@ const techDotColor = (techId: string): string => {
 };
 
 export default function Jobs() {
-  const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule">("pipeline");
+  const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule" | "map">("pipeline");
   const [search, setSearch] = useState("");
   const [newJobOpen, setNewJobOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -69,6 +72,10 @@ export default function Jobs() {
   const [recurringRoutes, setRecurringRoutes] = useState<RecurringRoute[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "" });
+  const [mapDate, setMapDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const navigate = useNavigate();
 
   const loadJobs = useCallback(async () => {
@@ -103,6 +110,85 @@ export default function Jobs() {
     await jobsApi.update(jobId, { tech_id: techId, status: "Dispatched", stage: "dispatched" });
     loadJobs();
   };
+
+  const shiftMapDate = (days: number) => {
+    const d = new Date(mapDate + "T00:00:00");
+    d.setDate(d.getDate() + days);
+    setMapDate(d.toISOString().slice(0, 10));
+  };
+
+  const mapJobs = jobs.filter((j) => j.scheduled_date === mapDate);
+
+  // Jobs map view (client request 2026-08-27): plot the selected day's jobs on a free
+  // OpenStreetMap/Leaflet map (no Google Maps billing account available), color-coded by tech —
+  // also doubles as the "daily route view" request via the per-tech stop list beside it.
+  useEffect(() => {
+    if (activeTab !== "map" || !mapContainerRef.current) return;
+    if (!mapRef.current) {
+      mapRef.current = L.map(mapContainerRef.current).setView([30.2672, -97.7431], 11);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "&copy; OpenStreetMap contributors",
+        maxZoom: 19,
+      }).addTo(mapRef.current);
+      markersLayerRef.current = L.layerGroup().addTo(mapRef.current);
+    }
+    return () => {
+      mapRef.current?.remove();
+      mapRef.current = null;
+    };
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "map" || !mapRef.current || !markersLayerRef.current) return;
+    let cancelled = false;
+
+    (async () => {
+      const layer = markersLayerRef.current!;
+      layer.clearLayers();
+      const points: [number, number][] = [];
+
+      for (const job of mapJobs) {
+        let lat = job.customers?.lat ?? null;
+        let lng = job.customers?.lng ?? null;
+        if ((lat === null || lng === null) && job.address) {
+          const result = await geocodeAddress(job.address);
+          if (cancelled) return;
+          if (result) {
+            lat = result.lat;
+            lng = result.lng;
+            if (job.customer_id) customersApi.updateCoordinates(job.customer_id, lat, lng).catch(() => {});
+          }
+        }
+        if (lat === null || lng === null) continue;
+        points.push([lat, lng]);
+        const color = job.tech_id ? techDotColor(job.tech_id) : unassignedColor;
+        L.circleMarker([lat, lng], { radius: 9, color, fillColor: color, fillOpacity: 0.85, weight: 2 })
+          .bindPopup(
+            `<strong>${job.scheduled_time ?? ""} &middot; ${job.customers?.name ?? "Unknown"}</strong><br/>${job.type}<br/>Tech: ${job.profiles?.name ?? "Unassigned"}`
+          )
+          .addTo(layer);
+      }
+
+      if (points.length > 0) {
+        mapRef.current!.fitBounds(points, { padding: [40, 40], maxZoom: 14 });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, mapDate, jobs]);
+
+  const routeByTech = technicians
+    .map((t) => ({
+      tech: t,
+      stops: mapJobs
+        .filter((j) => j.tech_id === t.id)
+        .sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? "")),
+    }))
+    .filter((r) => r.stops.length > 0);
+  const unassignedStops = mapJobs.filter((j) => !j.tech_id);
 
   const filteredJobs = jobs.filter((j) =>
     (j.customers?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
@@ -218,6 +304,7 @@ export default function Jobs() {
           { id: "pipeline" as const, label: "Pipeline", icon: LayoutDashboard },
           { id: "dispatch" as const, label: "Dispatch Board", icon: Truck },
           { id: "schedule" as const, label: "Schedule", icon: Calendar },
+          { id: "map" as const, label: "Map", icon: MapIcon },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -440,6 +527,66 @@ export default function Jobs() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Map View — jobs on a map, scrollable by day; also shows each tech's daily route */}
+      {activeTab === "map" && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <button className="p-1 rounded hover:bg-[#F8FAFC]" onClick={() => shiftMapDate(-1)}>
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <h3 className="font-semibold text-[#0F172A]">
+                  {new Date(mapDate + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+                </h3>
+                <button className="p-1 rounded hover:bg-[#F8FAFC]" onClick={() => shiftMapDate(1)}>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+              <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px]">{mapJobs.length} job{mapJobs.length === 1 ? "" : "s"}</Badge>
+            </div>
+            <div ref={mapContainerRef} className="w-full h-[480px] rounded-lg overflow-hidden" />
+          </div>
+
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4 space-y-4 max-h-[560px] overflow-y-auto">
+            <h3 className="font-semibold text-[#0F172A]">Daily Route by Technician</h3>
+            {routeByTech.map(({ tech, stops }) => (
+              <div key={tech.id}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: techDotColor(tech.id) }} />
+                  <p className="font-medium text-sm text-[#0F172A]">{tech.name}</p>
+                  <span className="text-xs text-[#64748B]">({stops.length})</span>
+                </div>
+                <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
+                  {stops.map((s) => (
+                    <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2]" onClick={() => navigate(`/jobs/${s.id}`)}>
+                      {s.scheduled_time} &middot; {s.customers?.name}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {unassignedStops.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: unassignedColor }} />
+                  <p className="font-medium text-sm text-[#0F172A]">Unassigned</p>
+                  <span className="text-xs text-[#64748B]">({unassignedStops.length})</span>
+                </div>
+                <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
+                  {unassignedStops.map((s) => (
+                    <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2]" onClick={() => navigate(`/jobs/${s.id}`)}>
+                      {s.scheduled_time} &middot; {s.customers?.name}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {mapJobs.length === 0 && <p className="text-sm text-[#64748B] text-center py-4">No jobs scheduled this day</p>}
           </div>
         </div>
       )}

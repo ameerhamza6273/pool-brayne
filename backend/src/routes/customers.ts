@@ -103,6 +103,17 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
+  // Caches a free Nominatim geocode result (Jobs map/route view) so we don't re-geocode the
+  // same address on every render.
+  app.patch<{ Params: { id: string }; Body: { lat: number; lng: number } }>("/:id/coordinates", async (req) => {
+    const { id } = req.params;
+    const { lat, lng } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`update customers set lat = ${lat}, lng = ${lng} where id = ${id} returning id, lat, lng`;
+      return row;
+    });
+  });
+
   app.post<{ Params: { id: string } }>("/:id/quickbooks-sync", async (req) => {
     const qboCustomerId = await syncCustomerToQuickbooks(req.userId, req.params.id);
     return { qboCustomerId };

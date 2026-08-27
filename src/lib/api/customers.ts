@@ -43,4 +43,7 @@ export const customersApi = {
     api.post<CustomerAttachment>(`/api/customers/${customerId}/attachments`, { url }),
 
   syncToQuickbooks: (customerId: string) => api.post<{ qboCustomerId: string }>(`/api/customers/${customerId}/quickbooks-sync`, {}),
+
+  updateCoordinates: (customerId: string, lat: number, lng: number) =>
+    api.patch<{ id: string; lat: number; lng: number }>(`/api/customers/${customerId}/coordinates`, { lat, lng }),
 };

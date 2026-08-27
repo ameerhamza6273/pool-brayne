@@ -5,7 +5,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
       select j.*,
-        jsonb_build_object('name', c.name, 'address', c.address) as customers,
+        jsonb_build_object('name', c.name, 'address', c.address, 'lat', c.lat, 'lng', c.lng) as customers,
         case when p.id is null then null else jsonb_build_object('name', p.name, 'avatar', p.avatar) end as profiles
       from jobs j
       left join customers c on c.id = j.customer_id

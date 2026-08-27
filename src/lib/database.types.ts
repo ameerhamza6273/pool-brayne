@@ -214,7 +214,9 @@ export type Database = {
           id: string
           last_contact: string | null
           last_service: string | null
+          lat: number | null
           lifetime_value: number
+          lng: number | null
           name: string
           phone: string | null
           qbo_customer_id: string | null
@@ -233,7 +235,9 @@ export type Database = {
           id?: string
           last_contact?: string | null
           last_service?: string | null
+          lat?: number | null
           lifetime_value?: number
+          lng?: number | null
           name: string
           phone?: string | null
           qbo_customer_id?: string | null
@@ -252,7 +256,9 @@ export type Database = {
           id?: string
           last_contact?: string | null
           last_service?: string | null
+          lat?: number | null
           lifetime_value?: number
+          lng?: number | null
           name?: string
           phone?: string | null
           qbo_customer_id?: string | null

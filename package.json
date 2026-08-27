@@ -47,6 +47,7 @@
     "date-fns": "^3.6.0",
     "embla-carousel-react": "^8.3.0",
     "input-otp": "^1.2.4",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.446.0",
     "next-themes": "^0.3.0",
     "react": "^18.3.1",
@@ -64,6 +65,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.11.1",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^22.7.3",
     "@types/react": "^18.3.9",
     "@types/react-dom": "^18.3.0",

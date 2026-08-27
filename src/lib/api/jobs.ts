@@ -2,7 +2,7 @@ import { api } from "@/lib/apiClient";
 import type { Database } from "@/lib/database.types";
 
 type Job = Database["public"]["Tables"]["jobs"]["Row"] & {
-  customers: { name: string; address: string | null; phone?: string | null; email?: string | null } | null;
+  customers: { name: string; address: string | null; phone?: string | null; email?: string | null; lat?: number | null; lng?: number | null } | null;
   profiles: { name: string; avatar: string | null } | null;
 };
 
