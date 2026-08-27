@@ -1217,3 +1217,53 @@ wait — dekho upar wala push-blocked note):
   reasonable default assumptions par bana hai), sab kuch push hone ka wait kar raha hai (user
   khud `git push` karega, is session mein bhi classifier ne block kiya).
   ---
+
+### 2026-08-27 (continued) — GPS7000 (no API), Fleet shortcut link, resale/multi-tenant question, Authorize.net
+
+- **GPS vendor jawab mila:** client ne bataya provider **GPS7000** (gps7000.com) hai — client ne
+  is session mein iska login/password bhi SMS kar diya (email + password) taake dekha ja sake.
+  **Maine un credentials se khud login nahi kiya** (password se authenticate karna meri safety
+  rules mein explicitly prohibited hai, chahe client khud de) — user ko yehi bataya, aur bajaye
+  login ke, gps7000.com ka public marketing page check kiya (`WebFetch` + `WebSearch`) — koi
+  API/developer docs/webhook/export feature mention nahi mila, aur site ka header
+  `X-Frame-Options: SAMEORIGIN` hai (matlab hum isko PoolBrayne ke andar iframe mein embed bhi
+  nahi kar sakte, chahe chahen). Confirm ho gaya: **GPS7000 ek budget/consumer-grade tracker hai
+  (Amazon par becha jata hai), koi public API nahi hai.**
+- Client ne poocha "app ko seedha CRM ke andar upload/operate kiya ja sakta hai?" — clarify kiya
+  ke embedding (even agar allowed hoti) sirf unki website dikhati, real data integration nahi
+  deti (GPS position Fleet/Dispatch mein use nahi ho sakti bina API ke). Client ne accept kiya:
+  **"Just provide a link in there"** — is se `src/pages/Fleet.tsx` mein "Open GPS7000" button
+  add kiya (naya tab mein `gps7000.com` kholta hai), aur banner text jo pehle jhooti/aspirational
+  baat kehta tha ("Live GPS inside PoolBrayne — no separate login") ko honest text se replace
+  kiya ("GPS7000 has no API to sync live position into PoolBrayne yet — use the link above").
+  **Yeh change abhi commit/deploy nahi hua hai** — user ne beech mein kaha "kaam start mat karo,
+  pehle usko reply karwao" (client ko pehle confirm karwana tha) — client ne phir approve kar
+  diya ("Yeah, maybe that's the solution for now"), lekin agla concrete action (typecheck +
+  browser test + commit + push) abhi tak nahi hua is session mein — **yeh agla immediate kaam
+  hai** jab bhi session continue ho.
+- **Naya strategic sawal client se:** PoolBrayne ko **doosri pool companies ko resell karne ka
+  plan hai** ("exact system... multi seat"), aur woh chahte hain ke integrations
+  (GPS waghera) **generic/pluggable** hon taake har naya client apna khud ka vendor connect kar
+  sake, hardcoded ek vendor ki jagah. User ko clarify kiya:
+  - **Multi-tenant/multi-seat already built-in hai** — har naya signup apna alag isolated tenant
+    banata hai (RLS se poori tarah separate), yeh already resale-ready architecture hai.
+  - **Generic/pluggable integration framework** (per-tenant apna GPS/accounting vendor choose
+    kar sake) genuinely **naya architecture kaam hai** — standard interface per integration-type
+    + per-vendor adapters + per-tenant settings UI chahiye hoga. QuickBooks already per-tenant
+    connect hoti hai (isliye woh already is pattern ke qareeb hai), lekin GPS/others abhi
+    hardcoded-per-vendor hain.
+  - User ne kaha (AskUserQuestion se) **"draft reply explaining scope first"** — koi code is
+    par abhi shuru nahi kiya, sirf client ko scope explain karne wala reply draft kiya
+    (bheja ja chuka hoga ya nahi, confirm nahi hua is session mein).
+- **Payment processor confirm hua: client Authorize.net use karta hai, Stripe nahi** (pehle ki
+  sessions mein Stripe assume kiya gaya tha sandbox integration plan ke liye — ab yeh galat/purana
+  assumption hai, update kar liya). User ne kaha **"abhi sirf record kar lo, kaam shuru mat karo"**
+  — koi Authorize.net integration code is session mein nahi likha, sirf yaad rakhna hai ke jab
+  bhi real payment processing (Invoicing/POS "Collect Payment" abhi simulate hoti hai) par kaam
+  ho, **Authorize.net sandbox use karna hai, Stripe nahi**.
+- **Baaqi/pending (is continuation ke end tak):**
+  1. Fleet.tsx ka GPS7000 link change abhi commit/push/deploy nahi hua — agla turant kaam.
+  2. Resale/pluggable-integrations scope reply client ko bhejna baaqi hai (draft ban chuka hai).
+  3. Authorize.net integration kaam abhi shuru nahi hua — sirf record kiya gaya hai.
+  4. Baaqi sab pehle jaisa pending hai (software info emails, Railway/Vercel handover, etc.)
+  ---

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { Truck, Navigation, AlertTriangle, Clock, Route, Gauge } from "lucide-react";
+import { Truck, Navigation, AlertTriangle, Clock, Route, Gauge, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fleetApi } from "@/lib/api/fleet";
@@ -42,12 +43,19 @@ export default function Fleet() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-[#0F172A]">Fleet & Vehicle Tracking</h1>
+        <Button
+          variant="outline"
+          className="gap-2 border-[#E2E8F0]"
+          onClick={() => window.open("https://gps7000.com", "_blank", "noopener,noreferrer")}
+        >
+          <ExternalLink className="w-4 h-4" /> Open GPS7000
+        </Button>
       </div>
 
       {/* Banner */}
       <div className="bg-gradient-to-r from-[#0891B2] to-[#0E7490] rounded-xl p-4 text-white flex items-center gap-3">
         <Navigation className="w-5 h-5 shrink-0" />
-        <p className="text-sm font-medium">Live GPS inside PoolBrayne — no separate login. Vendor-agnostic API layer.</p>
+        <p className="text-sm font-medium">GPS7000 has no API to sync live position into PoolBrayne yet — use the link above to open it directly.</p>
       </div>
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">Loading fleet...</div>}
