@@ -188,7 +188,7 @@ export default function InvoiceDetail() {
                 <div className="w-8 h-8 rounded-lg bg-[#0891B2] flex items-center justify-center">
                   <FileText className="w-4 h-4 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-[#0F172A]">ClearPool</h2>
+                <h2 className="text-xl font-bold text-[#0F172A]">PoolBrayne</h2>
               </div>
               <p className="text-sm text-[#64748B]">Bryan's Pool Co</p>
               <p className="text-sm text-[#64748B]">Austin, TX 78701</p>
