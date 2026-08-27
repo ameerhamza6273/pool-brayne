@@ -1,4 +1,4 @@
-// Mock data for PoolBrayne - realistic pool industry data
+// Mock data for ClearPool - realistic pool industry data
 
 export const customers = [
   { id: "1", name: "James Thompson", type: "Residential", tags: ["VIP", "Seasonal"], address: "1428 Maple Ridge Dr, Austin, TX 78734", phone: "(512) 555-0142", email: "james.t@email.com", lastService: "2024-06-15", lifetimeValue: 8420, customerSince: "2021-03-12", lastContact: "2024-06-10", equipment: { pump: "Pentair IntelliFlo 3HP (2021)", heater: "Hayward H400FDN (2022)", filter: "DE 48 sqft (2021)", salt: "Pentair IC40 (2022)" }, gateCodes: { frontGate: "#4271", houseGate: "#4271", padlock: "", subdivisionEntrance: "open", notes: "Dog in backyard - friendly. Key padlock on side fence." } },
@@ -263,7 +263,7 @@ export const smsConversations = [
     lastMessage: "Thanks for the great service today!",
     unread: 0,
     messages: [
-      { id: "m1", from: "business", text: "Hi James, this is PoolBrayne confirming your maintenance appointment tomorrow at 10 AM.", time: "2024-06-14 4:00 PM" },
+      { id: "m1", from: "business", text: "Hi James, this is ClearPool confirming your maintenance appointment tomorrow at 10 AM.", time: "2024-06-14 4:00 PM" },
       { id: "m2", from: "customer", text: "Perfect, thanks for the reminder!", time: "2024-06-14 4:15 PM" },
       { id: "m3", from: "business", text: "Mike is on his way. ETA: 9:45 AM", time: "2024-06-15 9:30 AM" },
       { id: "m4", from: "customer", text: "Thanks for the great service today!", time: "2024-06-15 11:30 AM" },
@@ -308,7 +308,7 @@ export const smsConversations = [
 ];
 
 export const reviews = [
-  { id: "rev1", customer: "James Thompson", platform: "Google", rating: 5, text: "PoolBrayne keeps our pool looking amazing every week. Professional and reliable.", date: "2024-06-16", response: "Thank you James!" },
+  { id: "rev1", customer: "James Thompson", platform: "Google", rating: 5, text: "ClearPool keeps our pool looking amazing every week. Professional and reliable.", date: "2024-06-16", response: "Thank you James!" },
   { id: "rev2", customer: "The Henderson Family", platform: "Facebook", rating: 5, text: "Bryan fixed our heater in one visit. Fair pricing and honest service.", date: "2024-06-20", response: "Thank you! We appreciate your trust." },
   { id: "rev3", customer: "Michael Chen", platform: "Google", rating: 4, text: "Great service. Would recommend to anyone in the Austin area.", date: "2024-06-21", response: "Thank you Michael!" },
   { id: "rev4", customer: "Jennifer Walsh", platform: "Google", rating: 5, text: "Seasonal opening was seamless. They even cleaned up leaves from the cover.", date: "2024-04-02", response: "So glad we could help!" },
@@ -412,10 +412,10 @@ export const integrations = [
 ];
 
 export const billingHistory = [
-  { id: "bh1", date: "2024-06-01", description: "PoolBrayne Pro - Monthly", amount: 299, status: "Paid" },
-  { id: "bh2", date: "2024-05-01", description: "PoolBrayne Pro - Monthly", amount: 299, status: "Paid" },
-  { id: "bh3", date: "2024-04-01", description: "PoolBrayne Pro - Monthly", amount: 299, status: "Paid" },
-  { id: "bh4", date: "2024-03-01", description: "PoolBrayne Pro - Monthly", amount: 299, status: "Paid" },
+  { id: "bh1", date: "2024-06-01", description: "ClearPool Pro - Monthly", amount: 299, status: "Paid" },
+  { id: "bh2", date: "2024-05-01", description: "ClearPool Pro - Monthly", amount: 299, status: "Paid" },
+  { id: "bh3", date: "2024-04-01", description: "ClearPool Pro - Monthly", amount: 299, status: "Paid" },
+  { id: "bh4", date: "2024-03-01", description: "ClearPool Pro - Monthly", amount: 299, status: "Paid" },
 ];
 
 export const subscriptionPlans = [

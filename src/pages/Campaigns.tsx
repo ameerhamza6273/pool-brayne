@@ -228,7 +228,7 @@ export default function Campaigns() {
         <TabsContent value="sms" className="mt-4">
           <div className="bg-[#0891B2] rounded-t-xl p-3 text-white flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
-            <span className="text-sm font-medium">Customers reply inside PoolBrayne — not to a technician's personal phone.</span>
+            <span className="text-sm font-medium">Customers reply inside ClearPool — not to a technician's personal phone.</span>
           </div>
           <div className="bg-white rounded-b-xl border border-[#E2E8F0] border-t-0 shadow-sm grid grid-cols-1 lg:grid-cols-3 h-[500px]">
             {/* Conversation List */}

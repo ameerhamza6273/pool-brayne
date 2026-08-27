@@ -55,7 +55,7 @@ export default function Fleet() {
       {/* Banner */}
       <div className="bg-gradient-to-r from-[#0891B2] to-[#0E7490] rounded-xl p-4 text-white flex items-center gap-3">
         <Navigation className="w-5 h-5 shrink-0" />
-        <p className="text-sm font-medium">GPS7000 has no API to sync live position into PoolBrayne yet — use the link above to open it directly.</p>
+        <p className="text-sm font-medium">GPS7000 has no API to sync live position into ClearPool yet — use the link above to open it directly.</p>
       </div>
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">Loading fleet...</div>}

@@ -39,7 +39,7 @@ export default function Onboarding() {
 
   const getPlanName = () => {
     const plan = plans.find((p) => p.id === selectedPlan);
-    return plan ? `PoolBrayne ${plan.name}` : "PoolBrayne";
+    return plan ? `ClearPool ${plan.name}` : "ClearPool";
   };
 
   const nextStep = () => {
@@ -56,7 +56,7 @@ export default function Onboarding() {
           <div className="w-20 h-20 rounded-full bg-[#16A34A]/10 flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-[#16A34A]" />
           </div>
-          <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Welcome to PoolBrayne!</h1>
+          <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Welcome to ClearPool!</h1>
           <p className="text-sm text-[#64748B] mb-8">Your company is set up and ready to go. Let's start managing your pool business.</p>
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 rounded-xl bg-[#0891B2] flex items-center justify-center">
@@ -98,7 +98,7 @@ export default function Onboarding() {
           <div className="w-8 h-8 rounded-lg bg-[#0891B2] flex items-center justify-center">
             <Droplets className="w-4 h-4 text-white" />
           </div>
-          <h1 className="font-bold text-[#0F172A]">PoolBrayne</h1>
+          <h1 className="font-bold text-[#0F172A]">ClearPool</h1>
         </div>
       </header>
 

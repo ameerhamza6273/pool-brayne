@@ -54,7 +54,7 @@ export default function AppShell() {
               <Droplets className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-lg tracking-tight">PoolBrayne</h1>
+              <h1 className="font-bold text-lg tracking-tight">ClearPool</h1>
               <p className="text-[10px] text-white/50 uppercase tracking-wider">Powered by Brayne AI</p>
             </div>
           </div>
@@ -151,7 +151,7 @@ export default function AppShell() {
                       <Droplets className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <h1 className="font-bold text-lg tracking-tight">PoolBrayne</h1>
+                      <h1 className="font-bold text-lg tracking-tight">ClearPool</h1>
                     </div>
                   </div>
                 </div>
