@@ -1148,3 +1148,72 @@ par multiple separate customer contacts (name/phone/email each) add karne deta h
   user se hi karwana padega (ya unse explicit real-time confirm milne ke baad bhi classifier
   block kar sakta hai — is case mein seedha user ko bata dena behtar hai).
   ---
+
+### 2026-08-27 (continued) — Baaqi client-independent backlog poora kiya (map view, labels, reports, QBO accounts)
+
+User ne kaha "jo reh gya he ek sath kar do" — baaqi bacha hua poora client-independent feature
+backlog isi session mein complete kiya (commits `d1fa041` aur `f0bf5be`, dono local, push ka
+wait — dekho upar wala push-blocked note):
+
+- **Jobs "Map" tab** — din-wise scroll hone wala map view + per-tech daily route list, dono ek
+  hi tab mein combine kiye (alag "route view" page banane ke bajaye, kyunki dono requests
+  conceptually overlap karte hain). **Google Maps/Places ka koi paid API key/billing account
+  available nahi tha** (aur main khud naya account bana nahi sakta — safety rule) — isliye
+  **Leaflet + OpenStreetMap tiles** (free, no key) use kiya, aur address search ke liye **free
+  Nominatim API** (naya `src/lib/geocode.ts`, sequential-queue + cache, Nominatim ki ~1req/sec
+  usage policy respect karte hue). Geocode result `customers.lat`/`lng` (naya migration
+  `20260827110000_customer_coordinates.sql`) mein cache hota hai taake baar baar re-geocode na
+  ho. **Important gotcha:** seed data ke saare addresses fictional hain (jaise "1428 Maple Ridge
+  Dr") — yeh real Nominatim se resolve nahi hote (koi result nahi aata), isliye demo/seed jobs
+  map par pin nahi dikhayenge jab tak un customers ka address kisi real, geocodable address se
+  update na ho. Yeh code ka bug nahi hai — real customer addresses (jo asal mein exist karte
+  hain) bilkul theek geocode + pin ho jate hain (browser mein ek real address — "1100 Congress
+  Ave, Austin, TX" — wale test customer/job se verify kiya, marker + coordinate cache dono
+  kaam kiya, phir test data delete kar diya).
+- **Avery/Zebra label printing** — Inventory Catalog mein checkbox selection + "Print Labels"
+  button, Avery 5160 grid layout (3x10, 2.625"x1") wala print window, `window.print()` se
+  (Dashboard/InvoiceDetail ke "Export/Download PDF" jaisa hi established pattern). **Real bug
+  mila aur fix kiya:** `window.open()` kabhi kabhi (is session mein automation testing ke
+  dauran dekha, popup-blocking se related) ek "phantom" window object return karta hai jiska
+  `.document` `undefined` hota hai — pehle sirf `if (!win) return` check tha jo isse nahi
+  pakड़ta, ab `if (!win || !win.document) return` hai. Real user click mein yeh issue nahi
+  aayega (asli mouse click hamesha trusted user-activation deta hai jo popup block nahi hota),
+  lekin defensive fix rakhna sahi tha.
+- **Sales Reports** (POS page) — date-range "Quantity Sold by Product" + "Sales Tax Report"
+  (Orders/Taxable Sales/Tax Collected/Total Sales), naya `GET /api/pos/reports?start&end`
+  backend endpoint, real `pos_orders`/`pos_order_items` se aggregate. Job invoices mein tax
+  track nahi hota (schema mein column hi nahi hai), isliye yeh sirf POS sales ko cover karta
+  hai — yehi honest/correct scope hai.
+- **QuickBooks COGS/Income/Asset account mapping per inventory item** — naya
+  `inventory_items.qbo_accounts` jsonb column (migration `20260827120000_inventory_qbo_accounts.sql`),
+  naya `getChartOfAccounts()` helper `backend/src/lib/quickbooks.ts` mein (QBO se live chart of
+  accounts fetch karta hai — is session mein sandbox QuickBooks connection se real accounts
+  fetch karke test kiya, e.g. "Sales of Product Income" / "Cost of Goods Sold" / "Inventory
+  Asset"), Inventory Catalog mein per-row "QBO" icon button jo 3 Selects (Income/COGS/Asset)
+  wala dialog kholta hai. **Real bug mila aur fix kiya:** pehle `${JSON.stringify(qboAccounts)}`
+  ko seedha jsonb column mein likhne ki koshish ki — postgres.js isko double-encode kar deta
+  tha (ya phir `::jsonb` cast add karne par bhi character-by-character array bana deta tha) —
+  jsonb column mein object ki jagah ek corrupted string ban rahi thi. Fix: postgres.js ka apna
+  `tx.json(value)` helper use karo jsonb writes ke liye (raw `JSON.stringify` + manual cast
+  nahi) — ab `jsonb_typeof()` se verify kiya "object" aata hai, aur dialog reload par
+  selections sahi se pre-fill hoti hain. **Yeh general lesson hai future kisi bhi jsonb column
+  write ke liye is codebase mein: hamesha `tx.json(value)` use karna, kabhi manual
+  JSON.stringify + cast nahi.**
+- Har feature browser mein end-to-end test kiya (dev, `localhost:5175`/`localhost:4000`), test
+  data har baar turant clean kiya (DB delete/reset scripts, jaisa is poore session mein pattern
+  raha). Frontend + backend dono typecheck clean.
+- **Ab client ke original feature-request list (is session ke shuru mein aayi thi) mein se sab
+  kuch client-independent ban chuka hai:** multiple customers per address, color-by-tech +
+  hover-description (Jobs/Dispatch), Previous Sales tab, drag-drop photo, inventory long/short
+  description + department/manufacturer, jobs map view + daily route view, Avery/Zebra label
+  printing, QBO COGS/Income/Asset setup, sales reports (qty-sold + tax). **Sirf address
+  autocomplete jaan-boojh kar skip kiya** (Google Places jaisa paid API/billing account chahiye,
+  user ne "OpenStreetMap/free rahne do" wala option choose kiya, aur jobs-map ke liye woh use
+  bhi ho gaya, lekin ek standalone "typing karte hi address suggest ho" wala autocomplete field
+  nahi bana — agar chahiye ho to Nominatim se hi ek debounced-suggestions dropdown add ho sakta
+  hai, abhi scope mein nahi tha).
+- **Baaqi/pending:** GPS vendor (client se jawab ka wait), "software info" emails abhi tak nahi
+  aayi (unke bina kuch reports/labels ka exact scope refine nahi ho saka — jo bana hai woh
+  reasonable default assumptions par bana hai), sab kuch push hone ka wait kar raha hai (user
+  khud `git push` karega, is session mein bhi classifier ne block kiya).
+  ---
