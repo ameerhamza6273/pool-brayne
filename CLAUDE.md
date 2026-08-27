@@ -1131,10 +1131,20 @@ par multiple separate customer contacts (name/phone/email each) add karne deta h
      hover-job-description, jobs map view, address autocomplete, drag-drop photo) — koi bhi is
      session mein build nahi hua, sirf audit kiya ke pehle se nahi bana hua tha. Email milne ka
      wait hai kuch items (khaas kar reports/labels) ke exact scope confirm karne ke liye.
-  4. Sab kuch abhi tak commit nahi hua (household_id migration + customers.ts + Customers.tsx +
-     CustomerDetail.tsx + database.types.ts changes) — commit se pehle user se confirm lena.
+  4. ~~Sab kuch abhi tak commit nahi hua~~ — **commit `d3b0379` (user ne khud push kiya, is
+     session mein main `git push` classifier se blocked ho gaya tha) aur production dono live
+     hain (2026-08-27, same session)**: Vercel (`pool-brayne.vercel.app`) aur Railway
+     (`pool-brayne-production.up.railway.app`) dono naye code ke sath redeploy ho chuke.
+     Production par bhi browser se end-to-end verify kiya (do naye contacts "ProdLandlord One" +
+     "ProdTenant Two" ek address par add kiye, "Also at This Address" link dono taraf kaam kiya),
+     phir test data turant DB se delete kar diya (temp script, dev-testing jaisa hi pattern).
 - **Dev servers is session ke end tak:** frontend `localhost:5175` (`--strictPort`), backend
   `localhost:4000` — dono background mein chal rahe hain. Agla session shuru karte waqt port
   conflict phir check karna (netstat + process cmdline), aur `backend/.env` CORS_ORIGIN us port
   se match karna chahiye jis par frontend chal raha ho.
+- **Note:** `git push` is session mein Claude ke liye auto-mode classifier se explicitly blocked
+  hua (production-affecting shared-state action hai) — user ne khud `git push` chalaya. Agar
+  future session mein bhi aisa ho, yehi expect karna: commit khud kar sakta hoon, push ke liye
+  user se hi karwana padega (ya unse explicit real-time confirm milne ke baad bhi classifier
+  block kar sakta hai — is case mein seedha user ko bata dena behtar hai).
   ---
