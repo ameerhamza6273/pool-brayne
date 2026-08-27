@@ -71,7 +71,7 @@ export default function Jobs() {
   const [technicians, setTechnicians] = useState<Profile[]>([]);
   const [recurringRoutes, setRecurringRoutes] = useState<RecurringRoute[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "" });
+  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
   const [mapDate, setMapDate] = useState(() => new Date().toISOString().slice(0, 10));
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -100,8 +100,9 @@ export default function Jobs() {
       time: newJob.time || null,
       description: newJob.description || null,
       address: customers.find((c) => c.id === newJob.customerId)?.address ?? null,
+      amount: parseFloat(newJob.amount) || 0,
     });
-    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "" });
+    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
     setNewJobOpen(false);
     loadJobs();
   };
@@ -288,6 +289,11 @@ export default function Jobs() {
                 <div>
                   <Label>Notes</Label>
                   <Input placeholder="Job description..." className="mt-1" value={newJob.description} onChange={(e) => setNewJob((p) => ({ ...p, description: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Amount</Label>
+                  <Input type="number" placeholder="0.00" className="mt-1" value={newJob.amount} onChange={(e) => setNewJob((p) => ({ ...p, amount: e.target.value }))} />
+                  <p className="text-xs text-[#64748B] mt-1">Used for the invoice generated when this job is marked complete.</p>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateJob}>
                   Create Job

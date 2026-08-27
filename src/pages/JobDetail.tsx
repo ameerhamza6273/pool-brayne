@@ -164,6 +164,13 @@ export default function JobDetail() {
   const handleStatusChange = async (statusId: string) => {
     const s = realStatuses.find((r) => r.stage === statusId);
     if (!s || !job) return;
+    // Completing a job always needs to go through handleMarkComplete so an invoice gets
+    // generated — picking "Completed" from this dropdown used to just flip the status field,
+    // leaving the job stuck with no invoice and a permanently-disabled Generate Invoice button.
+    if (s.stage === "completed") {
+      await handleMarkComplete();
+      return;
+    }
     await jobsApi.update(job.id, { status: s.status, stage: s.stage });
     loadJob();
   };
@@ -259,12 +266,18 @@ export default function JobDetail() {
           </Button>
           <Button
             className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9"
-            disabled={generatingInvoice || job.status === "Completed"}
+            disabled={generatingInvoice || (job.status === "Completed" && !!invoiceId)}
             onClick={handleMarkComplete}
           >
             <CheckCircle2 className="w-4 h-4" />
             <span className="hidden sm:inline">
-              {job.status === "Completed" ? "Job Completed" : generatingInvoice ? "Working..." : t("Mark Complete & Generate Invoice")}
+              {job.status === "Completed" && invoiceId
+                ? "Job Completed"
+                : generatingInvoice
+                ? "Working..."
+                : job.status === "Completed"
+                ? "Generate Invoice"
+                : t("Mark Complete & Generate Invoice")}
             </span>
             <span className="sm:hidden">Complete</span>
           </Button>

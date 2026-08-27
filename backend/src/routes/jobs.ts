@@ -66,17 +66,17 @@ export default async function jobsRoutes(app: FastifyInstance) {
   app.post<{
     Body: {
       customerId: string; jobType: string; techId: string | null;
-      date: string | null; time: string | null; description: string | null; address: string | null;
+      date: string | null; time: string | null; description: string | null; address: string | null; amount: number;
     };
   }>("/", async (req) => {
-    const { customerId, jobType, techId, date, time, description, address } = req.body;
+    const { customerId, jobType, techId, date, time, description, address, amount } = req.body;
     const status = techId ? "Booked" : "Lead";
     const stage = techId ? "booked" : "lead";
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address)
-        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address})
+        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount)
+        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${amount ?? 0})
         returning *
       `;
       return row;

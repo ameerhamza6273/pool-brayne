@@ -20,7 +20,7 @@ export const jobsApi = {
 
   detail: (id: string) => api.get<Job>(`/api/jobs/${id}`),
 
-  create: (data: { customerId: string; jobType: string; techId: string | null; date: string | null; time: string | null; description: string | null; address: string | null }) =>
+  create: (data: { customerId: string; jobType: string; techId: string | null; date: string | null; time: string | null; description: string | null; address: string | null; amount: number }) =>
     api.post<Job>("/api/jobs", data),
 
   update: (id: string, fields: Record<string, unknown>) => api.patch<Job>(`/api/jobs/${id}`, fields),
