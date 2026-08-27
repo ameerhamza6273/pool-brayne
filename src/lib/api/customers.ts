@@ -10,12 +10,16 @@ export type CustomerAttachment = { id: string; customer_id: string; url: string;
 
 export type HouseholdMember = { id: string; name: string; phone: string | null; email: string | null };
 
+export type PosOrderItem = { id: string; description: string; quantity: number; unit_price: number; amount: number };
+export type PreviousSale = { id: string; created_at: string; total: number; payment_method: string | null; items: PosOrderItem[] };
+
 export type CustomerDetailBundle = {
   customer: Customer;
   history: ServiceHistory[];
   notes: CustomerNote[];
   invoices: Invoice[];
   household: HouseholdMember[];
+  previousSales: PreviousSale[];
 };
 
 export const customersApi = {

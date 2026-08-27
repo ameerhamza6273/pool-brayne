@@ -41,7 +41,10 @@ export default function Inventory() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [varianceData, setVarianceData] = useState<InventoryVariance[]>([]);
 
-  const [newProduct, setNewProduct] = useState({ name: "", sku: "", category: "Chemicals", unitCost: "" });
+  const [newProduct, setNewProduct] = useState({
+    name: "", sku: "", category: "Chemicals", unitCost: "",
+    shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
+  });
   const [newPo, setNewPo] = useState({ supplierId: "", number: "" });
 
   const loadInventory = useCallback(async () => {
@@ -65,8 +68,13 @@ export default function Inventory() {
       sku: newProduct.sku,
       category: newProduct.category,
       unitCost: parseFloat(newProduct.unitCost) || 0,
+      shortDescription: newProduct.shortDescription || null,
+      longDescription: newProduct.longDescription || null,
+      department: newProduct.department || null,
+      subDepartment: newProduct.subDepartment || null,
+      manufacturer: newProduct.manufacturer || null,
     });
-    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "" });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "" });
     setAddOpen(false);
     loadInventory();
   };
@@ -100,7 +108,7 @@ export default function Inventory() {
                 <Plus className="w-4 h-4" /> Add Product
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Add Product</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div><Label>Name</Label><Input className="mt-1" placeholder="Product name" value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} /></div>
@@ -114,6 +122,13 @@ export default function Inventory() {
                   </div>
                   <div><Label>Unit Cost</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
                 </div>
+                <div><Label>Short Description</Label><Input className="mt-1" placeholder="One-line summary" value={newProduct.shortDescription} onChange={(e) => setNewProduct((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
+                <div><Label>Long Description</Label><Input className="mt-1" placeholder="Full details" value={newProduct.longDescription} onChange={(e) => setNewProduct((p) => ({ ...p, longDescription: e.target.value }))} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Department</Label><Input className="mt-1" placeholder="e.g. Pool Care" value={newProduct.department} onChange={(e) => setNewProduct((p) => ({ ...p, department: e.target.value }))} /></div>
+                  <div><Label>Sub-department</Label><Input className="mt-1" placeholder="e.g. Sanitizers" value={newProduct.subDepartment} onChange={(e) => setNewProduct((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
+                </div>
+                <div><Label>Manufacturer</Label><Input className="mt-1" placeholder="e.g. Pentair" value={newProduct.manufacturer} onChange={(e) => setNewProduct((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
                 <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>Save Product</Button>
               </div>
             </DialogContent>
@@ -184,6 +199,7 @@ export default function Inventory() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">SKU</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Category</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Manufacturer</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Store</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vehicles</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Total</th>
@@ -196,15 +212,21 @@ export default function Inventory() {
                   {filtered.map((p) => (
                     <tr key={p.id} className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] ${p.status === "Out" ? "bg-[#DC2626]/5" : p.status === "Low" ? "bg-[#F59E0B]/5" : ""}`}>
                       <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center">
+                        <div className="flex items-center gap-3" title={p.short_description ?? undefined}>
+                          <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0">
                             <Package className="w-4 h-4 text-[#64748B]" />
                           </div>
-                          <span className="font-medium text-[#0F172A]">{p.name}</span>
+                          <div>
+                            <span className="font-medium text-[#0F172A]">{p.name}</span>
+                            {(p.department || p.sub_department) && (
+                              <p className="text-xs text-[#64748B]">{[p.department, p.sub_department].filter(Boolean).join(" / ")}</p>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="py-3 px-4 text-[#64748B]">{p.sku}</td>
                       <td className="py-3 px-4"><Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px] px-1.5 py-0">{p.category}</Badge></td>
+                      <td className="py-3 px-4 text-[#64748B]">{p.manufacturer || "—"}</td>
                       <td className="text-right py-3 px-4 font-medium text-[#0F172A]">{p.storeQty}</td>
                       <td className="text-right py-3 px-4 text-[#64748B]">{p.vehicleQty}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">{p.total}</td>

@@ -20,8 +20,17 @@ export const inventoryApi = {
 
   lowStock: () => api.get<{ id: string; name: string; current: number; threshold: number }[]>("/api/inventory/low-stock"),
 
-  addItem: (data: { name: string; sku: string; category: string; unitCost: number }) =>
-    api.post<InventoryItem>("/api/inventory/items", data),
+  addItem: (data: {
+    name: string;
+    sku: string;
+    category: string;
+    unitCost: number;
+    shortDescription: string | null;
+    longDescription: string | null;
+    department: string | null;
+    subDepartment: string | null;
+    manufacturer: string | null;
+  }) => api.post<InventoryItem>("/api/inventory/items", data),
 
   createPurchaseOrder: (data: { supplierId: string; number: string }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),

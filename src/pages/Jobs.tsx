@@ -41,6 +41,25 @@ const typeStyle = (label: string): React.CSSProperties => {
   return { backgroundColor: `${color}1A`, color };
 };
 
+// Color identification by technician (not job type) across the Jobs & Dispatch views, per
+// client request 2026-08-27 — each tech gets a stable color from this palette based on their id.
+const techColorPalette = ["#0891B2", "#F59E0B", "#8B5CF6", "#3B82F6", "#16A34A", "#DC2626", "#EC4899", "#F97316"];
+const unassignedColor = "#64748B";
+
+const techStyle = (techId: string | null): React.CSSProperties => {
+  if (!techId) return { backgroundColor: `${unassignedColor}1A`, color: unassignedColor };
+  let hash = 0;
+  for (let i = 0; i < techId.length; i++) hash = (hash * 31 + techId.charCodeAt(i)) >>> 0;
+  const color = techColorPalette[hash % techColorPalette.length];
+  return { backgroundColor: `${color}1A`, color };
+};
+
+const techDotColor = (techId: string): string => {
+  let hash = 0;
+  for (let i = 0; i < techId.length; i++) hash = (hash * 31 + techId.charCodeAt(i)) >>> 0;
+  return techColorPalette[hash % techColorPalette.length];
+};
+
 export default function Jobs() {
   const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule">("pipeline");
   const [search, setSearch] = useState("");
@@ -247,7 +266,7 @@ export default function Jobs() {
                         onClick={() => navigate(`/jobs/${job.id}`)}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type)}>{job.type}</Badge>
+                          <Badge className="text-[10px] px-1.5 py-0" style={techStyle(job.tech_id)}>{job.type}</Badge>
                           <span className="text-xs text-[#64748B]">{job.scheduled_time}</span>
                         </div>
                         <p className="font-medium text-sm text-[#0F172A] mb-1">{job.customers?.name}</p>
@@ -359,7 +378,7 @@ export default function Jobs() {
               <div className="flex items-center gap-3 text-xs">
                 {technicians.map((t) => (
                   <div key={t.id} className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full bg-[#0891B2]" />
+                    <div className="w-3 h-3 rounded-full" style={{ background: techDotColor(t.id) }} />
                     <span className="text-[#64748B]">{t.name}</span>
                   </div>
                 ))}
@@ -387,10 +406,9 @@ export default function Jobs() {
                       {dayJobs.slice(0, 3).map((j) => (
                         <div
                           key={j.id}
-                          className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer truncate ${
-                            j.type === "Maintenance" ? "bg-[#0891B2]/10 text-[#0891B2]" :
-                            j.type === "Repair" ? "bg-[#F59E0B]/10 text-[#F59E0B]" : "bg-[#8B5CF6]/10 text-[#8B5CF6]"
-                          }`}
+                          className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer truncate"
+                          style={techStyle(j.tech_id)}
+                          title={j.description ?? `${j.type} — ${j.customers?.name ?? "Unassigned"}`}
                           onClick={() => navigate(`/jobs/${j.id}`)}
                         >
                           {j.scheduled_time} {j.customers?.name.split(" ")[0]}

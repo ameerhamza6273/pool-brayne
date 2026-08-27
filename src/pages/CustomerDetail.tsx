@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { customersApi, type CustomerAttachment, type CustomerDetailBundle } from "@/lib/api/customers";
+import { customersApi, type CustomerAttachment, type CustomerDetailBundle, type PreviousSale } from "@/lib/api/customers";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
@@ -50,6 +50,8 @@ export default function CustomerDetail() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [photos, setPhotos] = useState<CustomerAttachment[]>([]);
   const [household, setHousehold] = useState<CustomerDetailBundle["household"]>([]);
+  const [previousSales, setPreviousSales] = useState<PreviousSale[]>([]);
+  const [photoDragOver, setPhotoDragOver] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [qboSyncing, setQboSyncing] = useState(false);
@@ -66,6 +68,7 @@ export default function CustomerDetail() {
       setNotes(bundle.notes);
       setInvoices(bundle.invoices);
       setHousehold(bundle.household);
+      setPreviousSales(bundle.previousSales);
       const attachments = await customersApi.getAttachments(id);
       setPhotos(attachments);
     } catch {
@@ -78,9 +81,10 @@ export default function CustomerDetail() {
     load();
   }, [load]);
 
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!id || !e.target.files) return;
-    for (const file of Array.from(e.target.files)) {
+  const uploadPhotos = async (files: FileList | File[]) => {
+    if (!id) return;
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith("image/")) continue;
       const path = `${tenantId}/${id}/photo-${Date.now()}-${file.name}`;
       const { error } = await supabase.storage.from("customer-attachments").upload(path, file);
       if (error) continue;
@@ -88,7 +92,18 @@ export default function CustomerDetail() {
       const attachment = await customersApi.addAttachment(id, data.publicUrl);
       setPhotos((prev) => [...prev, attachment]);
     }
+  };
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    await uploadPhotos(e.target.files);
     e.target.value = "";
+  };
+
+  const handlePhotoDrop = async (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    setPhotoDragOver(false);
+    if (e.dataTransfer.files) await uploadPhotos(e.dataTransfer.files);
   };
 
   const handleAddNote = async () => {
@@ -323,9 +338,9 @@ export default function CustomerDetail() {
           <Tabs defaultValue="history" className="w-full">
             <TabsList className="bg-white border border-[#E2E8F0] w-full justify-start h-10 p-1 rounded-lg mb-4">
               <TabsTrigger value="history" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Service History</TabsTrigger>
-              <TabsTrigger value="purchases" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Purchases</TabsTrigger>
               <TabsTrigger value="notes" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Notes</TabsTrigger>
               <TabsTrigger value="invoices" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Invoices</TabsTrigger>
+              <TabsTrigger value="previous-sales" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Previous Sales</TabsTrigger>
             </TabsList>
 
             <TabsContent value="history" className="mt-0">
@@ -351,30 +366,6 @@ export default function CustomerDetail() {
                     ))}
                     {history.length === 0 && (
                       <div className="p-8 text-center text-[#64748B]">No service history yet</div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="purchases" className="mt-0">
-              <Card className="border-[#E2E8F0] shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Badge className="bg-[#16A34A]/10 text-[#16A34A]">Synced from QuickBooks</Badge>
-                  </div>
-                  <div className="space-y-3">
-                    {history.map((h) => (
-                      <div key={h.id} className="flex items-center justify-between p-3 rounded-lg bg-[#F8FAFC]">
-                        <div>
-                          <p className="font-medium text-[#0F172A]">{h.type}</p>
-                          <p className="text-sm text-[#64748B]">{h.service_date} &middot; In-store + Service</p>
-                        </div>
-                        <p className="font-semibold text-[#0F172A]">${h.amount}</p>
-                      </div>
-                    ))}
-                    {history.length === 0 && (
-                      <p className="text-center text-[#64748B]">No purchase history</p>
                     )}
                   </div>
                 </CardContent>
@@ -426,9 +417,14 @@ export default function CustomerDetail() {
                       ))}
                       <button
                         onClick={() => fileInputRef.current?.click()}
-                        className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center cursor-pointer hover:bg-[#E2E8F0]"
+                        onDragOver={(e) => { e.preventDefault(); setPhotoDragOver(true); }}
+                        onDragLeave={() => setPhotoDragOver(false)}
+                        onDrop={handlePhotoDrop}
+                        className={`aspect-square rounded-lg border border-dashed flex items-center justify-center cursor-pointer transition-colors ${
+                          photoDragOver ? "bg-[#0891B2]/10 border-[#0891B2]" : "bg-[#F1F5F9] border-[#E2E8F0] hover:bg-[#E2E8F0]"
+                        }`}
                       >
-                        <Plus className="w-5 h-5 text-[#64748B]" />
+                        <Plus className={`w-5 h-5 ${photoDragOver ? "text-[#0891B2]" : "text-[#64748B]"}`} />
                       </button>
                     </div>
                   </div>
@@ -459,6 +455,42 @@ export default function CustomerDetail() {
                     ))}
                     {invoices.length === 0 && (
                       <div className="p-8 text-center text-[#64748B]">No invoices yet</div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="previous-sales" className="mt-0">
+              <Card className="border-[#E2E8F0] shadow-sm">
+                <CardContent className="p-0">
+                  <div className="divide-y divide-[#F1F5F9]">
+                    {previousSales.map((sale) => (
+                      <div key={sale.id} className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-10 h-10 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0">
+                              <FileText className="w-4 h-4 text-[#0891B2]" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium text-[#0F172A]">{new Date(sale.created_at).toLocaleDateString()}</p>
+                              <p className="text-xs text-[#64748B]">{sale.payment_method || "In-store sale"}</p>
+                            </div>
+                          </div>
+                          <p className="font-semibold text-[#0F172A]">${sale.total}</p>
+                        </div>
+                        <div className="pl-12 space-y-1">
+                          {sale.items.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between text-xs text-[#64748B]">
+                              <span>{item.quantity} &times; {item.description}</span>
+                              <span>${item.amount}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    {previousSales.length === 0 && (
+                      <div className="p-8 text-center text-[#64748B]">No previous in-store sales yet</div>
                     )}
                   </div>
                 </CardContent>

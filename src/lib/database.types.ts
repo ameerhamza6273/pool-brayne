@@ -354,12 +354,17 @@ export type Database = {
         Row: {
           category: string
           created_at: string
+          department: string | null
           id: string
+          long_description: string | null
+          manufacturer: string | null
           name: string
           pos_enabled: boolean
           price: number | null
           reorder_threshold: number
+          short_description: string | null
           sku: string
+          sub_department: string | null
           taxable: boolean
           tenant_id: string
           unit: string | null
@@ -368,12 +373,17 @@ export type Database = {
         Insert: {
           category: string
           created_at?: string
+          department?: string | null
           id?: string
+          long_description?: string | null
+          manufacturer?: string | null
           name: string
           pos_enabled?: boolean
           price?: number | null
           reorder_threshold?: number
+          short_description?: string | null
           sku: string
+          sub_department?: string | null
           taxable?: boolean
           tenant_id: string
           unit?: string | null
@@ -382,12 +392,17 @@ export type Database = {
         Update: {
           category?: string
           created_at?: string
+          department?: string | null
           id?: string
+          long_description?: string | null
+          manufacturer?: string | null
           name?: string
           pos_enabled?: boolean
           price?: number | null
           reorder_threshold?: number
+          short_description?: string | null
           sku?: string
+          sub_department?: string | null
           taxable?: boolean
           tenant_id?: string
           unit?: string | null

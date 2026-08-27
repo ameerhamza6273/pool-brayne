@@ -10,16 +10,24 @@ export default async function customersRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     const result = await withTenantContext(req.userId, async (tx) => {
-      const [customer, history, notes, invoices] = await Promise.all([
+      const [customer, history, notes, invoices, posOrdersRaw] = await Promise.all([
         tx`select * from customers where id = ${id} limit 1`,
         tx`select * from job_service_history where customer_id = ${id} order by service_date desc`,
         tx`select * from customer_notes where customer_id = ${id} order by created_at desc`,
         tx`select * from invoices where customer_id = ${id} order by issue_date desc`,
+        tx`select * from pos_orders where customer_id = ${id} order by created_at desc`,
       ]);
       const household = customer[0]?.household_id
         ? await tx`select id, name, phone, email from customers where household_id = ${customer[0].household_id} and id != ${id} order by name`
         : [];
-      return { customer: customer[0] ?? null, history, notes, invoices, household };
+      const posOrders = posOrdersRaw as unknown as { id: string }[];
+      const orderIds = posOrders.map((o) => o.id);
+      const itemsRaw = orderIds.length > 0
+        ? await tx`select * from pos_order_items where order_id in ${tx(orderIds)}`
+        : [];
+      const items = itemsRaw as unknown as { order_id: string }[];
+      const previousSales = posOrders.map((o) => ({ ...o, items: items.filter((i) => i.order_id === o.id) }));
+      return { customer: customer[0] ?? null, history, notes, invoices, household, previousSales };
     });
 
     if (!result.customer) {

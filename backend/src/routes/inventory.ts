@@ -60,13 +60,27 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post<{ Body: { name: string; sku: string; category: string; unitCost: number } }>("/items", async (req) => {
-    const { name, sku, category, unitCost } = req.body;
+  app.post<{
+    Body: {
+      name: string;
+      sku: string;
+      category: string;
+      unitCost: number;
+      shortDescription: string | null;
+      longDescription: string | null;
+      department: string | null;
+      subDepartment: string | null;
+      manufacturer: string | null;
+    };
+  }>("/items", async (req) => {
+    const { name, sku, category, unitCost, shortDescription, longDescription, department, subDepartment, manufacturer } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into inventory_items (tenant_id, name, sku, category, unit_cost)
-        values (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost})
+        insert into inventory_items
+          (tenant_id, name, sku, category, unit_cost, short_description, long_description, department, sub_department, manufacturer)
+        values
+          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer})
         returning *
       `;
       return row;
