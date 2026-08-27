@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy } from "lucide-react";
+import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,8 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { invoicingApi } from "@/lib/api/invoicing";
+import { invoicingApi, type Estimate, type VendorBill } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
+import { inventoryApi } from "@/lib/api/inventory";
 import { settingsApi } from "@/lib/api/settings";
 import type { Database } from "@/lib/database.types";
 
@@ -17,6 +18,7 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { 
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
 type Customer = { id: string; name: string };
+type Supplier = { id: string; name: string };
 
 const statusColors: Record<string, string> = {
   Draft: "bg-[#F59E0B]/10 text-[#F59E0B]",
@@ -42,22 +44,35 @@ export default function Invoicing() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newInvoice, setNewInvoice] = useState({ customerId: "", issueDate: "", dueDate: "", amount: "" });
   const [qboConnected, setQboConnected] = useState(false);
+  const [estimates, setEstimates] = useState<Estimate[]>([]);
+  const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [newEstimateOpen, setNewEstimateOpen] = useState(false);
+  const [newEstimate, setNewEstimate] = useState({ customerId: "", issueDate: "", expiryDate: "", amount: "" });
+  const [newBillOpen, setNewBillOpen] = useState(false);
+  const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
   const navigate = useNavigate();
 
   const loadInvoicing = useCallback(async () => {
     setIsLoading(true);
-    const [invoicesData, recurringData, paymentsData, customersData, settingsData] = await Promise.all([
+    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData] = await Promise.all([
       invoicingApi.list(),
       invoicingApi.recurringBilling(),
       invoicingApi.payments(),
       customersApi.list(),
       settingsApi.all(),
+      invoicingApi.estimates(),
+      invoicingApi.vendorBills(),
+      inventoryApi.suppliers(),
     ]);
     setInvoices((invoicesData ?? []) as Invoice[]);
     setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
     setPayments((paymentsData ?? []) as Payment[]);
     setCustomers(customersData ?? []);
     setQboConnected(settingsData.integrations.some((i) => i.provider === "quickbooks" && i.status === "Connected"));
+    setEstimates((estimatesData ?? []) as Estimate[]);
+    setVendorBills((vendorBillsData ?? []) as VendorBill[]);
+    setSuppliers(suppliersData ?? []);
     setIsLoading(false);
   }, []);
 
@@ -78,6 +93,46 @@ export default function Invoicing() {
     });
     setNewInvoice({ customerId: "", issueDate: "", dueDate: "", amount: "" });
     setNewInvoiceOpen(false);
+    loadInvoicing();
+  };
+
+  const handleCreateEstimate = async () => {
+    if (!newEstimate.customerId || !newEstimate.issueDate) return;
+    const number = `EST-${newEstimate.issueDate.replace(/-/g, "")}-${String(estimates.length + 1).padStart(3, "0")}`;
+    await invoicingApi.createEstimate({
+      customerId: newEstimate.customerId,
+      number,
+      issueDate: newEstimate.issueDate,
+      expiryDate: newEstimate.expiryDate || null,
+      amount: parseFloat(newEstimate.amount) || 0,
+    });
+    setNewEstimate({ customerId: "", issueDate: "", expiryDate: "", amount: "" });
+    setNewEstimateOpen(false);
+    loadInvoicing();
+  };
+
+  const handleConvertEstimate = async (id: string) => {
+    const { invoiceId } = await invoicingApi.convertEstimateToInvoice(id);
+    await loadInvoicing();
+    navigate(`/invoicing/${invoiceId}`);
+  };
+
+  const handleCreateBill = async () => {
+    if (!newBill.supplierId || !newBill.number || !newBill.issueDate) return;
+    await invoicingApi.createVendorBill({
+      supplierId: newBill.supplierId,
+      number: newBill.number,
+      issueDate: newBill.issueDate,
+      dueDate: newBill.dueDate || null,
+      amount: parseFloat(newBill.amount) || 0,
+    });
+    setNewBill({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
+    setNewBillOpen(false);
+    loadInvoicing();
+  };
+
+  const handleMarkBillPaid = async (id: string) => {
+    await invoicingApi.markVendorBillPaid(id);
     loadInvoicing();
   };
 
@@ -152,9 +207,82 @@ export default function Invoicing() {
               </div>
             </DialogContent>
           </Dialog>
-          <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
-            <Copy className="w-4 h-4" /> Duplicate Estimate
-          </Button>
+          <Dialog open={newEstimateOpen} onOpenChange={setNewEstimateOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+                <Copy className="w-4 h-4" /> New Estimate
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader><DialogTitle>Create New Estimate</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+                  <Select value={newEstimate.customerId} onValueChange={(v) => setNewEstimate((p) => ({ ...p, customerId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
+                    <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Issue Date</label>
+                    <Input type="date" className="mt-1" value={newEstimate.issueDate} onChange={(e) => setNewEstimate((p) => ({ ...p, issueDate: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Expires</label>
+                    <Input type="date" className="mt-1" value={newEstimate.expiryDate} onChange={(e) => setNewEstimate((p) => ({ ...p, expiryDate: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Amount</label>
+                  <Input type="number" className="mt-1" placeholder="0.00" value={newEstimate.amount} onChange={(e) => setNewEstimate((p) => ({ ...p, amount: e.target.value }))} />
+                </div>
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateEstimate}>
+                  Create Estimate
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={newBillOpen} onOpenChange={setNewBillOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+                <Plus className="w-4 h-4" /> New Vendor Bill
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader><DialogTitle>Create New Vendor Bill</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Supplier</label>
+                  <Select value={newBill.supplierId} onValueChange={(v) => setNewBill((p) => ({ ...p, supplierId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                    <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Bill Number</label>
+                  <Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Issue Date</label>
+                    <Input type="date" className="mt-1" value={newBill.issueDate} onChange={(e) => setNewBill((p) => ({ ...p, issueDate: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Due Date</label>
+                    <Input type="date" className="mt-1" value={newBill.dueDate} onChange={(e) => setNewBill((p) => ({ ...p, dueDate: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Amount</label>
+                  <Input type="number" className="mt-1" placeholder="0.00" value={newBill.amount} onChange={(e) => setNewBill((p) => ({ ...p, amount: e.target.value }))} />
+                </div>
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateBill}>
+                  Create Vendor Bill
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -228,7 +356,13 @@ export default function Invoicing() {
       <Tabs defaultValue="all" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
           <TabsTrigger value="all" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <FileText className="w-4 h-4" /> All Invoices
+            <FileText className="w-4 h-4" /> Customer Invoices
+          </TabsTrigger>
+          <TabsTrigger value="estimates" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+            <Copy className="w-4 h-4" /> Estimates
+          </TabsTrigger>
+          <TabsTrigger value="vendor-bills" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+            <Truck className="w-4 h-4" /> Vendor Bills
           </TabsTrigger>
           <TabsTrigger value="recurring" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Repeat className="w-4 h-4" /> Recurring
@@ -281,6 +415,98 @@ export default function Invoicing() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="estimates" className="mt-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Estimate #</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Issue Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Expires</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {estimates.map((est) => (
+                    <tr key={est.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{est.number}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{est.customers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{est.issue_date}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{est.expiry_date ?? "—"}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${est.amount.toLocaleString()}</td>
+                      <td className="text-center py-3 px-4">
+                        <Badge className={`${statusColors[est.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{est.status}</Badge>
+                      </td>
+                      <td className="text-center py-3 px-4">
+                        {est.status !== "Converted" ? (
+                          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleConvertEstimate(est.id)}>
+                            Convert to Invoice
+                          </Button>
+                        ) : (
+                          <button className="text-xs text-[#0891B2] font-medium hover:underline" onClick={() => navigate(`/invoicing/${est.converted_invoice_id}`)}>
+                            View Invoice
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {estimates.length === 0 && (
+                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No estimates yet</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="vendor-bills" className="mt-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Bill #</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vendor</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Issue Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Due Date</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendorBills.map((bill) => (
+                    <tr key={bill.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{bill.number}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{bill.suppliers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{bill.issue_date}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{bill.due_date ?? "—"}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${bill.amount.toLocaleString()}</td>
+                      <td className="text-center py-3 px-4">
+                        <Badge className={`${statusColors[bill.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{bill.status}</Badge>
+                      </td>
+                      <td className="text-center py-3 px-4">
+                        {bill.status !== "Paid" && (
+                          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleMarkBillPaid(bill.id)}>
+                            Mark Paid
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {vendorBills.length === 0 && (
+                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No vendor bills yet</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>

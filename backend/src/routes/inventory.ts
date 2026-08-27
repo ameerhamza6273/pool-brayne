@@ -88,6 +88,8 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
+  app.get("/suppliers", async (req) => withTenantContext(req.userId, (tx) => tx`select * from suppliers order by name`));
+
   // Client request 2026-08-27: map each inventory item to QuickBooks COGS/Income/Asset accounts.
   app.get("/qbo-accounts", async (req) => withQuickbooksConnection(req.userId, getChartOfAccounts));
 

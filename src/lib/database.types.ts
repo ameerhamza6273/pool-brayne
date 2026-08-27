@@ -665,6 +665,150 @@ export type Database = {
           },
         ]
       }
+      estimates: {
+        Row: {
+          amount: number
+          converted_invoice_id: string | null
+          created_at: string
+          customer_id: string
+          expiry_date: string | null
+          id: string
+          issue_date: string
+          job_id: string | null
+          number: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          amount?: number
+          converted_invoice_id?: string | null
+          created_at?: string
+          customer_id: string
+          expiry_date?: string | null
+          id?: string
+          issue_date?: string
+          job_id?: string | null
+          number: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          converted_invoice_id?: string | null
+          created_at?: string
+          customer_id?: string
+          expiry_date?: string | null
+          id?: string
+          issue_date?: string
+          job_id?: string | null
+          number?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      estimate_line_items: {
+        Row: {
+          amount: number
+          description: string
+          estimate_id: string
+          id: string
+          quantity: number
+          rate: number
+          tenant_id: string
+        }
+        Insert: {
+          amount?: number
+          description: string
+          estimate_id: string
+          id?: string
+          quantity?: number
+          rate?: number
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          description?: string
+          estimate_id?: string
+          id?: string
+          quantity?: number
+          rate?: number
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      vendor_bills: {
+        Row: {
+          amount: number
+          created_at: string
+          due_date: string | null
+          id: string
+          issue_date: string
+          number: string
+          paid_date: string | null
+          payment_method: string | null
+          status: string
+          supplier_id: string
+          tenant_id: string
+        }
+        Insert: {
+          amount?: number
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          issue_date?: string
+          number: string
+          paid_date?: string | null
+          payment_method?: string | null
+          status?: string
+          supplier_id: string
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          due_date?: string | null
+          id?: string
+          issue_date?: string
+          number?: string
+          paid_date?: string | null
+          payment_method?: string | null
+          status?: string
+          supplier_id?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      vendor_bill_line_items: {
+        Row: {
+          amount: number
+          bill_id: string
+          description: string
+          id: string
+          quantity: number
+          rate: number
+          tenant_id: string
+        }
+        Insert: {
+          amount?: number
+          bill_id: string
+          description: string
+          id?: string
+          quantity?: number
+          rate?: number
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          bill_id?: string
+          description?: string
+          id?: string
+          quantity?: number
+          rate?: number
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       job_costing: {
         Row: {
           cost_date: string

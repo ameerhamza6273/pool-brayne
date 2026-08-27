@@ -115,4 +115,79 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       order by p.paid_at desc
     `);
   });
+
+  // Client request 2026-08-27 (real estimates, not just a job-type label): create/list/convert.
+  app.get("/estimates/list", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`
+      select e.*, jsonb_build_object('name', c.name) as customers
+      from estimates e left join customers c on c.id = e.customer_id
+      order by e.issue_date desc
+    `);
+  });
+
+  app.post<{
+    Body: { customerId: string; jobId?: string | null; number: string; issueDate: string; expiryDate: string | null; amount: number };
+  }>("/estimates", async (req) => {
+    const { customerId, jobId, number, issueDate, expiryDate, amount } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [row] = await tx`
+        insert into estimates (tenant_id, customer_id, job_id, number, issue_date, expiry_date, amount)
+        values (${tenant.id}, ${customerId}, ${jobId ?? null}, ${number}, ${issueDate}, ${expiryDate}, ${amount})
+        returning *
+      `;
+      return row;
+    });
+  });
+
+  app.post<{ Params: { id: string } }>("/estimates/:id/convert-to-invoice", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [estimate] = await tx`select * from estimates where id = ${id} limit 1`;
+      if (!estimate) throw new Error("Estimate not found");
+      if (estimate.converted_invoice_id) return { invoiceId: estimate.converted_invoice_id };
+
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${estimate.number.replace(/[^A-Za-z0-9]/g, "").slice(-4)}`;
+      const [invoice] = await tx`
+        insert into invoices (tenant_id, customer_id, job_id, number, issue_date, amount, status)
+        values (${tenant.id}, ${estimate.customer_id}, ${estimate.job_id}, ${invoiceNumber}, current_date, ${estimate.amount}, 'Draft')
+        returning *
+      `;
+      await tx`update estimates set status = 'Converted', converted_invoice_id = ${invoice.id} where id = ${id}`;
+      return { invoiceId: invoice.id };
+    });
+  });
+
+  // Client request 2026-08-27: separate vendor bills (accounts payable) ledger from customer invoices.
+  app.get("/vendor-bills/list", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`
+      select vb.*, jsonb_build_object('name', s.name) as suppliers
+      from vendor_bills vb left join suppliers s on s.id = vb.supplier_id
+      order by vb.issue_date desc
+    `);
+  });
+
+  app.post<{
+    Body: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number };
+  }>("/vendor-bills", async (req) => {
+    const { supplierId, number, issueDate, dueDate, amount } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [row] = await tx`
+        insert into vendor_bills (tenant_id, supplier_id, number, issue_date, due_date, amount, status)
+        values (${tenant.id}, ${supplierId}, ${number}, ${issueDate}, ${dueDate}, ${amount}, 'Received')
+        returning *
+      `;
+      return row;
+    });
+  });
+
+  app.patch<{ Params: { id: string } }>("/vendor-bills/:id/mark-paid", async (req) => {
+    const { id } = req.params;
+    const today = new Date().toISOString().slice(0, 10);
+    return withTenantContext(req.userId, (tx) => tx`
+      update vendor_bills set status = 'Paid', paid_date = ${today} where id = ${id} returning *
+    `);
+  });
 }

@@ -24,6 +24,8 @@ export const inventoryApi = {
 
   lowStock: () => api.get<{ id: string; name: string; current: number; threshold: number }[]>("/api/inventory/low-stock"),
 
+  suppliers: () => api.get<Supplier[]>("/api/inventory/suppliers"),
+
   addItem: (data: {
     name: string;
     sku: string;

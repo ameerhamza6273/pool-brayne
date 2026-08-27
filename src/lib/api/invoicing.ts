@@ -5,6 +5,8 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { 
 type LineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
+export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string } | null };
+export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null };
 
 export const invoicingApi = {
   list: () => api.get<Invoice[]>("/api/invoices"),
@@ -24,4 +26,18 @@ export const invoicingApi = {
   payments: () => api.get<Payment[]>("/api/invoices/payments/list"),
 
   syncToQuickbooks: (id: string) => api.post<{ qboInvoiceId: string }>(`/api/invoices/${id}/quickbooks-sync`, {}),
+
+  estimates: () => api.get<Estimate[]>("/api/invoices/estimates/list"),
+
+  createEstimate: (data: { customerId: string; jobId?: string | null; number: string; issueDate: string; expiryDate: string | null; amount: number }) =>
+    api.post<Estimate>("/api/invoices/estimates", data),
+
+  convertEstimateToInvoice: (id: string) => api.post<{ invoiceId: string }>(`/api/invoices/estimates/${id}/convert-to-invoice`, {}),
+
+  vendorBills: () => api.get<VendorBill[]>("/api/invoices/vendor-bills/list"),
+
+  createVendorBill: (data: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number }) =>
+    api.post<VendorBill>("/api/invoices/vendor-bills", data),
+
+  markVendorBillPaid: (id: string) => api.patch<VendorBill>(`/api/invoices/vendor-bills/${id}/mark-paid`, {}),
 };
