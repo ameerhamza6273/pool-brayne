@@ -367,6 +367,7 @@ export type Database = {
           name: string
           pos_enabled: boolean
           price: number | null
+          qbo_accounts: Json
           reorder_threshold: number
           short_description: string | null
           sku: string
@@ -386,6 +387,7 @@ export type Database = {
           name: string
           pos_enabled?: boolean
           price?: number | null
+          qbo_accounts?: Json
           reorder_threshold?: number
           short_description?: string | null
           sku: string
@@ -405,6 +407,7 @@ export type Database = {
           name?: string
           pos_enabled?: boolean
           price?: number | null
+          qbo_accounts?: Json
           reorder_threshold?: number
           short_description?: string | null
           sku?: string

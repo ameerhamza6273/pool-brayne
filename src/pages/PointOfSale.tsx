@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { posApi } from "@/lib/api/pos";
+import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
 import type { Database } from "@/lib/database.types";
 
@@ -64,6 +64,15 @@ export default function PointOfSale() {
     number: string; total: number; payment: string; items: number;
   } | null>(null);
 
+  const [reportStart, setReportStart] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().slice(0, 10);
+  });
+  const [reportEnd, setReportEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [report, setReport] = useState<SalesReport | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+
   const categories = ["All", "Chemicals", "Test Kits", "Accessories", "Parts", "Equipment", "Services"];
 
   const loadPos = useCallback(async () => {
@@ -79,9 +88,20 @@ export default function PointOfSale() {
     setIsLoading(false);
   }, []);
 
+  const runReport = useCallback(async () => {
+    setReportLoading(true);
+    const data = await posApi.reports(reportStart, reportEnd);
+    setReport(data);
+    setReportLoading(false);
+  }, [reportStart, reportEnd]);
+
   useEffect(() => {
     loadPos();
   }, [loadPos]);
+
+  useEffect(() => {
+    runReport();
+  }, [runReport]);
 
   const filtered = products.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
@@ -439,6 +459,56 @@ export default function PointOfSale() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Sales Reports (client request 2026-08-27): date-range qty sold + sales tax report */}
+      <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h3 className="font-semibold text-[#0F172A]">Sales Reports</h3>
+          <div className="flex items-center gap-2">
+            <Input type="date" className="h-9 w-auto" value={reportStart} onChange={(e) => setReportStart(e.target.value)} />
+            <span className="text-[#64748B] text-sm">to</span>
+            <Input type="date" className="h-9 w-auto" value={reportEnd} onChange={(e) => setReportEnd(e.target.value)} />
+          </div>
+        </div>
+        {reportLoading && <div className="p-4 text-center text-[#64748B] text-sm">Loading report...</div>}
+        {!reportLoading && report && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
+            <div className="lg:col-span-2 p-4 border-b lg:border-b-0 lg:border-r border-[#E2E8F0]">
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-3">Quantity Sold by Product</p>
+              <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0]">
+                      <th className="text-left py-2 text-xs font-semibold text-[#64748B] uppercase">Product</th>
+                      <th className="text-right py-2 text-xs font-semibold text-[#64748B] uppercase">Qty Sold</th>
+                      <th className="text-right py-2 text-xs font-semibold text-[#64748B] uppercase">Revenue</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.qtyByProduct.map((row) => (
+                      <tr key={row.description} className="border-b border-[#F1F5F9] last:border-0">
+                        <td className="py-2 text-[#0F172A]">{row.description}</td>
+                        <td className="py-2 text-right text-[#0F172A]">{row.qty}</td>
+                        <td className="py-2 text-right text-[#0F172A]">${Number(row.revenue).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                    {report.qtyByProduct.length === 0 && (
+                      <tr><td colSpan={3} className="py-6 text-center text-[#64748B]">No sales in this date range</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs font-semibold text-[#64748B] uppercase">Sales Tax Report</p>
+              <div className="flex justify-between text-sm"><span className="text-[#64748B]">Orders</span><span className="font-medium text-[#0F172A]">{report.taxSummary.orderCount}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-[#64748B]">Taxable Sales</span><span className="font-medium text-[#0F172A]">${report.taxSummary.taxableSales.toFixed(2)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-[#64748B]">Tax Collected</span><span className="font-medium text-[#0F172A]">${report.taxSummary.taxCollected.toFixed(2)}</span></div>
+              <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">Total Sales</span><span className="font-bold text-[#0891B2]">${report.taxSummary.totalSales.toFixed(2)}</span></div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Customer Dialog */}

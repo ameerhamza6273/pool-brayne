@@ -15,6 +15,10 @@ export type InventorySummary = {
   varianceData: InventoryVariance[];
 };
 
+export type QboAccount = { id: string; name: string; accountType: string; classification: string };
+export type QboAccountRef = { id: string; name: string } | null;
+export type QboAccounts = { income?: QboAccountRef; expense?: QboAccountRef; asset?: QboAccountRef };
+
 export const inventoryApi = {
   summary: () => api.get<InventorySummary>("/api/inventory/summary"),
 
@@ -34,4 +38,9 @@ export const inventoryApi = {
 
   createPurchaseOrder: (data: { supplierId: string; number: string }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),
+
+  getQboAccounts: () => api.get<QboAccount[]>("/api/inventory/qbo-accounts"),
+
+  updateQboAccounts: (itemId: string, qboAccounts: QboAccounts) =>
+    api.patch<InventoryItem>(`/api/inventory/items/${itemId}/qbo-accounts`, { qboAccounts }),
 };

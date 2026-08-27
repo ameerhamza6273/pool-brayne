@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3 } from "lucide-react";
+import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inventoryApi } from "@/lib/api/inventory";
 import type { Database } from "@/lib/database.types";
-import type { ItemWithStock } from "@/lib/api/inventory";
+import type { ItemWithStock, QboAccount, QboAccounts } from "@/lib/api/inventory";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null };
@@ -29,6 +29,45 @@ const poStatusColors: Record<string, string> = {
   "Received": "bg-[#16A34A]/10 text-[#16A34A]",
 };
 
+// Client request 2026-08-27: print price stickers on Avery-style label sheets (works on any
+// label printer, incl. Zebra, since it's just a formatted print job — Avery 5160 layout:
+// 3 columns x 10 rows of 2.625" x 1" labels per letter-size sheet.
+const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost">[]) => {
+  const win = window.open("", "_blank");
+  if (!win || !win.document) return;
+  const labelsHtml = items
+    .map(
+      (item) => `
+        <div class="label">
+          <div class="name">${item.name}</div>
+          <div class="row"><span class="sku">${item.sku}</span><span class="price">$${(item.price ?? item.unit_cost).toFixed(2)}</span></div>
+        </div>`
+    )
+    .join("");
+  win.document.write(`
+    <html>
+      <head>
+        <title>Print Labels</title>
+        <style>
+          @page { size: letter; margin: 0.5in 0.1875in; }
+          body { margin: 0; font-family: Arial, sans-serif; }
+          .sheet { display: grid; grid-template-columns: repeat(3, 2.625in); grid-auto-rows: 1in; }
+          .label { box-sizing: border-box; padding: 0.1in 0.15in; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
+          .name { font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .row { display: flex; justify-content: space-between; margin-top: 4px; }
+          .sku { font-size: 9px; color: #555; }
+          .price { font-size: 13px; font-weight: 700; }
+        </style>
+      </head>
+      <body>
+        <div class="sheet">${labelsHtml}</div>
+        <script>window.onload = () => window.print();</script>
+      </body>
+    </html>
+  `);
+  win.document.close();
+};
+
 export default function Inventory() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -41,6 +80,11 @@ export default function Inventory() {
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [varianceData, setVarianceData] = useState<InventoryVariance[]>([]);
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [qboAccountList, setQboAccountList] = useState<QboAccount[] | null>(null);
+  const [qboError, setQboError] = useState<string | null>(null);
+  const [qboDialogItem, setQboDialogItem] = useState<ItemWithStock | null>(null);
+  const [qboSelection, setQboSelection] = useState<QboAccounts>({});
   const [newProduct, setNewProduct] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
@@ -87,11 +131,54 @@ export default function Inventory() {
     loadInventory();
   };
 
+  // Client request 2026-08-27: map each item to QuickBooks COGS/Income/Asset accounts, fetched
+  // lazily (once) from the tenant's live QBO chart of accounts.
+  const openQboDialog = async (item: ItemWithStock) => {
+    setQboDialogItem(item);
+    setQboSelection((item.qbo_accounts as QboAccounts | null) ?? {});
+    if (qboAccountList || qboError) return;
+    try {
+      const accounts = await inventoryApi.getQboAccounts();
+      setQboAccountList(accounts);
+    } catch (err) {
+      setQboError(err instanceof Error ? err.message : "Could not load QuickBooks accounts");
+    }
+  };
+
+  const saveQboAccounts = async () => {
+    if (!qboDialogItem) return;
+    await inventoryApi.updateQboAccounts(qboDialogItem.id, qboSelection);
+    setQboDialogItem(null);
+    loadInventory();
+  };
+
+  const accountsByGroup = (group: "income" | "expense" | "asset") => {
+    if (!qboAccountList) return [];
+    if (group === "income") return qboAccountList.filter((a) => a.accountType === "Income" || a.classification === "Revenue");
+    if (group === "expense") return qboAccountList.filter((a) => a.accountType === "Cost of Goods Sold" || a.accountType === "Expense");
+    return qboAccountList.filter((a) => a.classification === "Asset");
+  };
+
   const filtered = items.filter((p) => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
     const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handlePrintLabels = () => {
+    const toPrint = selectedIds.size > 0 ? filtered.filter((p) => selectedIds.has(p.id)) : filtered;
+    if (toPrint.length === 0) return;
+    printLabels(toPrint);
+  };
 
   const totalValue = items.reduce((sum, p) => sum + p.total * p.unit_cost, 0);
   const lowStock = items.filter((p) => p.status === "Low").length;
@@ -188,14 +275,18 @@ export default function Inventory() {
                 <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue placeholder="Category" /></SelectTrigger>
                 <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintLabels}>
+                <Tag className="w-4 h-4" /> Print Labels{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+              </Button>
             </div>
           </div>
-          <p className="text-xs text-[#64748B]">Products consumed on a job are automatically deducted at close.</p>
+          <p className="text-xs text-[#64748B]">Products consumed on a job are automatically deducted at close. Select rows below to print only those price labels (Avery 5160 sheet), otherwise all filtered products print.</p>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    <th className="w-8 py-3 px-4"></th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">SKU</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Category</th>
@@ -206,11 +297,15 @@ export default function Inventory() {
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Reorder</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Cost</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">QBO</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((p) => (
                     <tr key={p.id} className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] ${p.status === "Out" ? "bg-[#DC2626]/5" : p.status === "Low" ? "bg-[#F59E0B]/5" : ""}`}>
+                      <td className="py-3 px-4">
+                        <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} />
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3" title={p.short_description ?? undefined}>
                           <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0">
@@ -234,6 +329,15 @@ export default function Inventory() {
                       <td className="text-right py-3 px-4 text-[#0F172A]">${p.unit_cost.toFixed(2)}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{p.status}</Badge>
+                      </td>
+                      <td className="text-center py-3 px-4">
+                        <button
+                          className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]"
+                          title={(p.qbo_accounts as QboAccounts | null)?.income ? "QBO accounts mapped" : "Map QBO accounts"}
+                          onClick={() => openQboDialog(p)}
+                        >
+                          <Landmark className={`w-4 h-4 ${(p.qbo_accounts as QboAccounts | null)?.income ? "text-[#16A34A]" : ""}`} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -358,6 +462,43 @@ export default function Inventory() {
         </TabsContent>
       </Tabs>
       )}
+
+      {/* QBO account mapping (client request 2026-08-27): COGS/Income/Asset accounts per item */}
+      <Dialog open={!!qboDialogItem} onOpenChange={(open) => !open && setQboDialogItem(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>QuickBooks Accounts — {qboDialogItem?.name}</DialogTitle></DialogHeader>
+          {qboError && <p className="text-sm text-red-600">{qboError}</p>}
+          {!qboError && !qboAccountList && <p className="text-sm text-[#64748B]">Loading QuickBooks chart of accounts...</p>}
+          {qboAccountList && (
+            <div className="space-y-4 pt-2">
+              {([
+                { key: "income" as const, label: "Income Account" },
+                { key: "expense" as const, label: "COGS / Expense Account" },
+                { key: "asset" as const, label: "Asset Account" },
+              ]).map(({ key, label }) => (
+                <div key={key}>
+                  <Label>{label}</Label>
+                  <Select
+                    value={qboSelection[key]?.id ?? ""}
+                    onValueChange={(v) => {
+                      const account = qboAccountList.find((a) => a.id === v);
+                      setQboSelection((p) => ({ ...p, [key]: account ? { id: account.id, name: account.name } : null }));
+                    }}
+                  >
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select account" /></SelectTrigger>
+                    <SelectContent>
+                      {accountsByGroup(key).map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+              <Button className="w-full bg-[#0891B2] text-white" onClick={saveQboAccounts}>Save</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

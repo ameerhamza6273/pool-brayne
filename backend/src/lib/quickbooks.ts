@@ -67,6 +67,14 @@ async function qboRequest(conn: QboConnection, method: string, path: string, bod
   return res.json() as Promise<any>;
 }
 
+// Client request 2026-08-27: lets Inventory map each product to a QBO Income/COGS/Asset
+// account. Fetches the tenant's live chart of accounts so those mappings use real account ids.
+export async function getChartOfAccounts(conn: QboConnection): Promise<{ id: string; name: string; accountType: string; classification: string }[]> {
+  const result = await qboRequest(conn, "GET", `/query?query=${encodeURIComponent("select * from Account where Active = true maxresults 1000")}`);
+  const accounts = result.QueryResponse?.Account ?? [];
+  return accounts.map((a: any) => ({ id: a.Id, name: a.Name, accountType: a.AccountType, classification: a.Classification }));
+}
+
 export async function pushCustomer(
   conn: QboConnection,
   customer: { name: string; email: string | null; phone: string | null; address: string | null },

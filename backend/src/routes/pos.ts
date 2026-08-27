@@ -39,6 +39,34 @@ export default async function posRoutes(app: FastifyInstance) {
     });
   });
 
+  // Sales reports (client request 2026-08-27): quantity sold per product and sales-tax
+  // collected within a date range, derived from real pos_orders/pos_order_items (POS is the
+  // only itemized sales source -- job invoices don't track tax as a separate line).
+  app.get<{ Querystring: { start: string; end: string } }>("/reports", async (req) => {
+    const { start, end } = req.query;
+    return withTenantContext(req.userId, async (tx) => {
+      const orders = await tx`
+        select id, subtotal, tax, total from pos_orders
+        where created_at::date between ${start} and ${end}
+      ` as unknown as { id: string; subtotal: number; tax: number; total: number }[];
+      const orderIds = orders.map((o) => o.id);
+      const items = orderIds.length > 0
+        ? await tx`
+            select description, sum(quantity) as qty, sum(amount) as revenue
+            from pos_order_items where order_id in ${tx(orderIds)}
+            group by description order by qty desc
+          `
+        : [];
+      const taxSummary = {
+        orderCount: orders.length,
+        totalSales: orders.reduce((s, o) => s + Number(o.total), 0),
+        taxableSales: orders.reduce((s, o) => s + Number(o.subtotal), 0),
+        taxCollected: orders.reduce((s, o) => s + Number(o.tax), 0),
+      };
+      return { qtyByProduct: items, taxSummary };
+    });
+  });
+
   app.post<{
     Body: {
       customerId: string | null;

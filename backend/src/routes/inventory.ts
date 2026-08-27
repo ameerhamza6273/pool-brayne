@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
+import { withQuickbooksConnection, getChartOfAccounts } from "../lib/quickbooks.js";
 
 type Location = { id: string; type: string };
 type Stock = { item_id: string; location_id: string; quantity: number };
@@ -83,6 +84,21 @@ export default async function inventoryRoutes(app: FastifyInstance) {
           (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer})
         returning *
       `;
+      return row;
+    });
+  });
+
+  // Client request 2026-08-27: map each inventory item to QuickBooks COGS/Income/Asset accounts.
+  app.get("/qbo-accounts", async (req) => withQuickbooksConnection(req.userId, getChartOfAccounts));
+
+  app.patch<{
+    Params: { id: string };
+    Body: { qboAccounts: Record<string, { id: string; name: string } | null> };
+  }>("/items/:id/qbo-accounts", async (req) => {
+    const { id } = req.params;
+    const { qboAccounts } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`update inventory_items set qbo_accounts = ${tx.json(qboAccounts)} where id = ${id} returning *`;
       return row;
     });
   });
