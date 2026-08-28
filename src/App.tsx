@@ -14,6 +14,7 @@ import Fleet from "@/pages/Fleet";
 import Timesheets from "@/pages/Timesheets";
 import Invoicing from "@/pages/Invoicing";
 import InvoiceDetail from "@/pages/InvoiceDetail";
+import EstimateDetail from "@/pages/EstimateDetail";
 import Campaigns from "@/pages/Campaigns";
 import Settings from "@/pages/Settings";
 import Onboarding from "@/pages/Onboarding";
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="/timesheets" element={<Timesheets />} />
         <Route path="/pos" element={<PointOfSale />} />
         <Route path="/invoicing" element={<Invoicing />} />
+        <Route path="/invoicing/estimates/:id" element={<EstimateDetail />} />
         <Route path="/invoicing/:id" element={<InvoiceDetail />} />
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/settings" element={<Settings />} />

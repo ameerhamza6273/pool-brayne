@@ -20,10 +20,23 @@ export const jobsApi = {
 
   detail: (id: string) => api.get<Job>(`/api/jobs/${id}`),
 
-  create: (data: { customerId: string; jobType: string; techId: string | null; date: string | null; time: string | null; description: string | null; address: string | null; amount: number }) =>
-    api.post<Job>("/api/jobs", data),
+  create: (data: {
+    customerId: string;
+    jobType: string;
+    techId: string | null;
+    date: string | null;
+    time: string | null;
+    description: string | null;
+    address: string | null;
+    amount: number;
+    itemSku?: string | null;
+    laborSku?: string | null;
+  }) => api.post<Job>("/api/jobs", data),
 
   update: (id: string, fields: Record<string, unknown>) => api.patch<Job>(`/api/jobs/${id}`, fields),
+
+  uninvoiced: (customerId: string, start: string, end: string) =>
+    api.get<Job[]>(`/api/jobs/uninvoiced?customerId=${customerId}&start=${start}&end=${end}`),
 
   getParts: (jobId: string) => api.get<JobPartUsed[]>(`/api/jobs/${jobId}/parts`),
 

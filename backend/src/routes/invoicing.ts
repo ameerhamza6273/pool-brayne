@@ -1,7 +1,41 @@
 import type { FastifyInstance } from "fastify";
+import type postgres from "postgres";
 import { withTenantContext } from "../db.js";
 import { withQuickbooksConnection, pushInvoice } from "../lib/quickbooks.js";
 import { syncCustomerToQuickbooks } from "./customers.js";
+
+type LineItemInput = {
+  description: string;
+  sku?: string | null;
+  itemType?: "material" | "labor";
+  quantity: number;
+  cost?: number;
+  rate: number;
+};
+
+// Shared by /invoices and /invoices/estimates — both header tables gained the same
+// sku/cost/item_type line-item detail (client's "Pool Supply Atlanta" sample PDFs, 2026-08-28).
+async function insertInvoiceLineItems(tx: postgres.TransactionSql, invoiceId: string, tenantId: string, lineItems: LineItemInput[] | undefined) {
+  if (!lineItems || lineItems.length === 0) return;
+  for (const li of lineItems) {
+    const amount = li.quantity * li.rate;
+    await tx`
+      insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount)
+      values (${tenantId}, ${invoiceId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount})
+    `;
+  }
+}
+
+async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: string, tenantId: string, lineItems: LineItemInput[] | undefined) {
+  if (!lineItems || lineItems.length === 0) return;
+  for (const li of lineItems) {
+    const amount = li.quantity * li.rate;
+    await tx`
+      insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount)
+      values (${tenantId}, ${estimateId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount})
+    `;
+  }
+}
 
 export default async function invoicingRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -42,16 +76,29 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   });
 
   app.post<{
-    Body: { customerId: string; jobId?: string | null; number: string; issueDate: string; dueDate: string | null; amount: number; status?: string };
+    Body: {
+      customerId: string;
+      jobId?: string | null;
+      number: string;
+      issueDate: string;
+      dueDate: string | null;
+      amount: number;
+      status?: string;
+      downPayment?: number;
+      jobDescription?: string | null;
+      lineItems?: LineItemInput[];
+    };
   }>("/", async (req) => {
-    const { customerId, jobId, number, issueDate, dueDate, amount, status } = req.body;
+    const { customerId, jobId, number, issueDate, dueDate, status, downPayment, jobDescription, lineItems } = req.body;
+    const amount = lineItems && lineItems.length > 0 ? lineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0) : req.body.amount;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into invoices (tenant_id, customer_id, job_id, number, issue_date, due_date, amount, status)
-        values (${tenant.id}, ${customerId}, ${jobId ?? null}, ${number}, ${issueDate}, ${dueDate}, ${amount}, ${status ?? "Draft"})
+        insert into invoices (tenant_id, customer_id, job_id, number, issue_date, due_date, amount, status, down_payment, job_description)
+        values (${tenant.id}, ${customerId}, ${jobId ?? null}, ${number}, ${issueDate}, ${dueDate}, ${amount}, ${status ?? "Draft"}, ${downPayment ?? 0}, ${jobDescription ?? null})
         returning *
       `;
+      await insertInvoiceLineItems(tx, row.id, tenant.id, lineItems);
       return row;
     });
   });
@@ -126,17 +173,50 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     `);
   });
 
+  app.get<{ Params: { id: string } }>("/estimates/:id", async (req, reply) => {
+    const { id } = req.params;
+    const result = await withTenantContext(req.userId, async (tx) => {
+      const [estimateRows, lineItems, tenantRows] = await Promise.all([
+        tx`
+          select e.*, jsonb_build_object('name', c.name, 'address', c.address, 'phone', c.phone) as customers
+          from estimates e left join customers c on c.id = e.customer_id
+          where e.id = ${id} limit 1
+        `,
+        tx`select * from estimate_line_items where estimate_id = ${id}`,
+        tx`select name, phone, address, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
+      ]);
+      return { estimate: estimateRows[0] ?? null, lineItems, business: tenantRows[0] ?? null };
+    });
+    if (!result.estimate) {
+      reply.code(404).send({ error: "Estimate not found" });
+      return;
+    }
+    return result;
+  });
+
   app.post<{
-    Body: { customerId: string; jobId?: string | null; number: string; issueDate: string; expiryDate: string | null; amount: number };
+    Body: {
+      customerId: string;
+      jobId?: string | null;
+      number: string;
+      issueDate: string;
+      expiryDate: string | null;
+      amount: number;
+      downPayment?: number;
+      jobDescription?: string | null;
+      lineItems?: LineItemInput[];
+    };
   }>("/estimates", async (req) => {
-    const { customerId, jobId, number, issueDate, expiryDate, amount } = req.body;
+    const { customerId, jobId, number, issueDate, expiryDate, downPayment, jobDescription, lineItems } = req.body;
+    const amount = lineItems && lineItems.length > 0 ? lineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0) : req.body.amount;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into estimates (tenant_id, customer_id, job_id, number, issue_date, expiry_date, amount)
-        values (${tenant.id}, ${customerId}, ${jobId ?? null}, ${number}, ${issueDate}, ${expiryDate}, ${amount})
+        insert into estimates (tenant_id, customer_id, job_id, number, issue_date, expiry_date, amount, down_payment, job_description)
+        values (${tenant.id}, ${customerId}, ${jobId ?? null}, ${number}, ${issueDate}, ${expiryDate}, ${amount}, ${downPayment ?? 0}, ${jobDescription ?? null})
         returning *
       `;
+      await insertEstimateLineItems(tx, row.id, tenant.id, lineItems);
       return row;
     });
   });
@@ -148,13 +228,29 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       if (!estimate) throw new Error("Estimate not found");
       if (estimate.converted_invoice_id) return { invoiceId: estimate.converted_invoice_id };
 
+      const estimateLineItems = (await tx`select * from estimate_line_items where estimate_id = ${id}`) as unknown as {
+        description: string;
+        sku: string | null;
+        item_type: string;
+        quantity: number;
+        cost: number;
+        rate: number;
+        amount: number;
+      }[];
+
       const [tenant] = await tx`select current_tenant_id() as id`;
       const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${estimate.number.replace(/[^A-Za-z0-9]/g, "").slice(-4)}`;
       const [invoice] = await tx`
-        insert into invoices (tenant_id, customer_id, job_id, number, issue_date, amount, status)
-        values (${tenant.id}, ${estimate.customer_id}, ${estimate.job_id}, ${invoiceNumber}, current_date, ${estimate.amount}, 'Draft')
+        insert into invoices (tenant_id, customer_id, job_id, number, issue_date, amount, status, down_payment, job_description)
+        values (${tenant.id}, ${estimate.customer_id}, ${estimate.job_id}, ${invoiceNumber}, current_date, ${estimate.amount}, 'Draft', ${estimate.down_payment}, ${estimate.job_description})
         returning *
       `;
+      for (const li of estimateLineItems) {
+        await tx`
+          insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount)
+          values (${tenant.id}, ${invoice.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount})
+        `;
+      }
       await tx`update estimates set status = 'Converted', converted_invoice_id = ${invoice.id} where id = ${id}`;
       return { invoiceId: invoice.id };
     });

@@ -31,12 +31,16 @@ export const inventoryApi = {
     sku: string;
     category: string;
     unitCost: number;
+    price: number | null;
     shortDescription: string | null;
     longDescription: string | null;
     department: string | null;
     subDepartment: string | null;
     manufacturer: string | null;
   }) => api.post<InventoryItem>("/api/inventory/items", data),
+
+  updatePricing: (itemId: string, unitCost: number, price: number | null) =>
+    api.patch<InventoryItem>(`/api/inventory/items/${itemId}/pricing`, { unitCost, price }),
 
   createPurchaseOrder: (data: { supplierId: string; number: string }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),

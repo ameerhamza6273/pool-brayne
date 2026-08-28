@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -69,11 +70,19 @@ const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit
 };
 
 export default function Inventory() {
+  const [searchParams] = useSearchParams();
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
   const [poOpen, setPoOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [pricingItem, setPricingItem] = useState<ItemWithStock | null>(null);
+  const [pricingDraft, setPricingDraft] = useState({ unitCost: "", price: "" });
+  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "purchase" ? "purchase" : "catalog"));
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "purchase") setActiveTab("purchase");
+  }, [searchParams]);
 
   const [items, setItems] = useState<ItemWithStock[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -86,7 +95,7 @@ export default function Inventory() {
   const [qboDialogItem, setQboDialogItem] = useState<ItemWithStock | null>(null);
   const [qboSelection, setQboSelection] = useState<QboAccounts>({});
   const [newProduct, setNewProduct] = useState({
-    name: "", sku: "", category: "Chemicals", unitCost: "",
+    name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
   });
   const [newPo, setNewPo] = useState({ supplierId: "", number: "" });
@@ -112,14 +121,34 @@ export default function Inventory() {
       sku: newProduct.sku,
       category: newProduct.category,
       unitCost: parseFloat(newProduct.unitCost) || 0,
+      price: newProduct.price ? parseFloat(newProduct.price) : null,
       shortDescription: newProduct.shortDescription || null,
       longDescription: newProduct.longDescription || null,
       department: newProduct.department || null,
       subDepartment: newProduct.subDepartment || null,
       manufacturer: newProduct.manufacturer || null,
     });
-    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "" });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "" });
     setAddOpen(false);
+    loadInventory();
+  };
+
+  // Client request 2026-08-28: Price (customer-facing) needs to be editable separately from
+  // Cost (internal only) — previously only unit_cost could ever be set, so Estimate/Invoice
+  // line items picked from inventory always defaulted price == cost.
+  const openPricingDialog = (item: ItemWithStock) => {
+    setPricingItem(item);
+    setPricingDraft({ unitCost: String(item.unit_cost), price: item.price !== null ? String(item.price) : "" });
+  };
+
+  const savePricing = async () => {
+    if (!pricingItem) return;
+    await inventoryApi.updatePricing(
+      pricingItem.id,
+      parseFloat(pricingDraft.unitCost) || 0,
+      pricingDraft.price ? parseFloat(pricingDraft.price) : null,
+    );
+    setPricingItem(null);
     loadInventory();
   };
 
@@ -207,8 +236,9 @@ export default function Inventory() {
                       <SelectContent>{categories.filter(c => c !== "All").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
-                  <div><Label>Unit Cost</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
+                  <div><Label>Cost (internal)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
                 </div>
+                <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.price} onChange={(e) => setNewProduct((p) => ({ ...p, price: e.target.value }))} /></div>
                 <div><Label>Short Description</Label><Input className="mt-1" placeholder="One-line summary" value={newProduct.shortDescription} onChange={(e) => setNewProduct((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
                 <div><Label>Long Description</Label><Input className="mt-1" placeholder="Full details" value={newProduct.longDescription} onChange={(e) => setNewProduct((p) => ({ ...p, longDescription: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -248,7 +278,7 @@ export default function Inventory() {
       {isLoading && <div className="text-center py-8 text-[#64748B]">Loading inventory...</div>}
 
       {!isLoading && (
-      <Tabs defaultValue="catalog" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
           <TabsTrigger value="catalog" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Package className="w-4 h-4" /> Catalog
@@ -287,6 +317,7 @@ export default function Inventory() {
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                     <th className="w-8 py-3 px-4"></th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Item #</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">SKU</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Category</th>
@@ -296,8 +327,10 @@ export default function Inventory() {
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Total</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Reorder</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Cost</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Price</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">QBO</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -306,6 +339,7 @@ export default function Inventory() {
                       <td className="py-3 px-4">
                         <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} />
                       </td>
+                      <td className="py-3 px-4 text-[#64748B]">{p.item_number ?? "—"}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3" title={p.short_description ?? undefined}>
                           <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0">
@@ -327,6 +361,7 @@ export default function Inventory() {
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">{p.total}</td>
                       <td className="text-right py-3 px-4 text-[#64748B]">{p.reorder_threshold}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">${p.unit_cost.toFixed(2)}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">{p.price !== null ? `$${p.price.toFixed(2)}` : "—"}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{p.status}</Badge>
                       </td>
@@ -337,6 +372,11 @@ export default function Inventory() {
                           onClick={() => openQboDialog(p)}
                         >
                           <Landmark className={`w-4 h-4 ${(p.qbo_accounts as QboAccounts | null)?.income ? "text-[#16A34A]" : ""}`} />
+                        </button>
+                      </td>
+                      <td className="text-center py-3 px-4">
+                        <button className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]" title="Edit Cost/Price" onClick={() => openPricingDialog(p)}>
+                          <Pencil className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
@@ -497,6 +537,24 @@ export default function Inventory() {
               <Button className="w-full bg-[#0891B2] text-white" onClick={saveQboAccounts}>Save</Button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cost/Price edit (client request 2026-08-28) */}
+      <Dialog open={!!pricingItem} onOpenChange={(open) => !open && setPricingItem(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Pricing — {pricingItem?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>Cost (internal — never shown to customer)</Label>
+              <Input type="number" className="mt-1" value={pricingDraft.unitCost} onChange={(e) => setPricingDraft((p) => ({ ...p, unitCost: e.target.value }))} />
+            </div>
+            <div>
+              <Label>Price (customer-facing)</Label>
+              <Input type="number" className="mt-1" placeholder="0.00" value={pricingDraft.price} onChange={(e) => setPricingDraft((p) => ({ ...p, price: e.target.value }))} />
+            </div>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={savePricing}>Save</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

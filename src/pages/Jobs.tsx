@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Plus, Calendar, LayoutDashboard, Truck, User, MapPin, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon,
+  Plus, Calendar, LayoutDashboard, Truck, User, MapPin, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon, Navigation,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,14 +64,21 @@ const techDotColor = (techId: string): string => {
 };
 
 export default function Jobs() {
-  const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule" | "map">("pipeline");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule" | "map">(
+    () => (searchParams.get("tab") as "pipeline" | "dispatch" | "schedule" | "map") || "pipeline",
+  );
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "schedule") setActiveTab("schedule");
+  }, [searchParams]);
   const [search, setSearch] = useState("");
   const [newJobOpen, setNewJobOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [technicians, setTechnicians] = useState<Profile[]>([]);
   const [recurringRoutes, setRecurringRoutes] = useState<RecurringRoute[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
+  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", itemSku: "", laborSku: "" });
   const [mapDate, setMapDate] = useState(() => new Date().toISOString().slice(0, 10));
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -101,8 +108,10 @@ export default function Jobs() {
       description: newJob.description || null,
       address: customers.find((c) => c.id === newJob.customerId)?.address ?? null,
       amount: parseFloat(newJob.amount) || 0,
+      itemSku: newJob.itemSku || null,
+      laborSku: newJob.laborSku || null,
     });
-    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
+    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", itemSku: "", laborSku: "" });
     setNewJobOpen(false);
     loadJobs();
   };
@@ -295,6 +304,16 @@ export default function Jobs() {
                   <Input type="number" placeholder="0.00" className="mt-1" value={newJob.amount} onChange={(e) => setNewJob((p) => ({ ...p, amount: e.target.value }))} />
                   <p className="text-xs text-[#64748B] mt-1">Used for the invoice generated when this job is marked complete.</p>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Item SKU</Label>
+                    <Input placeholder="e.g. HAY-SP15" className="mt-1" value={newJob.itemSku} onChange={(e) => setNewJob((p) => ({ ...p, itemSku: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>Labor SKU</Label>
+                    <Input placeholder="e.g. SVC-LABOR" className="mt-1" value={newJob.laborSku} onChange={(e) => setNewJob((p) => ({ ...p, laborSku: e.target.value }))} />
+                  </div>
+                </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateJob}>
                   Create Job
                 </Button>
@@ -360,7 +379,12 @@ export default function Jobs() {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <Badge className="text-[10px] px-1.5 py-0" style={techStyle(job.tech_id)}>{job.type}</Badge>
-                          <span className="text-xs text-[#64748B]">{job.scheduled_time}</span>
+                          <div className="flex items-center gap-1.5">
+                            {job.en_route_at && !job.arrived_at && !job.completed_at && (
+                              <Navigation className="w-3.5 h-3.5 text-[#F59E0B]" aria-label="En route" />
+                            )}
+                            <span className="text-xs text-[#64748B]">{job.scheduled_time}</span>
+                          </div>
                         </div>
                         <p className="font-medium text-sm text-[#0F172A] mb-1">{job.customers?.name}</p>
                         <p className="text-xs text-[#64748B] mb-2 truncate">{job.address}</p>

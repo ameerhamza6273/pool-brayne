@@ -46,4 +46,7 @@ export const customersApi = {
 
   updateCoordinates: (customerId: string, lat: number, lng: number) =>
     api.patch<{ id: string; lat: number; lng: number }>(`/api/customers/${customerId}/coordinates`, { lat, lng }),
+
+  updateReminder: (customerId: string, nextReminderDate: string | null, reminderFrequencyMonths: number | null) =>
+    api.patch<Customer>(`/api/customers/${customerId}/reminder`, { nextReminderDate, reminderFrequencyMonths }),
 };

@@ -175,6 +175,15 @@ export default function JobDetail() {
     loadJob();
   };
 
+  // Client request 2026-08-28: an "en route" icon on the status changer — reuses the
+  // en_route_at timestamp Field.tsx already sets during the tech's own start-job flow, but lets
+  // staff toggle it manually from here too.
+  const handleToggleEnRoute = async () => {
+    if (!job) return;
+    await jobsApi.update(job.id, { en_route_at: job.en_route_at ? null : new Date().toISOString() });
+    loadJob();
+  };
+
   const handleReschedule = async () => {
     if (!job || !rescheduleAt) return;
     const [date, time] = rescheduleAt.split("T");
@@ -834,6 +843,13 @@ export default function JobDetail() {
                   ))}
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                className={`w-full gap-2 h-9 ${job.en_route_at ? "border-[#F59E0B] text-[#F59E0B] bg-[#F59E0B]/5" : "border-[#E2E8F0] text-[#64748B]"}`}
+                onClick={handleToggleEnRoute}
+              >
+                <Truck className="w-4 h-4" /> {job.en_route_at ? "En Route" : "Mark En Route"}
+              </Button>
             </CardContent>
           </Card>
 

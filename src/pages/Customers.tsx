@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, Phone, MessageSquare, Mail, LayoutGrid, Table2, MapPin, X } from "lucide-react";
+import { Search, Plus, Phone, MessageSquare, Mail, LayoutGrid, Table2, MapPin, X, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,7 @@ const tagColors: Record<string, string> = {
 export default function Customers() {
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("All");
-  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  const [viewMode, setViewMode] = useState<"table" | "grid" | "reminders">("table");
   const [addOpen, setAddOpen] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +83,15 @@ export default function Customers() {
     const matchesTag = tagFilter === "All" || c.tags.includes(tagFilter);
     return matchesSearch && matchesTag;
   });
+
+  // Client request 2026-08-28: periodic service reminders (repeat jobs 2-3x/year) — no real
+  // notification channel is wired up, so "auto-remind" surfaces here as a due/overdue list with
+  // a badge count, rather than an actual push/SMS/email.
+  const today = new Date().toISOString().slice(0, 10);
+  const withReminders = customers
+    .filter((c) => c.next_reminder_date)
+    .sort((a, b) => (a.next_reminder_date! < b.next_reminder_date! ? -1 : 1));
+  const dueReminders = withReminders.filter((c) => c.next_reminder_date! <= today);
 
   return (
     <div className="space-y-4">
@@ -211,6 +220,18 @@ export default function Customers() {
             className={`p-2 rounded-lg ${viewMode === "grid" ? "bg-[#0891B2]/10 text-[#0891B2]" : "text-[#64748B] hover:bg-[#F8FAFC]"}`}
           >
             <LayoutGrid className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setViewMode("reminders")}
+            title="Service Reminders"
+            className={`p-2 rounded-lg relative ${viewMode === "reminders" ? "bg-[#0891B2]/10 text-[#0891B2]" : "text-[#64748B] hover:bg-[#F8FAFC]"}`}
+          >
+            <Bell className="w-4 h-4" />
+            {dueReminders.length > 0 && (
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#DC2626] text-white text-[9px] flex items-center justify-center">
+                {dueReminders.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -345,6 +366,43 @@ export default function Customers() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Service Reminders View */}
+      {!isLoading && viewMode === "reminders" && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+          <div className="divide-y divide-[#F1F5F9]">
+            {withReminders.map((c) => {
+              const overdue = c.next_reminder_date! <= today;
+              return (
+                <button
+                  key={c.id}
+                  className="w-full text-left p-4 flex items-center gap-4 hover:bg-[#F8FAFC]"
+                  onClick={() => navigate(`/customers/${c.id}`)}
+                >
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${overdue ? "bg-[#DC2626]/10" : "bg-[#F59E0B]/10"}`}>
+                    <Bell className={`w-5 h-5 ${overdue ? "text-[#DC2626]" : "text-[#F59E0B]"}`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-[#0F172A]">{c.name}</p>
+                    <p className="text-xs text-[#64748B]">{c.address}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`text-sm font-semibold ${overdue ? "text-[#DC2626]" : "text-[#0F172A]"}`}>
+                      {overdue ? "Overdue" : "Due"} {c.next_reminder_date}
+                    </p>
+                    <p className="text-xs text-[#64748B]">every {c.reminder_frequency_months ?? "—"} months</p>
+                  </div>
+                </button>
+              );
+            })}
+            {withReminders.length === 0 && (
+              <div className="p-8 text-center text-[#64748B]">
+                No service reminders set yet — set one from a customer's detail page.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

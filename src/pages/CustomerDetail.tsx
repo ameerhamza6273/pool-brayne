@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Phone, MessageSquare, Mail, ArrowLeft, MapPin,
-  Wrench, FileText, Camera, Plus,
+  Wrench, FileText, Camera, Plus, Bell, CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +54,7 @@ export default function CustomerDetail() {
   const [photoDragOver, setPhotoDragOver] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [reminderDraft, setReminderDraft] = useState({ nextReminderDate: "", frequencyMonths: "" });
   const [qboSyncing, setQboSyncing] = useState(false);
   const [qboError, setQboError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +65,10 @@ export default function CustomerDetail() {
     try {
       const bundle = await customersApi.detail(id);
       setCustomer(bundle.customer);
+      setReminderDraft({
+        nextReminderDate: bundle.customer.next_reminder_date ?? "",
+        frequencyMonths: bundle.customer.reminder_frequency_months ? String(bundle.customer.reminder_frequency_months) : "",
+      });
       setHistory(bundle.history);
       setNotes(bundle.notes);
       setInvoices(bundle.invoices);
@@ -110,6 +115,29 @@ export default function CustomerDetail() {
     if (!id || !newNote.trim()) return;
     await customersApi.addNote(id, { text: newNote.trim(), author: user?.name ?? "You" });
     setNewNote("");
+    load();
+  };
+
+  // Client request 2026-08-28: periodic service reminder (repeat jobs 2-3x/year, e.g. "next
+  // service due in 4 months"), so office staff can see who's coming due without a separate
+  // notification/SMS channel — nothing sends automatically since none is wired up yet.
+  const handleSaveReminder = async () => {
+    if (!id) return;
+    await customersApi.updateReminder(
+      id,
+      reminderDraft.nextReminderDate || null,
+      reminderDraft.frequencyMonths ? parseInt(reminderDraft.frequencyMonths, 10) : null,
+    );
+    load();
+  };
+
+  const handleMarkServiced = async () => {
+    if (!id || !reminderDraft.frequencyMonths) return;
+    const next = new Date();
+    next.setMonth(next.getMonth() + parseInt(reminderDraft.frequencyMonths, 10));
+    const nextDate = next.toISOString().slice(0, 10);
+    await customersApi.updateReminder(id, nextDate, parseInt(reminderDraft.frequencyMonths, 10));
+    setReminderDraft((p) => ({ ...p, nextReminderDate: nextDate }));
     load();
   };
 
@@ -239,6 +267,47 @@ export default function CustomerDetail() {
                   <MapPin className="w-6 h-6 text-[#0891B2] mx-auto mb-1" />
                   <p className="text-xs text-[#64748B]">Map view</p>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Periodic Service Reminder */}
+          <Card className="border-[#E2E8F0] shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+                <Bell className="w-4 h-4 text-[#0891B2]" /> Service Reminder
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pt-0">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">Next Due</p>
+                  <Input
+                    type="date"
+                    className="h-9 text-sm"
+                    value={reminderDraft.nextReminderDate}
+                    onChange={(e) => setReminderDraft((p) => ({ ...p, nextReminderDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">Repeat (months)</p>
+                  <Input
+                    type="number"
+                    placeholder="e.g. 4"
+                    className="h-9 text-sm"
+                    value={reminderDraft.frequencyMonths}
+                    onChange={(e) => setReminderDraft((p) => ({ ...p, frequencyMonths: e.target.value }))}
+                  />
+                </div>
+              </div>
+              {customer.next_reminder_date && new Date(customer.next_reminder_date) <= new Date() && (
+                <p className="text-xs font-medium text-[#DC2626]">Due now — service is overdue.</p>
+              )}
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1 h-8 border-[#E2E8F0]" onClick={handleSaveReminder}>Save</Button>
+                <Button size="sm" className="flex-1 h-8 bg-[#16A34A] hover:bg-[#15803D] text-white gap-1.5" onClick={handleMarkServiced} disabled={!reminderDraft.frequencyMonths}>
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Mark Serviced
+                </Button>
               </div>
             </CardContent>
           </Card>

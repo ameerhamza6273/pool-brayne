@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import {
   LayoutDashboard, Users, Wrench, Package, Truck, Clock, Receipt, Megaphone, Settings,
-  Search, ChevronDown, Menu, MoreHorizontal, X, Droplets, Phone, ScanLine,
+  Search, ChevronDown, Menu, MoreHorizontal, X, Droplets, Phone, ScanLine, ClipboardList, Calendar, Copy,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import NotificationsPanel from "@/components/NotificationsPanel";
@@ -13,16 +13,22 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
+// "Purchase Order" / "Schedule" / "Estimation" are client-requested sidebar categories
+// (2026-08-28) — each deep-links to the matching tab on its existing page (Inventory/Jobs/
+// Invoicing) rather than duplicating that page's data-fetching in a brand-new route.
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/customers", label: "Customers", icon: Users },
   { path: "/jobs", label: "Jobs & Dispatch", icon: Wrench },
+  { path: "/jobs?tab=schedule", label: "Schedule", icon: Calendar },
   { path: "/field", label: "Technician Field", icon: Phone },
   { path: "/pos", label: "Point of Sale", icon: ScanLine },
   { path: "/inventory", label: "Inventory", icon: Package },
+  { path: "/inventory?tab=purchase", label: "Purchase Orders", icon: ClipboardList },
   { path: "/fleet", label: "Fleet", icon: Truck },
   { path: "/timesheets", label: "Timesheets", icon: Clock },
   { path: "/invoicing", label: "Invoicing", icon: Receipt },
+  { path: "/invoicing?tab=estimates", label: "Estimation", icon: Copy },
   { path: "/campaigns", label: "Campaigns", icon: Megaphone },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
@@ -36,13 +42,17 @@ const mobileTabs = [
 ];
 
 export default function AppShell() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
-  const isActive = (path: string) => pathname === path || pathname.startsWith(path + "/");
+  const isActive = (path: string) => {
+    const [p, query] = path.split("?");
+    if (query) return pathname === p && search === `?${query}`;
+    return (pathname === p || pathname.startsWith(p + "/")) && !search;
+  };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex">

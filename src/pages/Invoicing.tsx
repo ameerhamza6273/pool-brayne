@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
-import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,11 +10,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { invoicingApi, type Estimate, type VendorBill } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
-import { inventoryApi } from "@/lib/api/inventory";
+import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { settingsApi } from "@/lib/api/settings";
+import { jobsApi } from "@/lib/api/jobs";
+import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import type { Database } from "@/lib/database.types";
 
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null };
+type UninvoicedJob = Database["public"]["Tables"]["jobs"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
 type Customer = { id: string; name: string };
@@ -42,20 +45,33 @@ export default function Invoicing() {
   const [recurringBilling, setRecurringBilling] = useState<RecurringBilling[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [newInvoice, setNewInvoice] = useState({ customerId: "", issueDate: "", dueDate: "", amount: "" });
+  const [newInvoice, setNewInvoice] = useState({ customerId: "", issueDate: "", dueDate: "", amount: "", downPayment: "", jobDescription: "" });
+  const [newInvoiceLines, setNewInvoiceLines] = useState<DraftLineItem[]>([]);
   const [qboConnected, setQboConnected] = useState(false);
   const [estimates, setEstimates] = useState<Estimate[]>([]);
   const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [newEstimateOpen, setNewEstimateOpen] = useState(false);
-  const [newEstimate, setNewEstimate] = useState({ customerId: "", issueDate: "", expiryDate: "", amount: "" });
+  const [newEstimate, setNewEstimate] = useState({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "", jobDescription: "" });
+  const [newEstimateLines, setNewEstimateLines] = useState<DraftLineItem[]>([]);
   const [newBillOpen, setNewBillOpen] = useState(false);
   const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "estimates" ? "estimates" : "all"));
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkForm, setBulkForm] = useState({ customerId: "", start: "", end: "" });
+  const [bulkJobs, setBulkJobs] = useState<UninvoicedJob[]>([]);
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (searchParams.get("tab") === "estimates") setActiveTab("estimates");
+  }, [searchParams]);
 
   const loadInvoicing = useCallback(async () => {
     setIsLoading(true);
-    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData] = await Promise.all([
+    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData, inventoryData] = await Promise.all([
       invoicingApi.list(),
       invoicingApi.recurringBilling(),
       invoicingApi.payments(),
@@ -64,6 +80,7 @@ export default function Invoicing() {
       invoicingApi.estimates(),
       invoicingApi.vendorBills(),
       inventoryApi.suppliers(),
+      inventoryApi.summary(),
     ]);
     setInvoices((invoicesData ?? []) as Invoice[]);
     setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
@@ -73,6 +90,7 @@ export default function Invoicing() {
     setEstimates((estimatesData ?? []) as Estimate[]);
     setVendorBills((vendorBillsData ?? []) as VendorBill[]);
     setSuppliers(suppliersData ?? []);
+    setInventoryItems(inventoryData?.items ?? []);
     setIsLoading(false);
   }, []);
 
@@ -90,8 +108,12 @@ export default function Invoicing() {
       dueDate: newInvoice.dueDate || null,
       amount: parseFloat(newInvoice.amount) || 0,
       status: "Draft",
+      downPayment: parseFloat(newInvoice.downPayment) || 0,
+      jobDescription: newInvoice.jobDescription || null,
+      lineItems: newInvoiceLines.filter((li) => li.description.trim()),
     });
-    setNewInvoice({ customerId: "", issueDate: "", dueDate: "", amount: "" });
+    setNewInvoice({ customerId: "", issueDate: "", dueDate: "", amount: "", downPayment: "", jobDescription: "" });
+    setNewInvoiceLines([]);
     setNewInvoiceOpen(false);
     loadInvoicing();
   };
@@ -105,8 +127,12 @@ export default function Invoicing() {
       issueDate: newEstimate.issueDate,
       expiryDate: newEstimate.expiryDate || null,
       amount: parseFloat(newEstimate.amount) || 0,
+      downPayment: parseFloat(newEstimate.downPayment) || 0,
+      jobDescription: newEstimate.jobDescription || null,
+      lineItems: newEstimateLines.filter((li) => li.description.trim()),
     });
-    setNewEstimate({ customerId: "", issueDate: "", expiryDate: "", amount: "" });
+    setNewEstimate({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "", jobDescription: "" });
+    setNewEstimateLines([]);
     setNewEstimateOpen(false);
     loadInvoicing();
   };
@@ -134,6 +160,55 @@ export default function Invoicing() {
   const handleMarkBillPaid = async (id: string) => {
     await invoicingApi.markVendorBillPaid(id);
     loadInvoicing();
+  };
+
+  // Client request 2026-08-28: bulk invoicing — combine several weeks of completed (but not
+  // yet invoiced) jobs for one customer into a single invoice, one line item per job.
+  const loadBulkJobs = useCallback(async () => {
+    const { customerId, start, end } = bulkForm;
+    if (!customerId || !start || !end) {
+      setBulkJobs([]);
+      return;
+    }
+    const jobs = await jobsApi.uninvoiced(customerId, start, end);
+    setBulkJobs(jobs ?? []);
+    setBulkSelected(new Set((jobs ?? []).map((j) => j.id)));
+  }, [bulkForm]);
+
+  useEffect(() => {
+    loadBulkJobs();
+  }, [loadBulkJobs]);
+
+  const toggleBulkJob = (id: string) => {
+    setBulkSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCreateBulkInvoice = async () => {
+    const selectedJobs = bulkJobs.filter((j) => bulkSelected.has(j.id));
+    if (!bulkForm.customerId || selectedJobs.length === 0) return;
+    const number = `INV-${bulkForm.end.replace(/-/g, "")}-${String(invoices.length + 1).padStart(3, "0")}`;
+    const invoice = await invoicingApi.create({
+      customerId: bulkForm.customerId,
+      number,
+      issueDate: bulkForm.end,
+      dueDate: null,
+      amount: 0,
+      status: "Draft",
+      lineItems: selectedJobs.map((j) => ({
+        description: `${j.type} — ${j.scheduled_date ?? j.created_at.slice(0, 10)}`,
+        quantity: 1,
+        rate: j.amount,
+      })),
+    });
+    setBulkForm({ customerId: "", start: "", end: "" });
+    setBulkOpen(false);
+    await loadInvoicing();
+    navigate(`/invoicing/${invoice.id}`);
   };
 
   const filtered = invoices.filter((inv) =>
@@ -177,7 +252,7 @@ export default function Invoicing() {
                 <Plus className="w-4 h-4" /> New Invoice
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Create New Invoice</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
@@ -198,11 +273,92 @@ export default function Invoicing() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Amount</label>
-                  <Input type="number" className="mt-1" placeholder="0.00" value={newInvoice.amount} onChange={(e) => setNewInvoice((p) => ({ ...p, amount: e.target.value }))} />
+                  <label className="text-sm font-medium text-[#0F172A]">Job Description</label>
+                  <textarea
+                    className="mt-1 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm min-h-[60px]"
+                    placeholder="e.g. Heater Install, Zinc Anode, Check Valve..."
+                    value={newInvoice.jobDescription}
+                    onChange={(e) => setNewInvoice((p) => ({ ...p, jobDescription: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Line Items</label>
+                  <div className="mt-1">
+                    <LineItemsEditor items={newInvoiceLines} onChange={setNewInvoiceLines} inventoryItems={inventoryItems} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Amount {newInvoiceLines.length > 0 && <span className="text-xs text-[#64748B]">(from line items)</span>}</label>
+                    <Input
+                      type="number"
+                      className="mt-1"
+                      placeholder="0.00"
+                      value={newInvoiceLines.length > 0 ? newInvoiceLines.reduce((s, li) => s + li.quantity * li.rate, 0).toFixed(2) : newInvoice.amount}
+                      disabled={newInvoiceLines.length > 0}
+                      onChange={(e) => setNewInvoice((p) => ({ ...p, amount: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Down Payment</label>
+                    <Input type="number" className="mt-1" placeholder="0.00" value={newInvoice.downPayment} onChange={(e) => setNewInvoice((p) => ({ ...p, downPayment: e.target.value }))} />
+                  </div>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateInvoice}>
                   Create Invoice
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+                <Layers className="w-4 h-4" /> Bulk Invoice
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>Bulk Invoice</DialogTitle></DialogHeader>
+              <p className="text-xs text-[#64748B] -mt-2">Combine several weeks of completed jobs for one customer into a single invoice — one line item per job.</p>
+              <div className="space-y-4 pt-2">
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+                  <Select value={bulkForm.customerId} onValueChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
+                    <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">From</label>
+                    <Input type="date" className="mt-1" value={bulkForm.start} onChange={(e) => setBulkForm((p) => ({ ...p, start: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">To</label>
+                    <Input type="date" className="mt-1" value={bulkForm.end} onChange={(e) => setBulkForm((p) => ({ ...p, end: e.target.value }))} />
+                  </div>
+                </div>
+                {bulkForm.customerId && bulkForm.start && bulkForm.end && (
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Completed jobs in range</label>
+                    <div className="mt-1 space-y-1.5 max-h-64 overflow-y-auto">
+                      {bulkJobs.length === 0 && <p className="text-sm text-[#64748B] py-2">No uninvoiced completed jobs in this range.</p>}
+                      {bulkJobs.map((j) => (
+                        <label key={j.id} className="flex items-center gap-2 p-2 rounded-lg border border-[#E2E8F0] text-sm cursor-pointer">
+                          <input type="checkbox" checked={bulkSelected.has(j.id)} onChange={() => toggleBulkJob(j.id)} />
+                          <span className="flex-1">{j.type} — {j.scheduled_date}</span>
+                          <span className="font-medium text-[#0F172A]">${j.amount.toFixed(2)}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {bulkJobs.length > 0 && (
+                      <p className="text-right text-sm font-semibold text-[#0F172A] mt-2">
+                        Total: ${bulkJobs.filter((j) => bulkSelected.has(j.id)).reduce((s, j) => s + j.amount, 0).toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateBulkInvoice} disabled={bulkSelected.size === 0}>
+                  Create Bulk Invoice
                 </Button>
               </div>
             </DialogContent>
@@ -213,7 +369,7 @@ export default function Invoicing() {
                 <Copy className="w-4 h-4" /> New Estimate
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Create New Estimate</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
@@ -234,8 +390,36 @@ export default function Invoicing() {
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Amount</label>
-                  <Input type="number" className="mt-1" placeholder="0.00" value={newEstimate.amount} onChange={(e) => setNewEstimate((p) => ({ ...p, amount: e.target.value }))} />
+                  <label className="text-sm font-medium text-[#0F172A]">Job Description</label>
+                  <textarea
+                    className="mt-1 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm min-h-[60px]"
+                    placeholder="e.g. Heater Install, Zinc Anode, Check Valve..."
+                    value={newEstimate.jobDescription}
+                    onChange={(e) => setNewEstimate((p) => ({ ...p, jobDescription: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#0F172A]">Line Items</label>
+                  <div className="mt-1">
+                    <LineItemsEditor items={newEstimateLines} onChange={setNewEstimateLines} inventoryItems={inventoryItems} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Amount {newEstimateLines.length > 0 && <span className="text-xs text-[#64748B]">(from line items)</span>}</label>
+                    <Input
+                      type="number"
+                      className="mt-1"
+                      placeholder="0.00"
+                      value={newEstimateLines.length > 0 ? newEstimateLines.reduce((s, li) => s + li.quantity * li.rate, 0).toFixed(2) : newEstimate.amount}
+                      disabled={newEstimateLines.length > 0}
+                      onChange={(e) => setNewEstimate((p) => ({ ...p, amount: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Down Payment</label>
+                    <Input type="number" className="mt-1" placeholder="0.00" value={newEstimate.downPayment} onChange={(e) => setNewEstimate((p) => ({ ...p, downPayment: e.target.value }))} />
+                  </div>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateEstimate}>
                   Create Estimate
@@ -353,7 +537,7 @@ export default function Invoicing() {
       {isLoading && <div className="text-center py-8 text-[#64748B]">Loading invoices...</div>}
 
       {!isLoading && (
-      <Tabs defaultValue="all" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
           <TabsTrigger value="all" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <FileText className="w-4 h-4" /> Customer Invoices
@@ -438,7 +622,7 @@ export default function Invoicing() {
                 </thead>
                 <tbody>
                   {estimates.map((est) => (
-                    <tr key={est.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                    <tr key={est.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => navigate(`/invoicing/estimates/${est.id}`)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{est.number}</td>
                       <td className="py-3 px-4 text-[#64748B]">{est.customers?.name ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{est.issue_date}</td>
@@ -447,7 +631,7 @@ export default function Invoicing() {
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[est.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{est.status}</Badge>
                       </td>
-                      <td className="text-center py-3 px-4">
+                      <td className="text-center py-3 px-4" onClick={(e) => e.stopPropagation()}>
                         {est.status !== "Converted" ? (
                           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleConvertEstimate(est.id)}>
                             Convert to Invoice

@@ -67,6 +67,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       sku: string;
       category: string;
       unitCost: number;
+      price: number | null;
       shortDescription: string | null;
       longDescription: string | null;
       department: string | null;
@@ -74,18 +75,28 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       manufacturer: string | null;
     };
   }>("/items", async (req) => {
-    const { name, sku, category, unitCost, shortDescription, longDescription, department, subDepartment, manufacturer } = req.body;
+    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         insert into inventory_items
-          (tenant_id, name, sku, category, unit_cost, short_description, long_description, department, sub_department, manufacturer)
+          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer)
         values
-          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer})
+          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer})
         returning *
       `;
       return row;
     });
+  });
+
+  // Client request 2026-08-28: Price (customer-facing) needs to be editable separately from
+  // Cost (internal-only) after an item has already been created.
+  app.patch<{ Params: { id: string }; Body: { unitCost: number; price: number | null } }>("/items/:id/pricing", async (req) => {
+    const { id } = req.params;
+    const { unitCost, price } = req.body;
+    return withTenantContext(req.userId, (tx) => tx`
+      update inventory_items set unit_cost = ${unitCost}, price = ${price} where id = ${id} returning *
+    `);
   });
 
   app.get("/suppliers", async (req) => withTenantContext(req.userId, (tx) => tx`select * from suppliers order by name`));

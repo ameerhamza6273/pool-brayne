@@ -114,6 +114,20 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client request 2026-08-28: periodic service reminder (repeat jobs 2-3x/year) — a due date
+  // plus a frequency so "Mark Serviced" can roll the next one forward automatically.
+  app.patch<{ Params: { id: string }; Body: { nextReminderDate: string | null; reminderFrequencyMonths: number | null } }>(
+    "/:id/reminder",
+    async (req) => {
+      const { id } = req.params;
+      const { nextReminderDate, reminderFrequencyMonths } = req.body;
+      return withTenantContext(req.userId, (tx) => tx`
+        update customers set next_reminder_date = ${nextReminderDate}, reminder_frequency_months = ${reminderFrequencyMonths}
+        where id = ${id} returning *
+      `);
+    },
+  );
+
   app.post<{ Params: { id: string } }>("/:id/quickbooks-sync", async (req) => {
     const qboCustomerId = await syncCustomerToQuickbooks(req.userId, req.params.id);
     return { qboCustomerId };

@@ -1443,4 +1443,208 @@ wait — dekho upar wala push-blocked note):
   -- --port 5175 --strictPort` (root) aur `cd backend && npm run dev` (port 4000) chalane
   honge — is session ke background processes naye terminal mein nahi bachenge. Port check karna
   na bhoolna (netstat) kyunki yardward-pro sibling project bhi 5173/5174 le sakta hai.
+
+### 2026-08-28 — Client ne 3 PDFs bheji (feature request list + sample Estimate/Invoice) —
+Estimate/Invoice line-item detail (SKU/Cost/Labor, Down Payment) built end-to-end
+
+User ne Downloads mein 3 PDFs point ki (`Clear Pool CRM requests.pdf`, `EstimationEmail_72883.pdf`,
+`InvoiceEmail_72884.pdf`) jo client ne SMS ke sath bheji thin. Sab 3 padh kar summary di gayi:
+
+- **`Clear Pool CRM requests.pdf`** — 9-item feature list: 3 naye sidebar sections (Purchase
+  Order/Schedule/Estimation as apni categories), Inventory Price vs Cost split (Cost internal-only),
+  Inventory ka apna auto-incrementing Item Number (16000 se start), Job creation mein Price/Item
+  SKU/Labor SKU fields + "En Route" status icon, Estimate/Invoice creation mein line-by-line detail
+  (Labor field, Cost, Price, Qty), Bulk Invoices (ek customer ko 4-5 weeks worth ek invoice mein),
+  Customer page par periodic "Reminders" tab (auto-remind after elapsed time).
+- **`EstimationEmail_72883.pdf` + `InvoiceEmail_72884.pdf`** — client ke purane system se real
+  sample Estimate ("Service Ticket") aur Invoice, business "Pool Supply Atlanta" — dono mein: real
+  letterhead, Client Details + Billing Address blocks, Item/Parts+Labor+Tax+Total summary box
+  (+ Down Payment/Remaining Balance), free-text "Job Description" box, line-items table jisme
+  SKU/item-number description ke sath embedded hai, aur Estimate mein neeche "Customer Signature"
+  line.
+
+User ne (AskUserQuestion se) priority choose ki: **sabse pehle Estimate/Invoice line-item detail**
+(Cost/Price/SKU/Labor per line + Down Payment/Remaining Balance) — baaqi 8 items (naye sidebar
+sections, Inventory Item Number system, Reminders tab, Bulk Invoicing, etc.) abhi tak nahi banaye,
+agla priority round mein poochna hai.
+
+**Kya bana (end-to-end browser-tested, dev par):**
+- Migration `20260828090000_estimate_invoice_line_detail.sql` — `invoice_line_items` aur
+  `estimate_line_items` dono mein `sku`, `cost` (internal), `item_type` ('material'|'labor')
+  add kiye; `invoices` aur `estimates` dono mein `down_payment` aur `job_description` add kiye.
+  **Access token nahi tha is baar bhi** — pehle jaisa hi pattern: `backend/_tmp-run-migration.ts`
+  (DATABASE_URL se `postgres` package, generic file-path arg) likha, run kiya, turant delete kiya.
+- `backend/src/routes/invoicing.ts` — POST `/invoices` aur POST `/invoices/estimates` dono ab
+  `lineItems[]` + `downPayment` + `jobDescription` accept karte hain (agar lineItems diye hon to
+  header ka `amount` unse hi compute hota hai, server-side, client ke bheje amount ko ignore
+  karke — taake totals kabhi line-items se out-of-sync na hon). Naya `GET /invoices/estimates/:id`
+  endpoint add kiya (pehle sirf list tha, koi single-estimate detail nahi tha). **"Convert to
+  Invoice" ab estimate ke real line items (sku/cost/item_type sab) naye invoice mein copy karta
+  hai** — pehle sirf total `amount` copy hota tha, line items generate hi nahi hote thay naye
+  invoice mein.
+- `src/components/LineItemsEditor.tsx` (naya, shared) — dono "New Invoice" aur "New Estimate"
+  dialogs isi ek component ko reuse karte hain: per-line Type (Material/Labor) select, "Pick from
+  inventory (optional)" select jo `inventoryApi.summary()` ke real catalog se description/sku/
+  cost/price auto-fill karta hai, phir Description/SKU/Qty/Cost/Price manual fields, Amount
+  auto-compute (qty × price), "+ Add Line Item" / per-row delete.
+- `Invoicing.tsx` ke dono "New Invoice"/"New Estimate" dialogs redesign (max-w-2xl, scrollable) —
+  Job Description textarea, LineItemsEditor, Amount field ab read-only jab line items maujood hon
+  ("(from line items)" label), Down Payment field. Estimates tab ki rows ab clickable hain (naya
+  detail page par navigate karti hain — pehle koi row-click navigation hi nahi thi, sirf
+  Convert/View Invoice buttons thay).
+- `InvoiceDetail.tsx` — naya "Job Description" box, line items table mein SKU + "Labor" badge,
+  Totals mein Down Payment/Remaining Balance add kiye. **Purana decorative/fake "Invoice Sections
+  — Maintenance/One-off/Renovations" block (hardcoded % split of subtotal, kabhi kisi real data se
+  nahi aata tha) hata diya** — client ke apne sample document mein yeh section hai hi nahi, aur
+  ab real line-item breakdown + Job Description isi jagah zyada sahi info deta hai. Naya "Internal
+  Costs (Staff Only)" panel add kiya (Total Cost + Margin) jo `print:hidden` hai — Download PDF
+  (`window.print()`) mein nahi jaata, is tarah "cost visible to us, customer ko nahi" wali client
+  ki request satisfy hoti hai **usi shared document se** jo customer ko print/email hoga.
+- **Naya `src/pages/EstimateDetail.tsx`** (route `/invoicing/estimates/:id`) — pehli baar Estimates
+  ka koi detail page bana (pehle sirf list-row mein amount dikhta tha). Layout client ke "Service
+  Ticket" sample se match karta hai: letterhead, Client Details + Estimate Details, Job Description,
+  line items (SKU + Labor badge), Down Payment/Remaining Balance, Internal Costs panel
+  (print:hidden), aur neeche ek **Customer Signature line** (paper-print-then-physically-sign
+  jaisa, sample PDF mein bhi bilkul yehi tha — koi digital signature-capture nahi banaya, scope se
+  bahar rakha kyunki sample khud paper-based tha).
+- `App.tsx` mein route add kiya (`/invoicing/:id` se pehle `/invoicing/estimates/:id` — order
+  zaroori nahi tha kyunki segment-count alag hai, lekin explicit rakha clarity ke liye).
+- `database.types.ts` mein 4 tables ke naye fields manually add kiye (access token na hone ki
+  wajah se regenerate nahi ho saka, pehle jaisa hi pattern).
+- **Browser mein (dev, device jo pehle "ameer hamza" tha wahi is baar bhi, connect_screen/
+  switch_browser se confirm karke) poora end-to-end test kiya:**
+  - Estimate banayi (Cedar Park Rec Center, 2 line items — ek material manual entry + ek labor),
+    subtotal/amount sahi compute hua ($5,694.99), Down Payment $100 diya.
+  - EstimateDetail page open kiya — letterhead "Pool Supply Atlanta" (pehle se set tha
+    tenant.invoice_business_name se), Job Description, dono line items (SKU + Labor badge),
+    Subtotal/Tax/Total/Down Payment/Remaining Balance, Internal Costs panel (Total Cost $3800,
+    Margin $1894.99), Customer Signature line — sab sahi dikha.
+  - "Convert to Invoice" click kiya — naya invoice bana, **line items + job description + down
+    payment sab automatically carry hue** (backend copy logic verified).
+  - Alag se "New Invoice" dialog test kiya (James Thompson) — "Pick from inventory" se "Pentair
+    IntelliFlo 3HP" select kiya, SKU/Cost/Price auto-fill hue real inventory data se ($1,850),
+    invoice bana aur InvoiceDetail par sahi dikha.
+  - Saara test data (1 estimate + 2 invoices, unke line items) turant DB se delete kiya
+    (`backend/_tmp-cleanup*.ts`, run karke turant delete — established pattern).
+- **Non-obvious gotcha is session ka:** browser automation ke `find`/`read_page` (accessibility-tree
+  based) tools baar baar ek specific "Description" text input ko empty dikhate rahe jabke woh
+  actually sahi se filled tha — `javascript_tool` se seedha DOM `input.value` query karke confirm
+  kiya ke field sahi tha. **Yaad rakhna:** agar future testing mein koi text input "empty" lage
+  lekin baaqi related fields (jo isi state update se aate hain) sahi dikhein, pehle
+  `document.querySelector(...).value` se seedha DOM check karo before assuming a real bug —
+  yeh dusri baar hai jab yeh accessibility-tree read tool specifically is tarah ke input par
+  stale/wrong state dikhata hai (pehli baar bhi isi session mein, manual-entry case mein).
+- Frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) dono clean.
+- **Baaqi/pending:**
+  1. Requests list ke baaqi 8 items abhi tak nahi bane (sidebar sections, Inventory Item Number
+     auto-increment, Job creation Price/SKU fields, "En Route" status, Bulk Invoices, Customer
+     Reminders tab) — agla priority round mein poochna hai kaunsa order.
+  2. Estimate/Invoice line items abhi "pick from inventory" ke zariye stock deduct nahin karte
+     (POS/job-completion jaisa) — jaan-boojh kar out of scope rakha is round mein, sirf document
+     detail/fields tha ask.
+  3. Pehle se pending sab kuch waisa hi hai (customer-list import confirmation, resale/pluggable-
+     integrations, Authorize.net, Twilio/Stripe/SendGrid/Gusto client accounts, Railway/Vercel
+     client-account move, global search bar, notifications panel, dispatch-nearest-tech, QBO
+     two-way sync, QBO production redirect URI, JobDetail content-category tabs, address
+     autocomplete).
+  4. **Is session ke changes abhi commit nahi hue** — commit se pehle user se confirm lena
+     (established rule).
+- **Dev servers is session ke end tak:** frontend `localhost:5175` (`--strictPort`), backend
+  `localhost:4000` — dono already chal rahe thay session shuru hote waqt (pehle se persistent),
+  is session mein dobara start nahi karne pade.
+  ---
+
+### 2026-08-28 (continued) — Baaqi 8 items bhi ban gaye (list se, ek session mein sab)
+
+User ne kaha "sab ki list bna ke start kr do, last mein test krenge" — baaqi 8 items (upar wali
+list) sab ek hi session mein build kiye, phir aakhir mein poora live browser test kiya (dev par).
+
+- **Migration** `20260828100000_item_number_job_skus_reminders.sql`:
+  - `inventory_items.item_number` — naya `inventory_item_number_seq` (start 16000), column ka
+    default `nextval(...)`, existing 32 items ko creation-order mein backfill kiya (16000-16031),
+    sequence ko `setval` se aage set kiya taake naye items collide na karein.
+  - `jobs.item_sku`, `jobs.labor_sku` — nullable text.
+  - `customers.next_reminder_date` (date), `customers.reminder_frequency_months` (integer).
+  - Pehle jaisa hi pattern: access token nahi tha, `backend/_tmp-run-migration.ts` (DATABASE_URL
+    se `postgres` package) se run kiya, turant delete kiya.
+- **Sidebar — Purchase Order / Schedule / Estimation** (`AppShell.tsx`): teeno naye nav links
+  add kiye jo apni existing page ke andar hi maujood tab par deep-link karte hain
+  (`/inventory?tab=purchase`, `/jobs?tab=schedule`, `/invoicing?tab=estimates`) — naya standalone
+  route/page nahi banaya, taake existing data-fetching duplicate na ho. `isActive()` helper ko
+  query-string-aware banaya (warna base aur query-specific dono links ek sath highlight ho jate).
+  Teeno target pages (`Inventory.tsx`, `Jobs.tsx`, `Invoicing.tsx`) mein Tabs ko controlled banaya
+  (`value`/`onValueChange` state + `useEffect` jo `searchParams` badalne par tab switch kare) —
+  sirf `defaultValue` kaafi nahi tha kyunki same route ke andar sidebar click par component
+  remount nahi hota.
+  - **Real bug pakड़ा testing ke dauran:** JobDetail page pehle se `/jobs/:id` route use karta
+    hai jo `/invoicing/:id` jaisa hi pattern hai — koi tabbing issue nahi mila yahan, sab clean.
+- **Inventory — Price vs Cost split + Item Number** (`Inventory.tsx` + `inventory.ts` backend):
+  Catalog table mein "Item #" aur "Price" columns add kiye (pehle sirf "Cost"/`unit_cost` dikhta
+  tha — `price` column schema mein pehle se tha lekin kabhi UI mein set/dikhaya nahi jata tha).
+  "Add Product" dialog mein "Price (customer-facing)" field add kiya. Naya per-row pencil-icon
+  "Edit Cost/Price" dialog (`inventoryApi.updatePricing`, naya `PATCH /items/:id/pricing`) taake
+  existing 32 seeded items ka price bhi baad mein set/edit ho sake.
+- **Job creation — Item SKU / Labor SKU + En Route icon:**
+  - `Jobs.tsx` "New Job" dialog mein "Item SKU"/"Labor SKU" fields add kiye (Amount field pehle
+    se tha, previous session se) — `jobs.item_sku`/`labor_sku` set karte hain.
+  - "En Route icon" (client ka ask tha "on the update status for an existing job") —
+    `JobDetail.tsx` ke "Update Status" card mein naya "Mark En Route" button add kiya jo
+    already-existing `jobs.en_route_at` timestamp ko toggle karta hai (yeh column pehle se
+    Field.tsx ke tech-flow se set hota tha, ab staff bhi JobDetail se manually set/unset kar
+    sakte hain). Pipeline board (`Jobs.tsx`) ki job cards par bhi ek chhota Navigation icon add
+    kiya jo `en_route_at` set hone par (aur `arrived_at`/`completed_at` na hone par) dikhta hai.
+- **Bulk Invoicing** (`Invoicing.tsx` + naya `GET /api/jobs/uninvoiced` endpoint): naya "Bulk
+  Invoice" button/dialog — customer + date range choose karo, us range ke saare **completed
+  jobs jinka abhi tak koi invoice nahi hai** (`jobs left join invoices on job_id where invoices
+  is null`) checkbox list mein aate hain (default sab checked), "Create Bulk Invoice" unhe ek
+  hi invoice mein **ek line item per job** (description = `${type} — ${date}`) ke tor par
+  insert karta hai — koi naya "billed" column nahi chahiye pada, existing invoice.job_id se hi
+  "already invoiced" derive ho gaya (agar future mein koi job do baar bulk-invoice mein select
+  ho sake, wo already is query se automatically exclude ho jayega jab tak khud us job ka invoice
+  na bane).
+- **Customer Reminders** (`Customers.tsx` + `CustomerDetail.tsx` + naya
+  `PATCH /customers/:id/reminder`): `CustomerDetail.tsx` mein naya "Service Reminder" card
+  (Next Due date + Repeat months, "Save" aur "Mark Serviced" — jo aaj se +N months ka naya due
+  date compute kar deta hai). `Customers.tsx` mein naya "Reminders" view (Bell icon toggle, badge
+  count of overdue customers) jo saare customers jinka `next_reminder_date` set hai unhe
+  due/overdue sorted list mein dikhata hai. **Koi real notification/SMS/email nahi bhejta** —
+  jaan-boojh kar sirf ek visible due-list hai (client ka koi real SMS/email channel wired nahi
+  hai abhi), yehi "auto-remind" ka honest scope hai is stage par.
+- **Non-obvious gotcha is session ka (bada waqt zaya hua isi par):** `mcp__claude-in-chrome__navigate`
+  se full URL navigation ek **hard page reload** karta hai (SPA client-side route nahi) — is
+  project mein Vite dev mode `lucide-react` ke 1000+ individual icon files unbundled serve karta
+  hai, isliye har hard-reload ke baad React app ko fully interactive hone mein kuch second lagte
+  hain. Isi window mein `computer` tool ke coordinate/ref-based clicks silently no-op ho jate hain
+  (na koi error, na koi visible failure — form fields DOM mein sahi dikhte hain kyunki
+  `form_input` seedha native setter use karta hai, lekin button clicks jo React event handlers
+  par depend karte hain miss ho jate hain, jaisa "New Job" create 2 baar completely silently fail
+  hua). **Fix/pattern jo yaad rakhna hai:** hard navigation ke baad `computer` action `wait`
+  (2-3 seconds) use karo before clicking, aur agar phir bhi doubt ho to **`javascript_tool` se
+  seedha DOM par `.click()` call karo** (yeh Radix/React event listeners ko directly trigger
+  karta hai, hydration-timing se independent hai) — is session mein isi switch ke baad har
+  submit turant kaam kar gaya. Yeh is baar first-time discover hua, pehle kabhi is tarah
+  systematically fail nahi hua tha (chhoti forms/dialogs par shayad kabhi itni der lagi hi nahi
+  thi ke race condition trigger ho).
+- Poora feature-set live dev browser mein end-to-end verify kiya (sab real DB inserts/updates
+  confirm kiye direct DB queries se, phir turant clean kiya — koi test debris nahi bacha, final
+  row counts session-start baseline se match karte hain: 26 customers, 13 jobs, 32 inventory
+  items, 19 invoices).
+- Frontend aur backend dono typecheck clean.
+- **Baaqi/pending:**
+  1. **Is poore session (dono continuations) ke changes abhi commit nahi hue** — commit se pehle
+     user se confirm lena.
+  2. Estimate/Invoice/Job line items abhi bhi kisi inventory stock ko deduct nahi karte (sirf
+     POS aur job-parts-used flow karte hain) — jaan-boojh kar out of scope, alag ask tha.
+  3. Bulk Invoice mein sirf date-range + completed-uninvoiced-jobs criterion hai — koi
+     recurring-route-aware "auto-suggest is month's route customers" jaisa smart default nahi
+     hai, simple/explicit rakha gaya.
+  4. Reminders ka "auto-remind after allotted time" abhi sirf ek visible due-list hai, koi push/
+     SMS/email nahi (client ka koi channel wired nahi hai abhi) — jab real SMS/email milega,
+     isi due-list data se ek scheduled digest bhi banaya ja sakta hai.
+  5. Pehle se pending sab kuch waisa hi hai (customer-list import, resale/pluggable-integrations,
+     Authorize.net, Twilio/Stripe/SendGrid/Gusto client accounts, Railway/Vercel client-account
+     move, global search bar, notifications panel, dispatch-nearest-tech, QBO two-way sync, QBO
+     production redirect URI, JobDetail content-category tabs, address autocomplete).
+- **Dev servers is session ke end tak:** frontend `localhost:5175`, backend `localhost:4000` —
+  dono is session ke dauran chalte rahe.
   ---

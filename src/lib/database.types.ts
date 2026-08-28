@@ -218,8 +218,10 @@ export type Database = {
           lifetime_value: number
           lng: number | null
           name: string
+          next_reminder_date: string | null
           phone: string | null
           qbo_customer_id: string | null
+          reminder_frequency_months: number | null
           tags: string[]
           tenant_id: string
           type: string
@@ -239,8 +241,10 @@ export type Database = {
           lifetime_value?: number
           lng?: number | null
           name: string
+          next_reminder_date?: string | null
           phone?: string | null
           qbo_customer_id?: string | null
+          reminder_frequency_months?: number | null
           tags?: string[]
           tenant_id: string
           type?: string
@@ -260,8 +264,10 @@ export type Database = {
           lifetime_value?: number
           lng?: number | null
           name?: string
+          next_reminder_date?: string | null
           phone?: string | null
           qbo_customer_id?: string | null
+          reminder_frequency_months?: number | null
           tags?: string[]
           tenant_id?: string
           type?: string
@@ -362,6 +368,7 @@ export type Database = {
           created_at: string
           department: string | null
           id: string
+          item_number: number | null
           long_description: string | null
           manufacturer: string | null
           name: string
@@ -382,6 +389,7 @@ export type Database = {
           created_at?: string
           department?: string | null
           id?: string
+          item_number?: number | null
           long_description?: string | null
           manufacturer?: string | null
           name: string
@@ -402,6 +410,7 @@ export type Database = {
           created_at?: string
           department?: string | null
           id?: string
+          item_number?: number | null
           long_description?: string | null
           manufacturer?: string | null
           name?: string
@@ -553,29 +562,38 @@ export type Database = {
       invoice_line_items: {
         Row: {
           amount: number
+          cost: number
           description: string
           id: string
           invoice_id: string
+          item_type: string
           quantity: number
           rate: number
+          sku: string | null
           tenant_id: string
         }
         Insert: {
           amount?: number
+          cost?: number
           description: string
           id?: string
           invoice_id: string
+          item_type?: string
           quantity?: number
           rate?: number
+          sku?: string | null
           tenant_id: string
         }
         Update: {
           amount?: number
+          cost?: number
           description?: string
           id?: string
           invoice_id?: string
+          item_type?: string
           quantity?: number
           rate?: number
+          sku?: string | null
           tenant_id?: string
         }
         Relationships: [
@@ -600,9 +618,11 @@ export type Database = {
           amount: number
           created_at: string
           customer_id: string
+          down_payment: number
           due_date: string | null
           id: string
           issue_date: string
+          job_description: string | null
           job_id: string | null
           number: string
           paid_date: string | null
@@ -615,9 +635,11 @@ export type Database = {
           amount?: number
           created_at?: string
           customer_id: string
+          down_payment?: number
           due_date?: string | null
           id?: string
           issue_date?: string
+          job_description?: string | null
           job_id?: string | null
           number: string
           paid_date?: string | null
@@ -630,9 +652,11 @@ export type Database = {
           amount?: number
           created_at?: string
           customer_id?: string
+          down_payment?: number
           due_date?: string | null
           id?: string
           issue_date?: string
+          job_description?: string | null
           job_id?: string | null
           number?: string
           paid_date?: string | null
@@ -671,9 +695,11 @@ export type Database = {
           converted_invoice_id: string | null
           created_at: string
           customer_id: string
+          down_payment: number
           expiry_date: string | null
           id: string
           issue_date: string
+          job_description: string | null
           job_id: string | null
           number: string
           status: string
@@ -684,9 +710,11 @@ export type Database = {
           converted_invoice_id?: string | null
           created_at?: string
           customer_id: string
+          down_payment?: number
           expiry_date?: string | null
           id?: string
           issue_date?: string
+          job_description?: string | null
           job_id?: string | null
           number: string
           status?: string
@@ -697,9 +725,11 @@ export type Database = {
           converted_invoice_id?: string | null
           created_at?: string
           customer_id?: string
+          down_payment?: number
           expiry_date?: string | null
           id?: string
           issue_date?: string
+          job_description?: string | null
           job_id?: string | null
           number?: string
           status?: string
@@ -710,29 +740,38 @@ export type Database = {
       estimate_line_items: {
         Row: {
           amount: number
+          cost: number
           description: string
           estimate_id: string
           id: string
+          item_type: string
           quantity: number
           rate: number
+          sku: string | null
           tenant_id: string
         }
         Insert: {
           amount?: number
+          cost?: number
           description: string
           estimate_id: string
           id?: string
+          item_type?: string
           quantity?: number
           rate?: number
+          sku?: string | null
           tenant_id: string
         }
         Update: {
           amount?: number
+          cost?: number
           description?: string
           estimate_id?: string
           id?: string
+          item_type?: string
           quantity?: number
           rate?: number
+          sku?: string | null
           tenant_id?: string
         }
         Relationships: []
@@ -1024,6 +1063,8 @@ export type Database = {
           description: string | null
           en_route_at: string | null
           id: string
+          item_sku: string | null
+          labor_sku: string | null
           scheduled_date: string | null
           scheduled_time: string | null
           stage: Database["public"]["Enums"]["job_stage"]
@@ -1042,6 +1083,8 @@ export type Database = {
           description?: string | null
           en_route_at?: string | null
           id?: string
+          item_sku?: string | null
+          labor_sku?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
           stage?: Database["public"]["Enums"]["job_stage"]
@@ -1060,6 +1103,8 @@ export type Database = {
           description?: string | null
           en_route_at?: string | null
           id?: string
+          item_sku?: string | null
+          labor_sku?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
           stage?: Database["public"]["Enums"]["job_stage"]

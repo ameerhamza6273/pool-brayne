@@ -44,6 +44,21 @@ export default async function jobsRoutes(app: FastifyInstance) {
     `);
   });
 
+  // Client request 2026-08-28 (bulk invoicing): completed jobs for a customer in a date range
+  // that don't have an invoice yet, so several weeks of service can be combined into one invoice.
+  app.get<{ Querystring: { customerId: string; start: string; end: string } }>("/uninvoiced", async (req) => {
+    const { customerId, start, end } = req.query;
+    return withTenantContext(req.userId, (tx) => tx`
+      select j.* from jobs j
+      left join invoices i on i.job_id = j.id
+      where j.customer_id = ${customerId}
+        and j.stage = 'completed'
+        and i.id is null
+        and j.scheduled_date between ${start} and ${end}
+      order by j.scheduled_date
+    `);
+  });
+
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     const [job] = await withTenantContext(req.userId, (tx) => tx`
@@ -67,16 +82,17 @@ export default async function jobsRoutes(app: FastifyInstance) {
     Body: {
       customerId: string; jobType: string; techId: string | null;
       date: string | null; time: string | null; description: string | null; address: string | null; amount: number;
+      itemSku?: string | null; laborSku?: string | null;
     };
   }>("/", async (req) => {
-    const { customerId, jobType, techId, date, time, description, address, amount } = req.body;
+    const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku } = req.body;
     const status = techId ? "Booked" : "Lead";
     const stage = techId ? "booked" : "lead";
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount)
-        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${amount ?? 0})
+        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount, item_sku, labor_sku)
+        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${amount ?? 0}, ${itemSku ?? null}, ${laborSku ?? null})
         returning *
       `;
       return row;

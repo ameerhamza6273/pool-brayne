@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Mail, MessageSquare, CreditCard, FileText, BadgeCheck, Wrench, Hammer, Droplets } from "lucide-react";
+import { ArrowLeft, Download, Mail, MessageSquare, CreditCard, FileText, BadgeCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -64,13 +64,16 @@ export default function InvoiceDetail() {
     );
   }
 
-  const items: { description: string; quantity: number; rate: number; amount: number }[] =
+  const items: { description: string; sku?: string | null; item_type?: string; quantity: number; rate: number; cost?: number; amount: number }[] =
     lineItems.length > 0
       ? lineItems
       : [{ description: `${invoice.status === "Draft" ? "Service" : "Weekly Maintenance"} - ${invoice.customers?.name ?? ""}`, quantity: 1, rate: invoice.amount, amount: invoice.amount }];
   const subtotal = items.reduce((sum, li) => sum + li.amount, 0);
   const tax = subtotal * 0.0825;
   const total = subtotal + tax;
+  const downPayment = invoice.down_payment ?? 0;
+  const remainingBalance = total - downPayment;
+  const totalCost = items.reduce((sum, li) => sum + (li.cost ?? 0) * li.quantity, 0);
 
   const handleCollectPayment = async (method: "Card" | "ACH") => {
     if (!id) return;
@@ -218,6 +221,14 @@ export default function InvoiceDetail() {
             </div>
           </div>
 
+          {/* Job Description */}
+          {invoice.job_description && (
+            <div className="mb-6 border border-[#E2E8F0] rounded-lg p-4">
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Job Description</p>
+              <p className="text-sm text-[#0F172A] whitespace-pre-wrap">{invoice.job_description}</p>
+            </div>
+          )}
+
           {/* Line Items */}
           <div className="mb-6">
             <table className="w-full text-sm">
@@ -225,14 +236,18 @@ export default function InvoiceDetail() {
                 <tr className="border-b border-[#E2E8F0]">
                   <th className="text-left py-3 text-xs font-semibold text-[#64748B] uppercase">Description</th>
                   <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Qty</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Rate</th>
+                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Price</th>
                   <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((li, idx: number) => (
                   <tr key={idx} className="border-b border-[#F1F5F9]">
-                    <td className="py-3 text-[#0F172A]">{li.description}</td>
+                    <td className="py-3 text-[#0F172A]">
+                      {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
+                      {li.description}
+                      {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Labor</Badge>}
+                    </td>
                     <td className="text-right py-3 text-[#64748B]">{li.quantity}</td>
                     <td className="text-right py-3 text-[#64748B]">${li.rate.toFixed(2)}</td>
                     <td className="text-right py-3 font-medium text-[#0F172A]">${li.amount.toFixed(2)}</td>
@@ -242,49 +257,11 @@ export default function InvoiceDetail() {
             </table>
           </div>
 
-          {/* Invoice Sections — Maintenance, One-off Jobs, Renovations */}
-          <div className="mb-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-[#0F172A]">Invoice Sections</h4>
-              <div className="flex items-center gap-2">
-                <Label htmlFor="cc-toggle" className="text-xs text-[#64748B] flex items-center gap-1.5">
-                  <CreditCard className="w-3.5 h-3.5" /> Allow CC Payment
-                </Label>
-                <Switch id="cc-toggle" defaultChecked />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="border border-[#E2E8F0] rounded-lg p-3 bg-[#F8FAFC]">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg bg-[#0891B2]/10 flex items-center justify-center">
-                    <Droplets className="w-3.5 h-3.5 text-[#0891B2]" />
-                  </div>
-                  <span className="text-sm font-medium text-[#0F172A]">Maintenance</span>
-                </div>
-                <p className="text-xs text-[#64748B]">Weekly service visits</p>
-                <p className="text-sm font-semibold text-[#0891B2] mt-1">${(subtotal * 0.6).toFixed(2)}</p>
-              </div>
-              <div className="border border-[#E2E8F0] rounded-lg p-3 bg-[#F8FAFC]">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg bg-[#F59E0B]/10 flex items-center justify-center">
-                    <Wrench className="w-3.5 h-3.5 text-[#F59E0B]" />
-                  </div>
-                  <span className="text-sm font-medium text-[#0F172A]">One-off Jobs</span>
-                </div>
-                <p className="text-xs text-[#64748B]">Repairs & services</p>
-                <p className="text-sm font-semibold text-[#F59E0B] mt-1">${(subtotal * 0.25).toFixed(2)}</p>
-              </div>
-              <div className="border border-[#E2E8F0] rounded-lg p-3 bg-[#F8FAFC]">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-7 h-7 rounded-lg bg-[#16A34A]/10 flex items-center justify-center">
-                    <Hammer className="w-3.5 h-3.5 text-[#16A34A]" />
-                  </div>
-                  <span className="text-sm font-medium text-[#0F172A]">Renovations</span>
-                </div>
-                <p className="text-xs text-[#64748B]">Remodels & upgrades</p>
-                <p className="text-sm font-semibold text-[#16A34A] mt-1">${(subtotal * 0.15).toFixed(2)}</p>
-              </div>
-            </div>
+          <div className="mb-6 flex items-center justify-end gap-2">
+            <Label htmlFor="cc-toggle" className="text-xs text-[#64748B] flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5" /> Allow CC Payment
+            </Label>
+            <Switch id="cc-toggle" defaultChecked />
           </div>
 
           {/* Totals */}
@@ -302,8 +279,31 @@ export default function InvoiceDetail() {
                 <span className="text-[#0F172A]">Total</span>
                 <span className="text-[#0891B2]">${total.toFixed(2)}</span>
               </div>
+              <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]">
+                <span className="text-[#64748B]">Down Payment</span>
+                <span className="text-[#0F172A]">${downPayment.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm font-semibold">
+                <span className="text-[#0F172A]">Remaining Balance</span>
+                <span className="text-[#0F172A]">${remainingBalance.toFixed(2)}</span>
+              </div>
             </div>
           </div>
+
+          {/* Internal cost/margin — staff only, excluded from Download PDF (window.print). */}
+          {totalCost > 0 && (
+            <div className="print:hidden mt-8 border border-dashed border-[#E2E8F0] rounded-lg p-4 bg-[#F8FAFC]">
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-2">Internal Costs (Staff Only — not shown to customer)</p>
+              <div className="flex justify-between text-sm">
+                <span className="text-[#64748B]">Total Cost</span>
+                <span className="text-[#0F172A]">${totalCost.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[#64748B]">Margin</span>
+                <span className="text-[#16A34A] font-medium">${(subtotal - totalCost).toFixed(2)}</span>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
