@@ -1364,3 +1364,83 @@ wait — dekho upar wala push-blocked note):
   Authorize.net — sab pehle jaisa pending. Yeh 2 naye commits (`70590d8`, `8c8da8a`) bhi push
   nahi hue abhi.
   ---
+
+### 2026-08-27 (continued) — Real job-completion bug fix (client-reported) + poora live QA sweep
+
+- **Client ne real bug report kiya:** "So I create a job, but it doesn't let me save the job to
+  review it once complete." Investigate kiya (user ne kaha local nahi, **live production par**
+  test karo kyunki client bhi live use kar raha hai — yehi tareeqa aage bhi follow karna hai:
+  dev+prod dono ek hi shared Supabase DB use karte hain, isliye kisi bhi real client-reported
+  bug ke liye pehle DB mein seedha dekho ke unka asal data kya keh raha hai, phir live URL par
+  hi reproduce/fix verify karo, sirf localhost par nahi).
+  - **Root cause mila:** `JobDetail.tsx` mein job complete karne ke 2 raaste thay — (1) header
+    ka "Mark Complete & Generate Invoice" button (real invoice banata tha), (2) "Update Status"
+    dropdown (sirf status/stage flip karta tha, koi invoice nahi). Agar dropdown se "Completed"
+    select kiya jata, invoice kabhi nahi banta, aur `job.status === "Completed"` check ki wajah
+    se header button **permanently disabled** ho jata — koi recovery raasta nahi bachta tha.
+  - Client ka **asal stuck job mil gaya** DB mein seedha dhoondh kar: "Angela Torres / Repair /
+    Amanda / $0 / Completed" (created 2026-08-27, description "Pump leaking - may need shaft
+    seal") — koi invoice linked nahi tha, "No Invoice Yet" dikha raha tha.
+  - **Fix (commit `1a993ac`):**
+    1. `handleStatusChange` (dropdown) ab "Completed" select hone par `handleMarkComplete()` ko
+       hi call karta hai (same invoice-generation flow), status directly set nahi karta.
+    2. Header button ka disabled/label logic ab `job.status === "Completed"` ki jagah
+       `!!invoiceId` par depend karta hai — matlab koi bhi already-completed-lekin-invoice-less
+       job (jaise Angela Torres ka) button dobara "Generate Invoice" dikhata hai, permanently
+       stuck nahi rehta.
+    3. **Ek aur asal gap mila:** "New Job" dialog mein **Amount field hi nahi tha** — har naya
+       job hamesha `amount = 0` se banta, isliye complete karne par hamesha $0 invoice banta
+       chahe kaunsa bhi path use ho. Naya Amount input add kiya (backend route + API bhi update
+       kiye is naye field ke liye).
+  - **Client ka asal stuck job recover kiya** (dev se, phir dobara live se confirm) — real
+    "Generate Invoice" button click karke uska invoice bana diya (`INV-20260827-8BB1`,
+    abhi bhi $0 hai kyunki original job mein amount kabhi set hi nahi hua — **yeh flag kiya
+    gaya hai ke ab client/team ko is invoice mein real dollar amount khud daalna hoga**, hum
+    guess nahi kar sakte).
+  - Poora fix **dono dev aur live production par** test kiya (naya job banaya real Amount ke
+    saath, dropdown se "Completed" kiya, real invoice auto-generate hote dekha, sahi
+    amount/tax/total ke saath) — dono jagah kaam kiya.
+- **User ne poora live QA sweep karne ko kaha** ("client ke app test karne se pehle sab test kar
+  lo, live par karo local par nahi") — is poore session ke har naye feature ko **live production
+  URL par** dobara verify kiya (na ke sirf dev par jo pehle test hue thay):
+  - Multi-contact customers (household), Also-at-this-address, Previous Sales tab, drag-drop
+    photo — sab live par kaam karte mile.
+  - Jobs: color-by-tech, hover-tooltip, Map tab (Leaflet mount) — sab live par kaam kiya.
+  - Invoicing: Estimates create + Convert-to-Invoice, Vendor Bills create + Mark Paid — sab live
+    par kaam kiya.
+  - Inventory: Print Labels (Avery grid HTML generate hoti hai), QBO account mapping dialog
+    (real 22 income accounts live QBO se load hue) — sab live par kaam kiya.
+  - Fleet ka GPS7000 link, Settings ke Company/Invoice-Business-Name fields (persisted values
+    "Pool Supply Atlanta" sahi load hue), POS Sales Reports, Timesheets/Campaigns/Field/
+    SalesPortal — sab pages clean load huin, koi console error kahin nahi mila.
+  - **QA ke dauran khud ke chhoड़े hue purane leftover test data bhi mile aur clean kiye**: ek
+    bhoola hua "James Thompson" test job (bug-reproduction se), ek stray $1 draft invoice
+    (Angela Torres), aur ek estimate/invoice pair jo **numbering-collision** ki wajah se bach
+    gaya tha (estimate number `EST-${date}-${estimates.length+1}` client-side count par based
+    hai — jab pehli test-estimate delete ho jati hai to list phir se 0-length ho jati hai, isliye
+    agli naya estimate bhi wahi number "001" repeat kar deta hai — **isliye future cleanup mein
+    hamesha exact row ID se delete karo, number-string se match karke nahi**, warna wrong/koi
+    row match nahi hoga aur asli leftover reh jayega jaisa is baar hua).
+  - Final DB check se confirm kiya: sirf 26 real customers, sirf Angela Torres ka real
+    job+invoice (jaan-boojh kar rakha gaya) bacha hai, koi aur test debris nahi.
+- **Baaqi/pending (is poore session ke end tak, agla session yahan se shuru karna):**
+  1. **Angela Torres ka invoice (`INV-20260827-8BB1`) abhi bhi $0 hai** — client/team ko iska
+     real dollar amount khud set karna hoga (hum guess nahi kar sakte).
+  2. Customer list (3630 rows, mixed businesses) — client ne confirm kiya PoolBrayne ke liye hai
+     lekin khud verify karne ke baad "go-ahead" dena baaqi hai, tab tak import nahi karna.
+  3. Resale/pluggable-integrations — client ne "Road map" kaha, abhi priority nahi.
+  4. Authorize.net (real processor, Stripe nahi) — sirf record kiya gaya hai, koi code nahi.
+  5. Known gaps jo abhi tak nahi bane (koi client input nahi chahiye, bas waqt): global search
+     bar (dead), notifications panel (fake data), "dispatch nearest tech" (decorative), QBO
+     two-way sync (abhi sirf push hai), QBO production redirect URI (abhi bhi localhost par hai
+     — production QBO connect isko fix kiye bina kaam nahi karega), JobDetail ke 10
+     content-category tabs (UI-only), address autocomplete (skip kiya, paid Google API chahiye).
+  6. Client-decision-dependent: real Twilio/Stripe/SendGrid/Gusto (unke account banane ka wait),
+     Railway/Vercel hosting client ke apne account mein move karna (abhi humaray account par hai).
+  7. Is poore session ke saare commits push ho chuke hain (`origin/main` up to date) — koi push
+     pending nahi hai is waqt.
+- **Dev servers:** agar naya session shuru ho aur dev par kaam karna ho, phir se `npm run dev
+  -- --port 5175 --strictPort` (root) aur `cd backend && npm run dev` (port 4000) chalane
+  honge — is session ke background processes naye terminal mein nahi bachenge. Port check karna
+  na bhoolna (netstat) kyunki yardward-pro sibling project bhi 5173/5174 le sakta hai.
+  ---
