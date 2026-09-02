@@ -74,7 +74,7 @@ export default async function posRoutes(app: FastifyInstance) {
       tax: number;
       total: number;
       paymentMethod: string;
-      items: { id: string; name: string; qty: number; price: number; isService: boolean }[];
+      items: { id: string | null; name: string; qty: number; price: number; isService: boolean }[];
     };
   }>("/checkout", async (req) => {
     const { customerId, subtotal, tax, total, paymentMethod, items } = req.body;
@@ -91,12 +91,18 @@ export default async function posRoutes(app: FastifyInstance) {
           insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount)
           values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty})
         `;
-        if (item.isService) continue;
+        // Non-stock/custom items (id null) and services never touch inventory. Client request
+        // 2026-09-02: stock is allowed to go negative (out-of-stock sales, returns as negative
+        // qty) rather than clamping at 0 like the old behavior.
+        if (item.isService || !item.id) continue;
+        const itemId = item.id;
         const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
         if (!store) continue;
-        const [stockRow] = await tx`select id, quantity from inventory_stock where item_id = ${item.id} and location_id = ${store.id} limit 1` as unknown as { id: string; quantity: number }[];
+        const [stockRow] = await tx`select id, quantity from inventory_stock where item_id = ${itemId} and location_id = ${store.id} limit 1` as unknown as { id: string; quantity: number }[];
         if (stockRow) {
-          await tx`update inventory_stock set quantity = greatest(0, ${stockRow.quantity - item.qty}) where id = ${stockRow.id}`;
+          await tx`update inventory_stock set quantity = ${stockRow.quantity - item.qty} where id = ${stockRow.id}`;
+        } else {
+          await tx`insert into inventory_stock (tenant_id, item_id, location_id, quantity) values (${tenant.id}, ${itemId}, ${store.id}, ${-item.qty})`;
         }
       }
 

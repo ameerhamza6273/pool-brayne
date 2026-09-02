@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil } from "lucide-react";
+import JsBarcode from "jsbarcode";
+import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { inventoryApi } from "@/lib/api/inventory";
 import type { Database } from "@/lib/database.types";
-import type { ItemWithStock, QboAccount, QboAccounts } from "@/lib/api/inventory";
+import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff } from "@/lib/api/inventory";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null };
@@ -69,6 +70,47 @@ const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit
   win.document.close();
 };
 
+// Client request 2026-09-02: a real scannable barcode (Code128, from the SKU) sized for a
+// 2"x1" Zebra label printer, distinct from the text-only Avery sheet above.
+const printZebraLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost">[]) => {
+  const win = window.open("", "_blank");
+  if (!win || !win.document) return;
+  const labelsHtml = items
+    .map((item) => {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      JsBarcode(svg, item.sku, { format: "CODE128", width: 1.5, height: 32, displayValue: false, margin: 0 });
+      return `
+        <div class="label">
+          <div class="name">${item.name}</div>
+          ${svg.outerHTML}
+          <div class="row"><span class="sku">${item.sku}</span><span class="price">$${(item.price ?? item.unit_cost).toFixed(2)}</span></div>
+        </div>`;
+    })
+    .join("");
+  win.document.write(`
+    <html>
+      <head>
+        <title>Print Barcode Labels</title>
+        <style>
+          @page { size: 2in 1in; margin: 0; }
+          body { margin: 0; font-family: Arial, sans-serif; }
+          .label { width: 2in; height: 1in; box-sizing: border-box; padding: 0.08in 0.12in; page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+          .name { font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 1.75in; }
+          svg { max-width: 1.75in; }
+          .row { display: flex; justify-content: space-between; width: 1.75in; margin-top: 2px; }
+          .sku { font-size: 9px; color: #555; }
+          .price { font-size: 13px; font-weight: 700; }
+        </style>
+      </head>
+      <body>
+        ${labelsHtml}
+        <script>window.onload = () => window.print();</script>
+      </body>
+    </html>
+  `);
+  win.document.close();
+};
+
 export default function Inventory() {
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState("");
@@ -100,13 +142,19 @@ export default function Inventory() {
   });
   const [newPo, setNewPo] = useState({ supplierId: "", number: "" });
 
+  // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage etc.
+  const [writeoffs, setWriteoffs] = useState<(InventoryWriteoff & { inventory_items: { name: string; sku: string } | null })[]>([]);
+  const [writeoffOpen, setWriteoffOpen] = useState(false);
+  const [writeoffDraft, setWriteoffDraft] = useState({ itemId: "", quantity: "", reason: "Store Use", note: "" });
+
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
-    const data = await inventoryApi.summary();
+    const [data, writeoffData] = await Promise.all([inventoryApi.summary(), inventoryApi.writeoffs()]);
     setItems(data.items);
     setSuppliers(data.suppliers);
     setPurchaseOrders(data.purchaseOrders);
     setVarianceData(data.varianceData);
+    setWriteoffs(writeoffData);
     setIsLoading(false);
   }, []);
 
@@ -209,6 +257,25 @@ export default function Inventory() {
     printLabels(toPrint);
   };
 
+  const handlePrintZebraLabels = () => {
+    const toPrint = selectedIds.size > 0 ? filtered.filter((p) => selectedIds.has(p.id)) : filtered;
+    if (toPrint.length === 0) return;
+    printZebraLabels(toPrint);
+  };
+
+  const handleCreateWriteoff = async () => {
+    if (!writeoffDraft.itemId || !writeoffDraft.quantity) return;
+    await inventoryApi.createWriteoff({
+      itemId: writeoffDraft.itemId,
+      quantity: parseFloat(writeoffDraft.quantity),
+      reason: writeoffDraft.reason,
+      note: writeoffDraft.note || null,
+    });
+    setWriteoffDraft({ itemId: "", quantity: "", reason: "Store Use", note: "" });
+    setWriteoffOpen(false);
+    loadInventory();
+  };
+
   const totalValue = items.reduce((sum, p) => sum + p.total * p.unit_cost, 0);
   const lowStock = items.filter((p) => p.status === "Low").length;
   const outOfStock = items.filter((p) => p.status === "Out").length;
@@ -292,6 +359,9 @@ export default function Inventory() {
           <TabsTrigger value="variance" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <BarChart3 className="w-4 h-4" /> Variance
           </TabsTrigger>
+          <TabsTrigger value="writeoffs" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+            <ClipboardX className="w-4 h-4" /> Write-Offs
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="catalog" className="mt-4 space-y-3">
@@ -307,6 +377,9 @@ export default function Inventory() {
               </Select>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintLabels}>
                 <Tag className="w-4 h-4" /> Print Labels{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+              </Button>
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintZebraLabels}>
+                <Barcode className="w-4 h-4" /> Zebra Barcode{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
               </Button>
             </div>
           </div>
@@ -495,6 +568,74 @@ export default function Inventory() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="writeoffs" className="mt-4 space-y-3">
+          <div className="flex justify-end">
+            <Dialog open={writeoffOpen} onOpenChange={setWriteoffOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> Write Off SKU</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>Write Off SKU</DialogTitle></DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <Label>Product</Label>
+                    <Select value={writeoffDraft.itemId} onValueChange={(v) => setWriteoffDraft((p) => ({ ...p, itemId: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select product" /></SelectTrigger>
+                      <SelectContent>{items.map((i) => <SelectItem key={i.id} value={i.id}>{i.sku} — {i.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><Label>Quantity</Label><Input type="number" className="mt-1" value={writeoffDraft.quantity} onChange={(e) => setWriteoffDraft((p) => ({ ...p, quantity: e.target.value }))} /></div>
+                    <div>
+                      <Label>Reason</Label>
+                      <Select value={writeoffDraft.reason} onValueChange={(v) => setWriteoffDraft((p) => ({ ...p, reason: v }))}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Store Use">Store Use</SelectItem>
+                          <SelectItem value="Truck Use">Truck Use</SelectItem>
+                          <SelectItem value="Shrinkage">Shrinkage</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div><Label>Note (optional)</Label><Input className="mt-1" value={writeoffDraft.note} onChange={(e) => setWriteoffDraft((p) => ({ ...p, note: e.target.value }))} /></div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateWriteoff}>Save Write-Off</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Qty</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Reason</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Note</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {writeoffs.map((w) => (
+                    <tr key={w.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{w.inventory_items?.name ?? "—"}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">{w.quantity}</td>
+                      <td className="py-3 px-4"><Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px] px-1.5 py-0">{w.reason}</Badge></td>
+                      <td className="py-3 px-4 text-[#64748B]">{w.note ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{new Date(w.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                  {writeoffs.length === 0 && (
+                    <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">No write-offs yet</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>

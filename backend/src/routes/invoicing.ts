@@ -37,6 +37,27 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
   }
 }
 
+async function collectPayment(tx: postgres.TransactionSql, invoiceId: string, method: "Card" | "ACH" | "Check") {
+  const today = new Date().toISOString().slice(0, 10);
+  const [invoice] = await tx`select * from invoices where id = ${invoiceId} limit 1`;
+  const lineItems = (await tx`select * from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number }[];
+  const subtotal = lineItems.length > 0
+    ? lineItems.reduce((sum, li) => sum + li.amount, 0)
+    : invoice.amount;
+  const total = subtotal * 1.0825;
+
+  const [tenant] = await tx`select current_tenant_id() as id`;
+  const [updated] = await tx`
+    update invoices set status = 'Paid', paid_date = ${today}, payment_method = ${method}
+    where id = ${invoiceId} returning *
+  `;
+  await tx`
+    insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status)
+    values (${tenant.id}, ${invoiceId}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success')
+  `;
+  return updated;
+}
+
 export default async function invoicingRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
@@ -103,29 +124,20 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  app.patch<{ Params: { id: string }; Body: { method: "Card" | "ACH" } }>("/:id/collect-payment", async (req) => {
+  app.patch<{ Params: { id: string }; Body: { method: "Card" | "ACH" | "Check" } }>("/:id/collect-payment", async (req) => {
     const { id } = req.params;
     const { method } = req.body;
-    const today = new Date().toISOString().slice(0, 10);
+    return withTenantContext(req.userId, (tx) => collectPayment(tx, id, method));
+  });
 
+  // Client request 2026-09-02: bulk-collect payment across several of a customer's open
+  // invoices at once (card on file or manual check) instead of one at a time.
+  app.post<{ Body: { invoiceIds: string[]; method: "Card" | "ACH" | "Check" } }>("/bulk-collect", async (req) => {
+    const { invoiceIds, method } = req.body;
     return withTenantContext(req.userId, async (tx) => {
-      const [invoice] = await tx`select * from invoices where id = ${id} limit 1`;
-      const lineItems = (await tx`select * from invoice_line_items where invoice_id = ${id}`) as unknown as { amount: number }[];
-      const subtotal = lineItems.length > 0
-        ? lineItems.reduce((sum, li) => sum + li.amount, 0)
-        : invoice.amount;
-      const total = subtotal * 1.0825;
-
-      const [tenant] = await tx`select current_tenant_id() as id`;
-      const [updated] = await tx`
-        update invoices set status = 'Paid', paid_date = ${today}, payment_method = ${method}
-        where id = ${id} returning *
-      `;
-      await tx`
-        insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status)
-        values (${tenant.id}, ${id}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success')
-      `;
-      return updated;
+      const results = [];
+      for (const id of invoiceIds) results.push(await collectPayment(tx, id, method));
+      return results;
     });
   });
 

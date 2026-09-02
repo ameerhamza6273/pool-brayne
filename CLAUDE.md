@@ -1647,4 +1647,154 @@ list) sab ek hi session mein build kiye, phir aakhir mein poora live browser tes
      production redirect URI, JobDetail content-category tabs, address autocomplete).
 - **Dev servers is session ke end tak:** frontend `localhost:5175`, backend `localhost:4000` —
   dono is session ke dauran chalte rahe.
+
+### 2026-09-02 — Client ka naya bug-report + feature-request PDF (`software up dates 8-30-26.pdf`)
+poora ek session mein complete kiya ("sab ek sath start kr do")
+
+User ne Downloads mein naya PDF point kiya jo client ne bheja — poori tarah se ek nayi
+bug-report + feature-request list thi (pichle "resale/pluggable-integrations" sawal ka jawab
+nahi thi). User ne "sab ek sath start kr do" kaha — poori list ek hi session mein build ki gayi,
+har backend endpoint ko real JWT ke saath curl se direct test kiya (**user ne explicitly kaha
+"screenshot nahi lena koi b" is session mein** — isliye Chrome browser automation bilkul use
+nahi ki, sirf typecheck + direct API/DB verification + turant cleanup, jaisa pehle bhi kabhi
+kabhi hua hai jab screenshots na lene ko kaha gaya).
+
+**Naya migration** `20260902090000_client_backlog_2026_09_02.sql` (access token nahi tha, phir
+se `DATABASE_URL` se `postgres` package wale temp-script pattern se run kiya): `tenants.
+payroll_week_start_day`, 4 nayi tables — `tasks`, `directory_contacts`, `inventory_writeoffs`,
+`customer_reminders` — sab tenant-scoped RLS ke sath.
+
+**Customers module (bug fixes):**
+- Customer list mein Phone column add kiya.
+- CustomerDetail: "Also at This Address" card ko **"Other Contacts"** rename kiya aur
+  **Service Reminder card se upar** move kiya (client ne positions swap karne ko kaha tha),
+  aur ab is card mein **"Add" button** hai (naya `POST /:id/household` endpoint — agar customer
+  ka `household_id` pehle se nahi hai to naya generate karke set karta hai, phir doosra customer
+  row isi household mein insert karta hai — same-address-multiple-contacts wala pehle se bana
+  hua pattern reuse kiya).
+- **Naya "Edit" button** (header) — poora customer profile edit karne ka dialog (name/type/
+  phone/email/address + Equipment on File ke 4 fields) — pehle **customer profile edit karne
+  ka koi tareeqa hi nahi tha** (client ka bug report). Naya `PATCH /api/customers/:id`.
+- **Real bug fix (pre-existing, is session mein pakड़ा):** Gate Codes card ke saare inputs
+  (`defaultValue` use kar rahe thay) **kabhi save nahi hote thay** — koi save button hi nahi
+  tha. Ab real state (`gateDraft`) + "Save Access Info" button, same `PATCH /:id` endpoint
+  (`gateCodes` jsonb field) se persist hota hai.
+- Photo delete — pehle sirf add ho sakti thin, delete nahi (client bug report). Photo thumbnail
+  par hover karne se "x" button dikhta hai, `DELETE /:id/attachments/:attachmentId` (DB row) +
+  frontend khud `supabase.storage.from("customer-attachments").remove([path])` call karta hai
+  (path URL se parse karke) — backend mein Supabase storage client nahi hai, isliye storage
+  delete hamesha frontend se hi hota hai jaisa upload bhi hota hai.
+- Phone number auto-format: naya `src/lib/phone.ts` (`formatPhoneInput`) — "(123) 456-7890"
+  format mein type karte waqt auto-format, Customers.tsx (Add Customer), CustomerDetail.tsx
+  (Edit + Add Contact), Directory.tsx sab jagah use kiya.
+- Address auto-populate/autocomplete: naya `src/components/AddressAutocomplete.tsx` — free
+  Nominatim search (`geocode.ts` mein naya `searchAddressSuggestions()`, 500ms debounce, same
+  ~1req/sec queue jo geocoding wala function bhi use karta hai) — dropdown suggestions, click
+  se address fill + lat/lng bhi mil jate hain (agar future mein turant map-pin chahiye ho).
+  Customers.tsx Add-Customer aur CustomerDetail.tsx Edit dialog dono mein use kiya.
+- Invoice list mein description (job_description) column add kiya — dono
+  `CustomerDetail.tsx` (Invoices tab) aur `Invoicing.tsx` (Customer Invoices tab) mein.
+
+**Naya "Tasks" tab** (`Invoicing.tsx` ke andar, "Estimates" ke bagal mein, jaisa client ne
+kaha tha) — freeform task list: customer (optional) + address (autocomplete) + tech assign +
+type (Renovation/Repair/Go back) + date range + notes + photos. Naya `tasks` table + naya
+`backend/src/routes/tasks.ts` (`GET/POST /api/tasks`, `PATCH /:id/status`). Photos ke liye
+**naya storage bucket nahi banaya** — maujooda `job-attachments` bucket reuse kiya (uski RLS
+policy sirf path ka pehla segment tenant_id se match karti hai, kisi specific job/task ID se
+bandhi nahi hai, isliye `${tenantId}/tasks/...` path se safely reuse ho gaya).
+
+**Naya "Directory" page** (naya sidebar nav item, route `/directory`) — sales-rep
+naam+role+phone ki simple list, add/delete. Naya `directory_contacts` table + naya
+`backend/src/routes/directory.ts`.
+
+**Bulk Invoice redesign** (`Invoicing.tsx`) — client ki asal request pehle se bane hue
+"combine completed jobs into one invoice" feature se **alag nikli** ("only show customers with
+open invoices... select each invoice... pay with card on file/manual check/email"). Dono
+rakhe — dialog ab **do modes** (toggle buttons): "Combine Open Invoices" (naya, default) aur
+"Combine Completed Jobs" (purana, waisa hi). Naya mode: customer-dropdown sirf un logon tak
+mehdood jinki koi non-Paid invoice hai, unki open invoices checkbox-select, phir payment method
+(Card on File / Manual Check / Email Customer). Card/Check → naya
+`POST /api/invoices/bulk-collect` (loop mein har invoice par wahi `collectPayment()` helper jo
+pehle sirf single-invoice `/collect-payment` route use karta tha, ab dono routes se shared
+function hai — `collect-payment` ka method type bhi `"Card"|"ACH"` se `"Card"|"ACH"|"Check"`
+badla). Email → `mailto:` link (customer ka real email, subject/body mein invoice numbers +
+total) — koi real email-send integration nahi hai, isi tarah ka honest "real action bina real
+backend service ke" pattern jaisa app mein pehle se `tel:`/`sms:`/`mailto:` buttons hain.
+
+**POS enhancements** (`PointOfSale.tsx` + `backend/src/routes/pos.ts`):
+- Out-of-stock items ab bhi sellable hain (pehle disabled the) — badge ab "Out — will go
+  negative" kehta hai, block nahi karta.
+- **"Return Mode" toggle** (header button) — on hone par product grid click karne se cart mein
+  **-1 qty** add hoti hai (return). Cart ke +/- stepper buttons ab **koi floor restrict nahi
+  karte** (pehle `Math.max(1, ...)` tha) — qty kisi bhi negative number tak jaa sakti hai,
+  aur exactly 0 hone par line auto-remove ho jati hai.
+- **"Custom Item" dialog** — description/price/qty se ek non-stock/material item cart mein add
+  karta hai jiska `id: null` hota hai (koi inventory record nahi) — checkout backend ab
+  `item.id` null accept karta hai (`pos_order_items.item_id` schema mein pehle se hi nullable
+  tha) aur null-id/service items ke liye stock touch skip kar deta hai.
+- Backend `checkout` route ka stock-deduction ab `greatest(0, ...)` clamp nahi karta — negative
+  ja sakti hai (out-of-stock sell) ya wapas badh sakti hai (return, negative qty subtract hone
+  se). Cart item render ab `index`-based key/update use karta hai (pehle `item.id` tha, jo ab
+  multiple null-id custom items ke liye collide ho sakta tha).
+
+**Inventory Write-Offs** (naya tab `Inventory.tsx` mein) — SKU write off karne ka real tareeqa
+(Store Use / Truck Use / Shrinkage / Other + note), naya `inventory_writeoffs` table + naya
+`GET/POST /api/inventory/writeoffs` — store stock se deduct karta hai (job-parts-used/POS
+checkout jaisa hi pattern, negative allowed).
+
+**Zebra barcode label printing** — naya `jsbarcode` npm package install kiya (real Code128
+scannable barcode, SKU se generate hota hai). Naya "Zebra Barcode" button (existing text-only
+Avery "Print Labels" button ke bagal) — `printZebraLabels()` function SVG barcode ko main DOM
+mein render karke uska `outerHTML` popup print-window mein inject karta hai (2"x1" label size,
+`@page` CSS), phir `window.print()`.
+
+**Payroll week-start day configurable** (client: "hum Wednesday se Tuesday tak ka hafta run
+karte hain") — naya `tenants.payroll_week_start_day` column, Settings > Company tab mein naya
+dropdown (Sun..Sat). `Timesheets.tsx` ka purana hardcoded `mondayOf()` helper ab generic
+`weekStartOf(date, startDay)` bana diya — "is hafte" ki boundary ab tenant ke configured start
+day se compute hoti hai. **Column headers (Mon..Sun) jaan-boojh kar reorder nahi kiye** — woh
+fixed weekday columns hain (row ka `mon` field hamesha real Monday ka data hai chahe hafta kisi
+bhi din shuru ho), sirf period-boundary badalti hai.
+
+**Naya "Reports" page** (naya sidebar nav item, route `/reports`) — 6 tabs: **Sales Tax**
+(POS ke existing `GET /api/pos/reports` endpoint ko hi reuse kiya, koi naya backend code nahi),
+**Item Movement** (naya `GET /api/reports/item-movement` — `pos_order_items`+`job_parts_used`+
+`inventory_writeoffs` teeno ko combine karke Sale/Job Use/Write-off ke tor par group karta hai),
+**Deposits** (naya `GET /api/reports/deposits` — invoices jinka `down_payment > 0`),
+**Invoices Due** (naya `GET /api/reports/invoices-due` — per-customer total unpaid), **Reminders**
+(naya `customer_reminders` table — client ka "Filter Cleaning every 4 months, Salt Cell every 6
+months, Anode every 2 years..." wala multi-type reminder system, jo maujooda single
+`next_reminder_date`/`reminder_frequency_months` column-pair se **alag/naya** hai kyunki wo
+per-customer sirf EK reminder support karta hai — is naya table se ek customer ke multiple naam
+wale reminders ho sakte hain, "Add Reminder Type" dialog + "Mark Done" jo `frequency_months`
+ke hisaab se `next_due` roll-forward karta hai), **Inventory Valuation** (naya
+`GET /api/reports/inventory-valuation` — **honest caveat text add kiya** ke historical stock
+snapshots track nahi hote, isliye yeh hamesha "abhi" ka valuation hai chahe date-range kuch bhi
+ho — client ne "by end date" maanga tha lekin schema historical nahi hai).
+
+**End-to-end verify kiya (browser ke bajaye seedha curl + real JWT se, jaisa user ne kaha)** —
+har naya/badla hua backend endpoint real data ke sath test kiya: task create, directory contact
+create, write-off create (Chlorine Tablets stock 48→45 verify kiya), customer equipment/gate-
+codes PATCH (asal James Thompson customer ke equipment ko galti se overwrite kar diya tha test
+karte waqt — **turant `data.ts` se uski original mock values dhoondh kar wapas restore kiya**,
+household member add/cleanup, bulk-collect payment (Check method, invoice Draft→Paid verify
+kiya), POS checkout negative-qty return (stock 48→50, sahi direction) + null-id custom item
+(koi crash nahi), reminder create→mark-done (`next_due` roll-forward verify kiya, 2026-09-01 →
+2027-01-02 with 4-month frequency) → delete. **Sab test data turant clean kar diya** (temp
+scripts, established pattern), final stock/row-counts baseline se match karte hain.
+- **Yaad rakhne wali baat:** kisi bhi real/seeded customer record par test PATCH chalane se
+  pehle uski **current values pehle capture kar lo** (ya `data.ts` mock source se recover karne
+  ka plan rakho) — is baar James Thompson ka equipment/gate_codes overwrite ho gaya tha bina
+  pehle backup liye, `data.ts` mein original mil gaya isliye recover ho gaya, lekin agli baar
+  yeh risk pehle se avoid karna behtar hai.
+- Dono frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) clean.
+- **Baaqi/pending:** is poore session ke changes abhi commit nahi hue — commit se pehle user
+  se confirm lena (established rule). Pehle se pending sab kuch (customer-list import,
+  resale/pluggable-integrations reply, Authorize.net, GPS7000/Twilio/Stripe/SendGrid/Gusto
+  client accounts, Railway/Vercel client-account move, global search bar, notifications panel,
+  dispatch-nearest-tech, QBO two-way sync, QBO production redirect URI, JobDetail
+  content-category tabs) waisa hi hai.
+- **Dev servers is session ke end tak:** frontend `localhost:5175` (`--strictPort`), backend
+  `localhost:4000` — dono is session mein background mein chalte rahe (typecheck ke baad
+  runtime smoke-test ke liye start kiye).
   ---

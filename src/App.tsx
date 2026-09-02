@@ -21,6 +21,8 @@ import Onboarding from "@/pages/Onboarding";
 import Field from "@/pages/Field";
 import PointOfSale from "@/pages/PointOfSale";
 import SalesPortal from "@/pages/SalesPortal";
+import Directory from "@/pages/Directory";
+import Reports from "@/pages/Reports";
 import { Toaster } from "@/components/ui/sonner";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -57,6 +59,8 @@ function AppRoutes() {
         <Route path="/invoicing/estimates/:id" element={<EstimateDetail />} />
         <Route path="/invoicing/:id" element={<InvoiceDetail />} />
         <Route path="/campaigns" element={<Campaigns />} />
+        <Route path="/directory" element={<Directory />} />
+        <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>

@@ -51,6 +51,7 @@ export default function Settings() {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [invoiceBusinessName, setInvoiceBusinessName] = useState("");
+  const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const qboStatus = new URLSearchParams(window.location.search).get("qbo");
 
@@ -65,6 +66,7 @@ export default function Settings() {
     setPhone(data.phone);
     setAddress(data.address);
     setInvoiceBusinessName(data.invoiceBusinessName);
+    setPayrollWeekStartDay(data.payrollWeekStartDay);
     setSelectedPlan(data.planId);
     setIsLoading(false);
   }, []);
@@ -80,6 +82,12 @@ export default function Settings() {
 
   const handleSaveCompany = async () => {
     await settingsApi.saveCompany({ name: tenantName, phone, address, invoiceBusinessName });
+  };
+
+  const handleSavePayrollWeekStart = async (value: string) => {
+    const day = parseInt(value, 10);
+    setPayrollWeekStartDay(day);
+    await settingsApi.savePayrollWeekStart(day);
   };
 
   const handleSelectPlan = async (planId: string) => {
@@ -176,6 +184,18 @@ export default function Settings() {
                 <div>
                   <Label className="text-sm font-medium text-[#0F172A]">Service Area</Label>
                   <Input defaultValue="Austin, Cedar Park, Round Rock, Pflugerville" className="mt-1 h-10" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-[#0F172A]">Payroll Week Starts On</Label>
+                  <Select value={String(payrollWeekStartDay)} onValueChange={handleSavePayrollWeekStart}>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, i) => (
+                        <SelectItem key={i} value={String(i)}>{day}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-[#64748B] mt-1">Controls which day the Timesheets weekly view starts on.</p>
                 </div>
               </div>
               <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany}>Save Changes</Button>

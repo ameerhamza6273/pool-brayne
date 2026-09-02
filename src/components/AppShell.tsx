@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import {
   LayoutDashboard, Users, Wrench, Package, Truck, Clock, Receipt, Megaphone, Settings,
   Search, ChevronDown, Menu, MoreHorizontal, X, Droplets, Phone, ScanLine, ClipboardList, Calendar, Copy,
+  BookUser, BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import NotificationsPanel from "@/components/NotificationsPanel";
@@ -30,6 +31,8 @@ const navItems = [
   { path: "/invoicing", label: "Invoicing", icon: Receipt },
   { path: "/invoicing?tab=estimates", label: "Estimation", icon: Copy },
   { path: "/campaigns", label: "Campaigns", icon: Megaphone },
+  { path: "/directory", label: "Directory", icon: BookUser },
+  { path: "/reports", label: "Reports", icon: BarChart3 },
   { path: "/settings", label: "Settings", icon: Settings },
 ];
 

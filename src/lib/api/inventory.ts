@@ -49,4 +49,18 @@ export const inventoryApi = {
 
   updateQboAccounts: (itemId: string, qboAccounts: QboAccounts) =>
     api.patch<InventoryItem>(`/api/inventory/items/${itemId}/qbo-accounts`, { qboAccounts }),
+
+  writeoffs: () => api.get<(InventoryWriteoff & { inventory_items: { name: string; sku: string } | null })[]>("/api/inventory/writeoffs"),
+
+  createWriteoff: (data: { itemId: string; quantity: number; reason: string; note: string | null }) =>
+    api.post<InventoryWriteoff>("/api/inventory/writeoffs", data),
+};
+
+export type InventoryWriteoff = {
+  id: string;
+  item_id: string;
+  quantity: number;
+  reason: string;
+  note: string | null;
+  created_at: string;
 };

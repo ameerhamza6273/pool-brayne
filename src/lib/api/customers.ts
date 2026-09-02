@@ -49,4 +49,23 @@ export const customersApi = {
 
   updateReminder: (customerId: string, nextReminderDate: string | null, reminderFrequencyMonths: number | null) =>
     api.patch<Customer>(`/api/customers/${customerId}/reminder`, { nextReminderDate, reminderFrequencyMonths }),
+
+  update: (
+    customerId: string,
+    data: Partial<{
+      name: string;
+      type: string;
+      phone: string | null;
+      email: string | null;
+      address: string | null;
+      equipment: Record<string, string>;
+      gateCodes: Record<string, string>;
+    }>,
+  ) => api.patch<Customer>(`/api/customers/${customerId}`, data),
+
+  addHouseholdMember: (customerId: string, data: { name: string; email: string | null; phone: string | null }) =>
+    api.post<Customer>(`/api/customers/${customerId}/household`, data),
+
+  deleteAttachment: (customerId: string, attachmentId: string) =>
+    api.del(`/api/customers/${customerId}/attachments/${attachmentId}`),
 };

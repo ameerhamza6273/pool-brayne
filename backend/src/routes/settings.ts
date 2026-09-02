@@ -9,10 +9,11 @@ export default async function settingsRoutes(app: FastifyInstance) {
         tx`select id, tenant_id, name, status, description, icon, provider from integrations order by name`,
         tx`select * from subscription_plans order by price`,
         tx`select * from billing_history order by billed_date desc`,
-        tx`select name, plan_id, phone, address, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, plan_id, phone, address, invoice_business_name, payroll_week_start_day from tenants where id = current_tenant_id() limit 1`,
       ]);
       const tenant = tenantRows[0] as {
-        name: string; plan_id: string | null; phone: string | null; address: string | null; invoice_business_name: string | null;
+        name: string; plan_id: string | null; phone: string | null; address: string | null;
+        invoice_business_name: string | null; payroll_week_start_day: number;
       } | undefined;
       return {
         teamMembers,
@@ -24,6 +25,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         phone: tenant?.phone ?? "",
         address: tenant?.address ?? "",
         invoiceBusinessName: tenant?.invoice_business_name ?? "",
+        payrollWeekStartDay: tenant?.payroll_week_start_day ?? 1,
       };
     });
   });
@@ -33,6 +35,16 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`
       update tenants set name = ${name}, phone = ${phone}, address = ${address}, invoice_business_name = ${invoiceBusinessName}
       where id = current_tenant_id() returning *
+    `);
+  });
+
+  // Client request 2026-09-02: "Allow us to change the first day of the week when running
+  // payroll" (they run Wed-Tue) — Timesheets computes its week_start from this instead of
+  // always assuming Monday.
+  app.patch<{ Body: { payrollWeekStartDay: number } }>("/payroll", async (req) => {
+    const { payrollWeekStartDay } = req.body;
+    return withTenantContext(req.userId, (tx) => tx`
+      update tenants set payroll_week_start_day = ${payrollWeekStartDay} where id = current_tenant_id() returning *
     `);
   });
 

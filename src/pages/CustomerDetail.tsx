@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Phone, MessageSquare, Mail, ArrowLeft, MapPin,
-  Wrench, FileText, Camera, Plus, Bell, CheckCircle2,
+  Wrench, FileText, Camera, Plus, Bell, CheckCircle2, Pencil, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,13 +10,17 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { customersApi, type CustomerAttachment, type CustomerDetailBundle, type PreviousSale } from "@/lib/api/customers";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { formatPhoneInput } from "@/lib/phone";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 import type { Database } from "@/lib/database.types";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -59,6 +63,15 @@ export default function CustomerDetail() {
   const [qboError, setQboError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Client bug report 2026-09-02: no way to edit the customer profile, add Other Contacts, or
+  // edit Equipment on File — all three are now real (Gate Codes below were rendered but never
+  // wired up to save at all, that's fixed here too).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editDraft, setEditDraft] = useState({ name: "", type: "Residential", phone: "", email: "", address: "", pump: "", heater: "", filter: "", salt: "" });
+  const [gateDraft, setGateDraft] = useState({ frontGate: "", houseGate: "", padlock: "", subdivisionEntrance: "none", notes: "" });
+  const [addContactOpen, setAddContactOpen] = useState(false);
+  const [contactDraft, setContactDraft] = useState({ firstName: "", lastName: "", phone: "", email: "" });
+
   const load = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
@@ -74,6 +87,26 @@ export default function CustomerDetail() {
       setInvoices(bundle.invoices);
       setHousehold(bundle.household);
       setPreviousSales(bundle.previousSales);
+      const eq = (bundle.customer.equipment ?? {}) as Record<string, string>;
+      const gc = (bundle.customer.gate_codes ?? {}) as Record<string, string>;
+      setEditDraft({
+        name: bundle.customer.name,
+        type: bundle.customer.type,
+        phone: bundle.customer.phone ?? "",
+        email: bundle.customer.email ?? "",
+        address: bundle.customer.address ?? "",
+        pump: eq.pump ?? "",
+        heater: eq.heater ?? "",
+        filter: eq.filter ?? "",
+        salt: eq.salt ?? "",
+      });
+      setGateDraft({
+        frontGate: gc.frontGate ?? "",
+        houseGate: gc.houseGate ?? "",
+        padlock: gc.padlock ?? "",
+        subdivisionEntrance: gc.subdivisionEntrance ?? "none",
+        notes: gc.notes ?? "",
+      });
       const attachments = await customersApi.getAttachments(id);
       setPhotos(attachments);
     } catch {
@@ -154,6 +187,49 @@ export default function CustomerDetail() {
     setQboSyncing(false);
   };
 
+  const handleSaveEdit = async () => {
+    if (!id) return;
+    await customersApi.update(id, {
+      name: editDraft.name,
+      type: editDraft.type,
+      phone: editDraft.phone || null,
+      email: editDraft.email || null,
+      address: editDraft.address || null,
+      equipment: { pump: editDraft.pump, heater: editDraft.heater, filter: editDraft.filter, salt: editDraft.salt },
+    });
+    setEditOpen(false);
+    load();
+  };
+
+  const handleSaveGateCodes = async () => {
+    if (!id) return;
+    await customersApi.update(id, { gateCodes: { ...gateDraft } });
+  };
+
+  const handleAddContact = async () => {
+    if (!id || !contactDraft.firstName || !contactDraft.lastName) return;
+    await customersApi.addHouseholdMember(id, {
+      name: `${contactDraft.firstName} ${contactDraft.lastName}`,
+      phone: contactDraft.phone || null,
+      email: contactDraft.email || null,
+    });
+    setContactDraft({ firstName: "", lastName: "", phone: "", email: "" });
+    setAddContactOpen(false);
+    load();
+  };
+
+  const handleDeletePhoto = async (attachmentId: string, url: string) => {
+    if (!id) return;
+    const marker = "/customer-attachments/";
+    const idx = url.indexOf(marker);
+    if (idx !== -1) {
+      const path = url.slice(idx + marker.length);
+      await supabase.storage.from("customer-attachments").remove([path]);
+    }
+    await customersApi.deleteAttachment(id, attachmentId);
+    setPhotos((prev) => prev.filter((p) => p.id !== attachmentId));
+  };
+
   if (isLoading) {
     return <div className="text-center py-20 text-[#64748B]">Loading customer...</div>;
   }
@@ -169,7 +245,6 @@ export default function CustomerDetail() {
 
   const initials = customer.name.split(" ").map((n) => n[0]).join("").slice(0, 2);
   const equipment = (customer.equipment ?? {}) as Record<string, string>;
-  const gateCodes = (customer.gate_codes ?? {}) as Record<string, string>;
 
   return (
     <div className="space-y-4">
@@ -189,6 +264,10 @@ export default function CustomerDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]" onClick={() => setEditOpen(true)}>
+            <Pencil className="w-4 h-4" />
+            <span className="hidden sm:inline">Edit</span>
+          </Button>
           <Button
             size="sm"
             className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9"
@@ -271,6 +350,34 @@ export default function CustomerDetail() {
             </CardContent>
           </Card>
 
+          {/* Other Contacts at the same address (client 2026-09-02: renamed from "Also at This
+              Address", positioned above Service Reminder, and now supports adding a contact). */}
+          <Card className="border-[#E2E8F0] shadow-sm">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">Other Contacts</CardTitle>
+              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-[#E2E8F0]" onClick={() => setAddContactOpen(true)}>
+                <Plus className="w-3.5 h-3.5" /> Add
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-0">
+              {household.map((h) => (
+                <button
+                  key={h.id}
+                  className="w-full text-left p-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] flex items-center justify-between"
+                  onClick={() => navigate(`/customers/${h.id}`)}
+                >
+                  <div>
+                    <p className="text-sm font-medium text-[#0F172A]">{h.name}</p>
+                    <p className="text-xs text-[#64748B]">{h.phone || h.email || ""}</p>
+                  </div>
+                </button>
+              ))}
+              {household.length === 0 && (
+                <p className="text-sm text-[#64748B] py-1">No other contacts at this address yet.</p>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Periodic Service Reminder */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
@@ -312,30 +419,8 @@ export default function CustomerDetail() {
             </CardContent>
           </Card>
 
-          {/* Other contacts at the same address */}
-          {household.length > 0 && (
-            <Card className="border-[#E2E8F0] shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-[#0F172A]">Also at This Address</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 pt-0">
-                {household.map((h) => (
-                  <button
-                    key={h.id}
-                    className="w-full text-left p-2.5 rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] flex items-center justify-between"
-                    onClick={() => navigate(`/customers/${h.id}`)}
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-[#0F172A]">{h.name}</p>
-                      <p className="text-xs text-[#64748B]">{h.phone || h.email || ""}</p>
-                    </div>
-                  </button>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Equipment on File */}
+          {/* Equipment on File (client bug report 2026-09-02: now editable via the header Edit
+              button) */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-[#0F172A]">Equipment on File</CardTitle>
@@ -344,19 +429,19 @@ export default function CustomerDetail() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Pump</p>
-                  <p className="font-medium text-[#0F172A]">{equipment.pump}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.pump || "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Heater</p>
-                  <p className="font-medium text-[#0F172A]">{equipment.heater}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.heater || "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Filter</p>
-                  <p className="font-medium text-[#0F172A]">{equipment.filter}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.filter || "—"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase">Salt System</p>
-                  <p className="font-medium text-[#0F172A]">{equipment.salt}</p>
+                  <p className="font-medium text-[#0F172A]">{equipment.salt || "—"}</p>
                 </div>
               </div>
             </CardContent>
@@ -371,19 +456,19 @@ export default function CustomerDetail() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">Front Gate Code</p>
-                  <Input placeholder="e.g. #1234" className="h-9 text-sm" defaultValue={gateCodes.frontGate || ""} />
+                  <Input placeholder="e.g. #1234" className="h-9 text-sm" value={gateDraft.frontGate} onChange={(e) => setGateDraft((p) => ({ ...p, frontGate: e.target.value }))} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">House Gate Code</p>
-                  <Input placeholder="e.g. #5678" className="h-9 text-sm" defaultValue={gateCodes.houseGate || ""} />
+                  <Input placeholder="e.g. #5678" className="h-9 text-sm" value={gateDraft.houseGate} onChange={(e) => setGateDraft((p) => ({ ...p, houseGate: e.target.value }))} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">Padlock Code</p>
-                  <Input placeholder="e.g. 0000" className="h-9 text-sm" defaultValue={gateCodes.padlock || ""} />
+                  <Input placeholder="e.g. 0000" className="h-9 text-sm" value={gateDraft.padlock} onChange={(e) => setGateDraft((p) => ({ ...p, padlock: e.target.value }))} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">Gated Subdivision Entrance</p>
-                  <Select defaultValue={gateCodes.subdivisionEntrance || "none"}>
+                  <Select value={gateDraft.subdivisionEntrance} onValueChange={(v) => setGateDraft((p) => ({ ...p, subdivisionEntrance: v }))}>
                     <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No gated subdivision</SelectItem>
@@ -398,8 +483,9 @@ export default function CustomerDetail() {
               </div>
               <div>
                 <p className="text-xs text-[#64748B] uppercase mb-1">Access Notes</p>
-                <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} defaultValue={gateCodes.notes || ""} />
+                <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} value={gateDraft.notes} onChange={(e) => setGateDraft((p) => ({ ...p, notes: e.target.value }))} />
               </div>
+              <Button size="sm" variant="outline" className="w-full h-8 border-[#E2E8F0]" onClick={handleSaveGateCodes}>Save Access Info</Button>
             </CardContent>
           </Card>
         </div>
@@ -480,8 +566,15 @@ export default function CustomerDetail() {
                     />
                     <div className="grid grid-cols-4 gap-2">
                       {photos.map((photo) => (
-                        <div key={photo.id} className="aspect-square rounded-lg overflow-hidden bg-[#F1F5F9]">
+                        <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-[#F1F5F9] group">
                           <img src={photo.url} alt="Customer" className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => handleDeletePhoto(photo.id, photo.url)}
+                            className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete photo"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       ))}
                       <button
@@ -516,6 +609,7 @@ export default function CustomerDetail() {
                             <Badge className={`${statusColors[inv.status] || ""} text-[10px] px-1.5 py-0`}>{inv.status}</Badge>
                           </div>
                           <p className="text-sm text-[#64748B]">Issued: {inv.issue_date}</p>
+                          {inv.job_description && <p className="text-xs text-[#64748B] mt-0.5 truncate">{inv.job_description}</p>}
                         </div>
                         <div className="text-right shrink-0">
                           <p className="font-semibold text-[#0F172A]">${inv.amount}</p>
@@ -597,6 +691,63 @@ export default function CustomerDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Customer (client bug report 2026-09-02: previously no way to edit anything) */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Edit Customer</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Name</Label><Input className="mt-1" value={editDraft.name} onChange={(e) => setEditDraft((p) => ({ ...p, name: e.target.value }))} /></div>
+              <div>
+                <Label>Type</Label>
+                <Select value={editDraft.type} onValueChange={(v) => setEditDraft((p) => ({ ...p, type: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Residential">Residential</SelectItem>
+                    <SelectItem value="Commercial">Commercial</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>Phone</Label><Input className="mt-1" value={editDraft.phone} onChange={(e) => setEditDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
+              <div><Label>Email</Label><Input className="mt-1" value={editDraft.email} onChange={(e) => setEditDraft((p) => ({ ...p, email: e.target.value }))} /></div>
+            </div>
+            <div>
+              <Label>Address</Label>
+              <AddressAutocomplete className="mt-1" value={editDraft.address} onChange={(address) => setEditDraft((p) => ({ ...p, address }))} />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">Equipment on File</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label className="text-xs">Pump</Label><Input className="mt-1 h-9" value={editDraft.pump} onChange={(e) => setEditDraft((p) => ({ ...p, pump: e.target.value }))} /></div>
+                <div><Label className="text-xs">Heater</Label><Input className="mt-1 h-9" value={editDraft.heater} onChange={(e) => setEditDraft((p) => ({ ...p, heater: e.target.value }))} /></div>
+                <div><Label className="text-xs">Filter</Label><Input className="mt-1 h-9" value={editDraft.filter} onChange={(e) => setEditDraft((p) => ({ ...p, filter: e.target.value }))} /></div>
+                <div><Label className="text-xs">Salt System</Label><Input className="mt-1 h-9" value={editDraft.salt} onChange={(e) => setEditDraft((p) => ({ ...p, salt: e.target.value }))} /></div>
+              </div>
+            </div>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveEdit}>Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Other Contact (client bug report 2026-09-02) */}
+      <Dialog open={addContactOpen} onOpenChange={setAddContactOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Add Other Contact</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label>First Name</Label><Input className="mt-1" value={contactDraft.firstName} onChange={(e) => setContactDraft((p) => ({ ...p, firstName: e.target.value }))} /></div>
+              <div><Label>Last Name</Label><Input className="mt-1" value={contactDraft.lastName} onChange={(e) => setContactDraft((p) => ({ ...p, lastName: e.target.value }))} /></div>
+            </div>
+            <div><Label>Phone</Label><Input className="mt-1" value={contactDraft.phone} onChange={(e) => setContactDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
+            <div><Label>Email</Label><Input className="mt-1" value={contactDraft.email} onChange={(e) => setContactDraft((p) => ({ ...p, email: e.target.value }))} /></div>
+            <p className="text-xs text-[#64748B]">Shares this property's address with {customer.name}.</p>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddContact}>Save Contact</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

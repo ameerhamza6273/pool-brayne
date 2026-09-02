@@ -66,6 +66,63 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client bug report 2026-09-02: "I cannot find a way to edit the customer profile" — this
+  // covers name/type/phone/email/address plus the Equipment on File and Gate Codes jsonb blobs
+  // (the gate-code inputs existed in the UI already but were never wired to save anything).
+  app.patch<{
+    Params: { id: string };
+    Body: {
+      name?: string;
+      type?: string;
+      phone?: string | null;
+      email?: string | null;
+      address?: string | null;
+      equipment?: Record<string, string>;
+      gateCodes?: Record<string, string>;
+    };
+  }>("/:id", async (req) => {
+    const { id } = req.params;
+    const { name, type, phone, email, address, equipment, gateCodes } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const fields: Record<string, unknown> = {};
+      if (name !== undefined) fields.name = name;
+      if (type !== undefined) fields.type = type;
+      if (phone !== undefined) fields.phone = phone;
+      if (email !== undefined) fields.email = email;
+      if (address !== undefined) fields.address = address;
+      if (equipment !== undefined) fields.equipment = tx.json(equipment);
+      if (gateCodes !== undefined) fields.gate_codes = tx.json(gateCodes);
+      const [row] = await tx`update customers set ${tx(fields)} where id = ${id} returning *`;
+      return row;
+    });
+  });
+
+  // Client bug report 2026-09-02: "cannot add Other Contacts" after a customer already exists —
+  // adds another customer row sharing the same property address/household.
+  app.post<{ Params: { id: string }; Body: { name: string; email: string | null; phone: string | null } }>(
+    "/:id/household",
+    async (req) => {
+      const { id } = req.params;
+      const { name, email, phone } = req.body;
+      return withTenantContext(req.userId, async (tx) => {
+        const [existing] = await tx`select household_id, type, tags, address from customers where id = ${id} limit 1`;
+        const [tenant] = await tx`select current_tenant_id() as id`;
+        let householdId = existing.household_id;
+        if (!householdId) {
+          const [generated] = await tx`select gen_random_uuid() as id`;
+          householdId = generated.id;
+          await tx`update customers set household_id = ${householdId} where id = ${id}`;
+        }
+        const [row] = await tx`
+          insert into customers (tenant_id, name, type, tags, email, phone, address, household_id)
+          values (${tenant.id}, ${name}, ${existing.type}, ${existing.tags}, ${email}, ${phone}, ${existing.address}, ${householdId})
+          returning *
+        `;
+        return row;
+      });
+    },
+  );
+
   app.post<{ Params: { id: string }; Body: { text: string; author: string } }>("/:id/notes", async (req) => {
     const { id } = req.params;
     const { text, author } = req.body;
@@ -101,6 +158,14 @@ export default async function customersRoutes(app: FastifyInstance) {
       `;
       return row;
     });
+  });
+
+  // Client bug report 2026-09-02: "was not able to delete photos" — the storage object itself is
+  // removed by the frontend (which already holds the authenticated Supabase client used to
+  // upload), this just removes the DB record.
+  app.delete<{ Params: { id: string; attachmentId: string } }>("/:id/attachments/:attachmentId", async (req) => {
+    const { attachmentId } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`delete from customer_attachments where id = ${attachmentId}`);
   });
 
   // Caches a free Nominatim geocode result (Jobs map/route view) so we don't re-geocode the

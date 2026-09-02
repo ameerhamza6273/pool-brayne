@@ -41,8 +41,11 @@ export const invoicingApi = {
     lineItems?: LineItemInput[];
   }) => api.post<Invoice>("/api/invoices", data),
 
-  collectPayment: (id: string, method: "Card" | "ACH") =>
+  collectPayment: (id: string, method: "Card" | "ACH" | "Check") =>
     api.patch<Invoice>(`/api/invoices/${id}/collect-payment`, { method }),
+
+  bulkCollect: (invoiceIds: string[], method: "Card" | "ACH" | "Check") =>
+    api.post<Invoice[]>("/api/invoices/bulk-collect", { invoiceIds, method }),
 
   recurringBilling: () => api.get<RecurringBilling[]>("/api/invoices/recurring-billing/list"),
 

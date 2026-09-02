@@ -22,6 +22,6 @@ export const posApi = {
     tax: number;
     total: number;
     paymentMethod: string;
-    items: { id: string; name: string; qty: number; price: number; isService: boolean }[];
+    items: { id: string | null; name: string; qty: number; price: number; isService: boolean }[];
   }) => api.post<{ id: string }>("/api/pos/checkout", data),
 };

@@ -4,17 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { timesheetsApi } from "@/lib/api/timesheets";
+import { settingsApi } from "@/lib/api/settings";
 import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
 
 type Timesheet = Database["public"]["Tables"]["timesheets"]["Row"] & { profiles: { name: string; role: string; employment_type: string } | null };
 type JobCosting = Database["public"]["Tables"]["job_costing"]["Row"] & { profiles: { name: string } | null };
 
-function mondayOf(date: Date) {
+// Client request 2026-09-02: payroll week can start on any day (they run Wed-Tue), not always
+// Monday — finds the most recent date on or before today whose weekday matches startDay.
+function weekStartOf(date: Date, startDay: number) {
   const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
+  const diff = (d.getDay() - startDay + 7) % 7;
+  d.setDate(d.getDate() - diff);
   return d.toISOString().slice(0, 10);
 }
 
@@ -26,8 +28,13 @@ export default function Timesheets() {
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [jobCosting, setJobCosting] = useState<JobCosting[]>([]);
   const [employeeCount, setEmployeeCount] = useState(0);
+  const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const weekStart = mondayOf(new Date());
+  const weekStart = weekStartOf(new Date(), payrollWeekStartDay);
+
+  useEffect(() => {
+    settingsApi.all().then((data) => setPayrollWeekStartDay(data.payrollWeekStartDay));
+  }, []);
 
   const loadTimesheets = useCallback(async () => {
     setIsLoading(true);

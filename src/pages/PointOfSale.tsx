@@ -2,13 +2,13 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, CreditCard,
   Banknote, FileText, Receipt, Percent, User, Package,
-  TrendingUp, DollarSign, ScanLine, CheckCircle2, Printer,
-  ArrowRight,
+  TrendingUp, DollarSign, CheckCircle2, Printer,
+  ArrowRight, RotateCcw, PackagePlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { posApi, type SalesReport } from "@/lib/api/pos";
@@ -21,7 +21,7 @@ type PosOrder = Database["public"]["Tables"]["pos_orders"]["Row"] & { customers:
 type Product = InventoryItem & { stock: number };
 
 type CartItem = {
-  id: string;
+  id: string | null;
   name: string;
   sku: string;
   price: number;
@@ -60,6 +60,12 @@ export default function PointOfSale() {
   const [discountType, setDiscountType] = useState<"percent" | "amount">("percent");
   const [discountOpen, setDiscountOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  // Client request 2026-09-02: sell items not in stock (inventory can go negative), sell a
+  // negative quantity as a return, and ring up non-stock/material items that aren't in the
+  // catalog at all.
+  const [returnMode, setReturnMode] = useState(false);
+  const [customItemOpen, setCustomItemOpen] = useState(false);
+  const [customItem, setCustomItem] = useState({ description: "", price: "", qty: "1" });
   const [completedSale, setCompletedSale] = useState<{
     number: string; total: number; payment: string; items: number;
   } | null>(null);
@@ -124,19 +130,32 @@ export default function PointOfSale() {
   const total = useMemo(() => subtotal - discountAmount + tax, [subtotal, discountAmount, tax]);
 
   const addToCart = (p: Product) => {
+    const direction = returnMode ? -1 : 1;
     setCart((prev) => {
       const existing = prev.find((i) => i.id === p.id);
-      if (existing) return prev.map((i) => i.id === p.id ? { ...i, qty: i.qty + 1 } : i);
-      return [...prev, { id: p.id, name: p.name, sku: p.sku, price: p.price ?? 0, qty: 1, taxable: p.taxable, unit: p.unit ?? "ea" }];
+      if (existing) return prev.map((i) => i.id === p.id ? { ...i, qty: i.qty + direction } : i);
+      return [...prev, { id: p.id, name: p.name, sku: p.sku, price: p.price ?? 0, qty: direction, taxable: p.taxable, unit: p.unit ?? "ea" }];
     });
   };
 
-  const updateQty = (id: string, delta: number) => {
-    setCart((prev) => prev.map((i) => i.id === id ? { ...i, qty: Math.max(1, i.qty + delta) } : i));
+  const addCustomItem = () => {
+    const price = parseFloat(customItem.price) || 0;
+    const qty = parseInt(customItem.qty, 10) || 1;
+    if (!customItem.description || price <= 0) return;
+    setCart((prev) => [...prev, { id: null, name: customItem.description, sku: "CUSTOM", price, qty: returnMode ? -Math.abs(qty) : qty, taxable: true, unit: "ea" }]);
+    setCustomItem({ description: "", price: "", qty: "1" });
+    setCustomItemOpen(false);
   };
 
-  const removeItem = (id: string) => {
-    setCart((prev) => prev.filter((i) => i.id !== id));
+  // No floor — a return line can go further negative, and a line hitting exactly 0 is removed.
+  const updateQty = (id: string | null, index: number, delta: number) => {
+    setCart((prev) => prev
+      .map((i, idx) => (idx === index && i.id === id ? { ...i, qty: i.qty + delta } : i))
+      .filter((i) => i.qty !== 0));
+  };
+
+  const removeItem = (index: number) => {
+    setCart((prev) => prev.filter((_, idx) => idx !== index));
   };
 
   const clearCart = () => {
@@ -190,14 +209,33 @@ export default function PointOfSale() {
           <p className="text-sm text-[#64748B] mt-0.5">Register — linked to inventory in real time</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
-            <FileText className="w-4 h-4" />
-            <span className="hidden sm:inline">New Estimate (No Job)</span>
+          <Button
+            variant="outline"
+            className={`h-10 gap-2 border-[#E2E8F0] bg-white ${returnMode ? "bg-[#DC2626]/10 border-[#DC2626] text-[#DC2626]" : "text-[#0F172A]"}`}
+            onClick={() => setReturnMode((v) => !v)}
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span className="hidden sm:inline">{returnMode ? "Return Mode: On" : "Return Mode"}</span>
           </Button>
-          <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
-            <ScanLine className="w-4 h-4" />
-            <span className="hidden sm:inline">Scan Barcode</span>
-          </Button>
+          <Dialog open={customItemOpen} onOpenChange={setCustomItemOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+                <PackagePlus className="w-4 h-4" />
+                <span className="hidden sm:inline">Custom Item</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-sm">
+              <DialogHeader><DialogTitle>Add Non-Stock Item</DialogTitle></DialogHeader>
+              <div className="space-y-4">
+                <div><Label>Description</Label><Input className="mt-1" placeholder="e.g. Special order material" value={customItem.description} onChange={(e) => setCustomItem((p) => ({ ...p, description: e.target.value }))} /></div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><Label>Price</Label><Input type="number" className="mt-1" placeholder="0.00" value={customItem.price} onChange={(e) => setCustomItem((p) => ({ ...p, price: e.target.value }))} /></div>
+                  <div><Label>Qty</Label><Input type="number" className="mt-1" value={customItem.qty} onChange={(e) => setCustomItem((p) => ({ ...p, qty: e.target.value }))} /></div>
+                </div>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={addCustomItem}>Add to Cart</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           <div className="flex items-center gap-2 px-3 h-10 rounded-lg bg-[#0891B2]/10 border border-[#0891B2]/20">
             <Receipt className="w-4 h-4 text-[#0891B2]" />
             <span className="text-sm font-medium text-[#0891B2]">Register #1 — Open</span>
@@ -265,24 +303,21 @@ export default function PointOfSale() {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {filtered.map((p) => {
                 const isService = p.category === "Services";
-                const out = !isService && p.stock === 0;
+                // Client request 2026-09-02: out-of-stock items are still sellable (inventory is
+                // allowed to go negative) rather than blocked.
+                const out = !isService && p.stock <= 0;
                 return (
                   <button
                     key={p.id}
-                    onClick={() => !out && addToCart(p)}
-                    disabled={out}
-                    className={`text-left p-3 rounded-xl border transition-all ${
-                      out
-                        ? "bg-[#F1F5F9] border-[#E2E8F0] opacity-50 cursor-not-allowed"
-                        : "bg-white border-[#E2E8F0] hover:border-[#0891B2] hover:shadow-md active:scale-[0.98] cursor-pointer"
-                    }`}
+                    onClick={() => addToCart(p)}
+                    className="text-left p-3 rounded-xl border transition-all bg-white border-[#E2E8F0] hover:border-[#0891B2] hover:shadow-md active:scale-[0.98] cursor-pointer"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <Badge className={`${categoryColors[p.category] || "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]"} text-[10px] px-1.5 py-0`}>
                         {p.category}
                       </Badge>
                       {out ? (
-                        <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">Out</Badge>
+                        <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">Out — will go negative</Badge>
                       ) : isService ? (
                         <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">Service</Badge>
                       ) : p.stock <= 5 ? (
@@ -347,25 +382,25 @@ export default function PointOfSale() {
               </div>
             ) : (
               <div className="space-y-3">
-                {cart.map((item) => (
-                  <div key={item.id} className="flex items-center gap-2 py-2 border-b border-[#F1F5F9] last:border-0">
+                {cart.map((item, index) => (
+                  <div key={index} className="flex items-center gap-2 py-2 border-b border-[#F1F5F9] last:border-0">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#0F172A] truncate">{item.name}</p>
+                      <p className="text-sm font-medium text-[#0F172A] truncate">{item.name}{item.qty < 0 ? " (Return)" : ""}</p>
                       <p className="text-xs text-[#64748B]">${item.price.toFixed(2)} / {item.unit}</p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button onClick={() => updateQty(item.id, -1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
+                      <button onClick={() => updateQty(item.id, index, -1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
                         <Minus className="w-3.5 h-3.5 text-[#0F172A]" />
                       </button>
-                      <span className="w-8 text-center text-sm font-semibold text-[#0F172A]">{item.qty}</span>
-                      <button onClick={() => updateQty(item.id, 1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
+                      <span className={`w-8 text-center text-sm font-semibold ${item.qty < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>{item.qty}</span>
+                      <button onClick={() => updateQty(item.id, index, 1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
                         <Plus className="w-3.5 h-3.5 text-[#0F172A]" />
                       </button>
                     </div>
                     <div className="w-20 text-right">
-                      <p className="text-sm font-bold text-[#0F172A]">${(item.price * item.qty).toFixed(2)}</p>
+                      <p className={`text-sm font-bold ${item.qty < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>${(item.price * item.qty).toFixed(2)}</p>
                     </div>
-                    <button onClick={() => removeItem(item.id)} className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1 rounded">
+                    <button onClick={() => removeItem(index)} className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1 rounded">
                       <X className="w-4 h-4" />
                     </button>
                   </div>

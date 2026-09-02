@@ -15,6 +15,9 @@ import campaignsRoutes from "./routes/campaigns.js";
 import settingsRoutes from "./routes/settings.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import quickbooksRoutes from "./routes/quickbooks.js";
+import tasksRoutes from "./routes/tasks.js";
+import directoryRoutes from "./routes/directory.js";
+import reportsRoutes from "./routes/reports.js";
 
 const app = Fastify({ logger: true });
 
@@ -43,6 +46,9 @@ await app.register(campaignsRoutes, { prefix: "/api/campaigns" });
 await app.register(settingsRoutes, { prefix: "/api/settings" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 await app.register(quickbooksRoutes, { prefix: "/api/quickbooks" });
+await app.register(tasksRoutes, { prefix: "/api/tasks" });
+await app.register(directoryRoutes, { prefix: "/api/directory" });
+await app.register(reportsRoutes, { prefix: "/api/reports" });
 
 const port = Number(process.env.PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

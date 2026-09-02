@@ -116,6 +116,41 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage — deducts
+  // store stock the same way a POS sale or job-parts-used does (allowed to go negative, same as
+  // POS, since a write-off can be recording shrinkage discovered after the fact).
+  app.get("/writeoffs", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`
+      select w.*, jsonb_build_object('name', ii.name, 'sku', ii.sku) as inventory_items
+      from inventory_writeoffs w join inventory_items ii on ii.id = w.item_id
+      order by w.created_at desc
+    `);
+  });
+
+  app.post<{ Body: { itemId: string; quantity: number; reason: string; note: string | null } }>("/writeoffs", async (req) => {
+    const { itemId, quantity, reason, note } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [row] = await tx`
+        insert into inventory_writeoffs (tenant_id, item_id, quantity, reason, note, created_by)
+        values (${tenant.id}, ${itemId}, ${quantity}, ${reason}, ${note}, ${req.userId})
+        returning *
+      `;
+      const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
+      if (store) {
+        const [stockRow] = await tx`
+          select id, quantity from inventory_stock where item_id = ${itemId} and location_id = ${store.id} limit 1
+        ` as unknown as { id: string; quantity: number }[];
+        if (stockRow) {
+          await tx`update inventory_stock set quantity = ${stockRow.quantity - quantity} where id = ${stockRow.id}`;
+        } else {
+          await tx`insert into inventory_stock (tenant_id, item_id, location_id, quantity) values (${tenant.id}, ${itemId}, ${store.id}, ${-quantity})`;
+        }
+      }
+      return row;
+    });
+  });
+
   app.post<{ Body: { supplierId: string; number: string } }>("/purchase-orders", async (req) => {
     const { supplierId, number } = req.body;
     return withTenantContext(req.userId, async (tx) => {

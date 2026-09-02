@@ -8,6 +8,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { customersApi } from "@/lib/api/customers";
+import { formatPhoneInput } from "@/lib/phone";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 import type { Database } from "@/lib/database.types";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -128,7 +130,12 @@ export default function Customers() {
               </div>
               <div>
                 <Label>Property Address</Label>
-                <Input placeholder="123 Main St, Austin, TX" className="mt-1" value={newCustomer.address} onChange={(e) => setNewCustomer((p) => ({ ...p, address: e.target.value }))} />
+                <AddressAutocomplete
+                  placeholder="123 Main St, Austin, TX"
+                  className="mt-1"
+                  value={newCustomer.address}
+                  onChange={(address) => setNewCustomer((p) => ({ ...p, address }))}
+                />
                 <p className="text-xs text-[#64748B] mt-1">Shared by every contact added below.</p>
               </div>
 
@@ -159,7 +166,7 @@ export default function Customers() {
                     </div>
                     <div>
                       <Label>Phone</Label>
-                      <Input placeholder="(512) 555-0000" className="mt-1" value={contact.phone} onChange={(e) => updateContact(index, "phone", e.target.value)} />
+                      <Input placeholder="(512) 555-0000" className="mt-1" value={contact.phone} onChange={(e) => updateContact(index, "phone", formatPhoneInput(e.target.value))} />
                     </div>
                     <div>
                       <Label>Email</Label>
@@ -246,6 +253,7 @@ export default function Customers() {
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Phone</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Type</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Address</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Last Service</th>
@@ -270,6 +278,7 @@ export default function Customers() {
                         <span className="font-medium text-[#0F172A]">{c.name}</span>
                       </div>
                     </td>
+                    <td className="py-3 px-4 text-[#64748B]">{c.phone || "—"}</td>
                     <td className="py-3 px-4">
                       <div className="flex gap-1 flex-wrap">
                         {c.tags.map((tag) => (

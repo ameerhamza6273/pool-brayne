@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck, Layers } from "lucide-react";
+import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck, Layers, ClipboardList, Camera, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,11 @@ import { customersApi } from "@/lib/api/customers";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { settingsApi } from "@/lib/api/settings";
 import { jobsApi } from "@/lib/api/jobs";
+import { tasksApi, type FreeformTask } from "@/lib/api/tasks";
+import { profilesApi } from "@/lib/api/profiles";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/lib/supabase";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import type { Database } from "@/lib/database.types";
 
@@ -20,7 +25,7 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { 
 type UninvoicedJob = Database["public"]["Tables"]["jobs"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
-type Customer = { id: string; name: string };
+type Customer = { id: string; name: string; email: string | null; phone: string | null };
 type Supplier = { id: string; name: string };
 
 const statusColors: Record<string, string> = {
@@ -63,7 +68,26 @@ export default function Invoicing() {
   const [bulkForm, setBulkForm] = useState({ customerId: "", start: "", end: "" });
   const [bulkJobs, setBulkJobs] = useState<UninvoicedJob[]>([]);
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  // Client request 2026-09-02: a second Bulk Invoice mode — combine several of a customer's
+  // already-open invoices and collect payment on all of them at once (card on file, manual
+  // check, or email the customer), distinct from the original "combine completed jobs" mode.
+  const [bulkTab, setBulkTab] = useState<"jobs" | "invoices">("invoices");
+  const [bulkInvoiceCustomerId, setBulkInvoiceCustomerId] = useState("");
+  const [bulkInvoiceSelected, setBulkInvoiceSelected] = useState<Set<string>>(new Set());
+  const [bulkPayMethod, setBulkPayMethod] = useState<"Card" | "Check" | "Email">("Card");
+  const [bulkCollecting, setBulkCollecting] = useState(false);
   const navigate = useNavigate();
+  const { tenantId } = useAuth();
+
+  // Client request 2026-09-02: a freeform "Tasks" tab under Estimates — assign a
+  // Renovation/Repair/Go-back task to a tech at a customer/address, with photos, notes, and a
+  // date range, independent of the jobs/estimates pipelines.
+  const [tasks, setTasks] = useState<FreeformTask[]>([]);
+  const [techs, setTechs] = useState<{ id: string; name: string }[]>([]);
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
+  const [newTask, setNewTask] = useState({ customerId: "", techId: "", address: "", type: "Repair", notes: "", startDate: "", endDate: "" });
+  const [newTaskPhotos, setNewTaskPhotos] = useState<string[]>([]);
+  const [taskPhotoUploading, setTaskPhotoUploading] = useState(false);
 
   useEffect(() => {
     if (searchParams.get("tab") === "estimates") setActiveTab("estimates");
@@ -71,7 +95,7 @@ export default function Invoicing() {
 
   const loadInvoicing = useCallback(async () => {
     setIsLoading(true);
-    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData, inventoryData] = await Promise.all([
+    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData, inventoryData, tasksData, techsData] = await Promise.all([
       invoicingApi.list(),
       invoicingApi.recurringBilling(),
       invoicingApi.payments(),
@@ -81,6 +105,8 @@ export default function Invoicing() {
       invoicingApi.vendorBills(),
       inventoryApi.suppliers(),
       inventoryApi.summary(),
+      tasksApi.list(),
+      profilesApi.list(),
     ]);
     setInvoices((invoicesData ?? []) as Invoice[]);
     setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
@@ -91,6 +117,8 @@ export default function Invoicing() {
     setVendorBills((vendorBillsData ?? []) as VendorBill[]);
     setSuppliers(suppliersData ?? []);
     setInventoryItems(inventoryData?.items ?? []);
+    setTasks(tasksData ?? []);
+    setTechs((techsData ?? []).map((t) => ({ id: t.id, name: t.name })));
     setIsLoading(false);
   }, []);
 
@@ -162,6 +190,44 @@ export default function Invoicing() {
     loadInvoicing();
   };
 
+  const handleTaskPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files) return;
+    setTaskPhotoUploading(true);
+    for (const file of Array.from(e.target.files)) {
+      if (!file.type.startsWith("image/")) continue;
+      const path = `${tenantId}/tasks/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+      if (error) continue;
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      setNewTaskPhotos((prev) => [...prev, data.publicUrl]);
+    }
+    setTaskPhotoUploading(false);
+    e.target.value = "";
+  };
+
+  const handleCreateTask = async () => {
+    if (!newTask.type) return;
+    await tasksApi.create({
+      customerId: newTask.customerId || null,
+      techId: newTask.techId || null,
+      address: newTask.address || null,
+      type: newTask.type,
+      notes: newTask.notes || null,
+      photos: newTaskPhotos,
+      startDate: newTask.startDate || null,
+      endDate: newTask.endDate || null,
+    });
+    setNewTask({ customerId: "", techId: "", address: "", type: "Repair", notes: "", startDate: "", endDate: "" });
+    setNewTaskPhotos([]);
+    setNewTaskOpen(false);
+    loadInvoicing();
+  };
+
+  const handleTaskStatusChange = async (id: string, status: string) => {
+    await tasksApi.updateStatus(id, status);
+    loadInvoicing();
+  };
+
   // Client request 2026-08-28: bulk invoicing — combine several weeks of completed (but not
   // yet invoiced) jobs for one customer into a single invoice, one line item per job.
   const loadBulkJobs = useCallback(async () => {
@@ -186,6 +252,36 @@ export default function Invoicing() {
       else next.add(id);
       return next;
     });
+  };
+
+  const customersWithOpenInvoices = customers.filter((c) => invoices.some((i) => i.customer_id === c.id && i.status !== "Paid"));
+  const openInvoicesForCustomer = invoices.filter((i) => i.customer_id === bulkInvoiceCustomerId && i.status !== "Paid");
+  const toggleBulkInvoice = (id: string) => {
+    setBulkInvoiceSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkCollect = async () => {
+    const ids = Array.from(bulkInvoiceSelected);
+    if (ids.length === 0) return;
+    setBulkCollecting(true);
+    if (bulkPayMethod === "Email") {
+      const customer = customers.find((c) => c.id === bulkInvoiceCustomerId);
+      const selected = openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id));
+      const total = selected.reduce((s, i) => s + i.amount, 0);
+      const body = selected.map((i) => `${i.number}: $${i.amount.toFixed(2)}`).join("%0D%0A");
+      window.location.href = `mailto:${customer?.email ?? ""}?subject=Open Invoices&body=Total due: $${total.toFixed(2)}%0D%0A%0D%0A${body}`;
+    } else {
+      await invoicingApi.bulkCollect(ids, bulkPayMethod);
+      await loadInvoicing();
+    }
+    setBulkInvoiceSelected(new Set());
+    setBulkCollecting(false);
+    setBulkOpen(false);
   };
 
   const handleCreateBulkInvoice = async () => {
@@ -318,8 +414,77 @@ export default function Invoicing() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Bulk Invoice</DialogTitle></DialogHeader>
-              <p className="text-xs text-[#64748B] -mt-2">Combine several weeks of completed jobs for one customer into a single invoice — one line item per job.</p>
+              <div className="flex gap-2 -mt-2">
+                <button
+                  onClick={() => setBulkTab("invoices")}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${bulkTab === "invoices" ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]"}`}
+                >
+                  Combine Open Invoices
+                </button>
+                <button
+                  onClick={() => setBulkTab("jobs")}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium ${bulkTab === "jobs" ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]"}`}
+                >
+                  Combine Completed Jobs
+                </button>
+              </div>
+
+              {bulkTab === "invoices" ? (
+                <div className="space-y-4 pt-2">
+                  <p className="text-xs text-[#64748B]">Pick a customer with open invoices, select the ones to combine, then collect payment on all of them at once.</p>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+                    <Select value={bulkInvoiceCustomerId} onValueChange={(v) => { setBulkInvoiceCustomerId(v); setBulkInvoiceSelected(new Set()); }}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
+                      <SelectContent>
+                        {customersWithOpenInvoices.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        {customersWithOpenInvoices.length === 0 && <div className="px-2 py-1.5 text-sm text-[#64748B]">No customers with open invoices</div>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {bulkInvoiceCustomerId && (
+                    <div>
+                      <label className="text-sm font-medium text-[#0F172A]">Open invoices</label>
+                      <div className="mt-1 space-y-1.5 max-h-56 overflow-y-auto">
+                        {openInvoicesForCustomer.map((inv) => (
+                          <label key={inv.id} className="flex items-center gap-2 p-2 rounded-lg border border-[#E2E8F0] text-sm cursor-pointer">
+                            <input type="checkbox" checked={bulkInvoiceSelected.has(inv.id)} onChange={() => toggleBulkInvoice(inv.id)} />
+                            <span className="flex-1">{inv.number} — {inv.issue_date}</span>
+                            <span className="font-medium text-[#0F172A]">${inv.amount.toFixed(2)}</span>
+                          </label>
+                        ))}
+                        {openInvoicesForCustomer.length === 0 && <p className="text-sm text-[#64748B] py-2">No open invoices for this customer.</p>}
+                      </div>
+                    </div>
+                  )}
+                  {bulkInvoiceSelected.size > 0 && (
+                    <>
+                      <p className="text-right text-sm font-semibold text-[#0F172A]">
+                        Total: ${openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0).toFixed(2)}
+                      </p>
+                      <div>
+                        <label className="text-sm font-medium text-[#0F172A]">Payment Method</label>
+                        <div className="grid grid-cols-3 gap-2 mt-1">
+                          {(["Card", "Check", "Email"] as const).map((m) => (
+                            <button
+                              key={m}
+                              onClick={() => setBulkPayMethod(m)}
+                              className={`py-2 rounded-lg border text-sm font-medium ${bulkPayMethod === m ? "border-[#0891B2] bg-[#0891B2]/10 text-[#0891B2]" : "border-[#E2E8F0] text-[#64748B]"}`}
+                            >
+                              {m === "Card" ? "Card on File" : m === "Check" ? "Manual Check" : "Email Customer"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleBulkCollect} disabled={bulkInvoiceSelected.size === 0 || bulkCollecting}>
+                    {bulkPayMethod === "Email" ? "Email Selected Invoices" : `Collect Payment (${bulkPayMethod})`}
+                  </Button>
+                </div>
+              ) : (
               <div className="space-y-4 pt-2">
+                <p className="text-xs text-[#64748B]">Combine several weeks of completed jobs for one customer into a single invoice — one line item per job.</p>
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">Customer</label>
                   <Select value={bulkForm.customerId} onValueChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))}>
@@ -361,6 +526,7 @@ export default function Invoicing() {
                   Create Bulk Invoice
                 </Button>
               </div>
+              )}
             </DialogContent>
           </Dialog>
           <Dialog open={newEstimateOpen} onOpenChange={setNewEstimateOpen}>
@@ -545,6 +711,9 @@ export default function Invoicing() {
           <TabsTrigger value="estimates" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Copy className="w-4 h-4" /> Estimates
           </TabsTrigger>
+          <TabsTrigger value="tasks" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+            <ClipboardList className="w-4 h-4" /> Tasks
+          </TabsTrigger>
           <TabsTrigger value="vendor-bills" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Truck className="w-4 h-4" /> Vendor Bills
           </TabsTrigger>
@@ -568,6 +737,7 @@ export default function Invoicing() {
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Invoice #</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Description</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Issue Date</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Due Date</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
@@ -581,6 +751,7 @@ export default function Invoicing() {
                     <tr key={inv.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => navigate(`/invoicing/${inv.id}`)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{inv.number}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.customers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B] max-w-[220px] truncate">{inv.job_description || "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.issue_date}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.due_date}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${inv.amount.toLocaleString()}</td>
@@ -646,6 +817,132 @@ export default function Invoicing() {
                   ))}
                   {estimates.length === 0 && (
                     <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No estimates yet</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="tasks" className="mt-4 space-y-3">
+          <div className="flex justify-end">
+            <Dialog open={newTaskOpen} onOpenChange={setNewTaskOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> New Task</Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+                <DialogHeader><DialogTitle>New Task</DialogTitle></DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Customer (optional)</label>
+                    <Select value={newTask.customerId} onValueChange={(v) => setNewTask((p) => ({ ...p, customerId: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
+                      <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Address</label>
+                    <AddressAutocomplete className="mt-1" value={newTask.address} onChange={(address) => setNewTask((p) => ({ ...p, address }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-[#0F172A]">Assign Tech</label>
+                      <Select value={newTask.techId} onValueChange={(v) => setNewTask((p) => ({ ...p, techId: v }))}>
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="Select tech" /></SelectTrigger>
+                        <SelectContent>{techs.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[#0F172A]">Type</label>
+                      <Select value={newTask.type} onValueChange={(v) => setNewTask((p) => ({ ...p, type: v }))}>
+                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Renovation">Renovation</SelectItem>
+                          <SelectItem value="Repair">Repair</SelectItem>
+                          <SelectItem value="Go back">Go back</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-[#0F172A]">Start Date</label>
+                      <Input type="date" className="mt-1" value={newTask.startDate} onChange={(e) => setNewTask((p) => ({ ...p, startDate: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[#0F172A]">End Date</label>
+                      <Input type="date" className="mt-1" value={newTask.endDate} onChange={(e) => setNewTask((p) => ({ ...p, endDate: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Notes</label>
+                    <textarea
+                      className="mt-1 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm min-h-[60px]"
+                      value={newTask.notes}
+                      onChange={(e) => setNewTask((p) => ({ ...p, notes: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A] flex items-center gap-1.5"><Camera className="w-4 h-4" /> Photos</label>
+                    <input type="file" accept="image/*" multiple className="mt-1 text-sm" onChange={handleTaskPhotoSelect} disabled={taskPhotoUploading} />
+                    {newTaskPhotos.length > 0 && (
+                      <div className="grid grid-cols-4 gap-2 mt-2">
+                        {newTaskPhotos.map((url, i) => (
+                          <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-[#F1F5F9]">
+                            <img src={url} alt="Task" className="w-full h-full object-cover" />
+                            <button
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center"
+                              onClick={() => setNewTaskPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateTask}>Save Task</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Type</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Address</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Tech</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Dates</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Photos</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((t) => (
+                    <tr key={t.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{t.type}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{t.customers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B] max-w-[180px] truncate">{t.address ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{t.profiles?.name ?? "Unassigned"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{t.start_date ?? "—"}{t.end_date ? ` → ${t.end_date}` : ""}</td>
+                      <td className="text-center py-3 px-4 text-[#64748B]">{t.photos?.length ?? 0}</td>
+                      <td className="text-center py-3 px-4">
+                        <Select value={t.status} onValueChange={(v) => handleTaskStatusChange(t.id, v)}>
+                          <SelectTrigger className="h-8 w-[120px] text-xs mx-auto"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Open">Open</SelectItem>
+                            <SelectItem value="In Progress">In Progress</SelectItem>
+                            <SelectItem value="Done">Done</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </td>
+                    </tr>
+                  ))}
+                  {tasks.length === 0 && (
+                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No tasks yet</td></tr>
                   )}
                 </tbody>
               </table>
