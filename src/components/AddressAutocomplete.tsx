@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { searchAddressSuggestions } from "@/lib/geocode";
+import { isSmartyConfigured, smartyAutocomplete } from "@/lib/smarty";
 
-// Client request 2026-09-02: "auto populate the address when adding it for the first time" —
-// free Nominatim suggestions (no Google Places billing account available), debounced so it
-// respects Nominatim's ~1 request/sec usage policy.
+// Client request 2026-09-02: "auto populate the address when adding it for the first time".
+// Uses Smarty's real US Autocomplete Pro (client sent smarty.com/pricing) once
+// VITE_SMARTY_EMBEDDED_KEY is configured; until then, falls back to free Nominatim suggestions
+// (no Google Places billing account available), debounced so it respects Nominatim's
+// ~1 request/sec usage policy. Smarty's suggestions don't include lat/lng (that's a separate
+// Smarty product) — only the Nominatim path returns coords, which is fine since map-pin
+// geocoding elsewhere in the app runs independently off the saved address text.
 export default function AddressAutocomplete({
   value,
   onChange,
@@ -16,7 +21,7 @@ export default function AddressAutocomplete({
   placeholder?: string;
   className?: string;
 }) {
-  const [suggestions, setSuggestions] = useState<{ label: string; lat: number; lng: number }[]>([]);
+  const [suggestions, setSuggestions] = useState<{ label: string; lat?: number; lng?: number }[]>([]);
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -27,7 +32,7 @@ export default function AddressAutocomplete({
       return;
     }
     timerRef.current = setTimeout(async () => {
-      const results = await searchAddressSuggestions(value);
+      const results = isSmartyConfigured() ? await smartyAutocomplete(value) : await searchAddressSuggestions(value);
       setSuggestions(results);
     }, 500);
     return () => {
@@ -54,7 +59,7 @@ export default function AddressAutocomplete({
               className="w-full text-left px-3 py-2 text-sm hover:bg-[#F8FAFC] border-b border-[#F1F5F9] last:border-0"
               onMouseDown={(e) => {
                 e.preventDefault();
-                onChange(s.label, { lat: s.lat, lng: s.lng });
+                onChange(s.label, s.lat !== undefined && s.lng !== undefined ? { lat: s.lat, lng: s.lng } : undefined);
                 setSuggestions([]);
                 setOpen(false);
               }}

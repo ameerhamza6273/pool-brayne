@@ -1788,8 +1788,9 @@ scripts, established pattern), final stock/row-counts baseline se match karte ha
   pehle backup liye, `data.ts` mein original mil gaya isliye recover ho gaya, lekin agli baar
   yeh risk pehle se avoid karna behtar hai.
 - Dono frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) clean.
-- **Baaqi/pending:** is poore session ke changes abhi commit nahi hue — commit se pehle user
-  se confirm lena (established rule). Pehle se pending sab kuch (customer-list import,
+- User ne commit + push dono confirm kiye — commit `5e6c45a`, `origin/main` par push ho chuka
+  hai (is baar `git push` classifier se block nahi hua, seedha ho gaya).
+- **Baaqi/pending:** pehle se pending sab kuch (customer-list import,
   resale/pluggable-integrations reply, Authorize.net, GPS7000/Twilio/Stripe/SendGrid/Gusto
   client accounts, Railway/Vercel client-account move, global search bar, notifications panel,
   dispatch-nearest-tech, QBO two-way sync, QBO production redirect URI, JobDetail
