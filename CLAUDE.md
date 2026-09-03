@@ -1977,4 +1977,14 @@ bhi payment-tokenization feature ke liye is app mein.
   sakta hai chahe HTTPS par ho (sirf localhost-specific nahi tha) — user ko batana ke agar
   pehli baar fail ho to bas dobara "Charge" click karein, dusri koshish mein kaam kar jata hai.
 - **Poora Authorize.net card-payment feature ab production mein live aur working hai.**
+- **Update (isi din) — "double-click" issue bhi fix ho gaya:** root cause samjha aur fix kiya
+  (`src/lib/authorizenet.ts`) — Accept.js ka `onload` uske internal init (dusra script +
+  fingerprinting) complete hone se **pehle** fire hota hai, isliye turant `dispatchData` call
+  karne se pehli baar fail ho sakta tha. Fix: (1) script ko **module import hote hi turant
+  preload** karna shuru kar diya (button click ka wait nahi karta ab), (2) `onload` ke baad
+  1.2 second ka grace period, (3) agar phir bhi "not loaded correctly" aaye to **transparently
+  ek baar khud retry** karta hai (user ko dikhta hi nahi). Commit `69e8f26`, push + Vercel
+  auto-redeploy ho gaya. **Live dobara test kiya** (naya test invoice, is baar bina kisi wait
+  ke turant Collect Payment → card fill → Charge, sab ek hi batch mein) — **pehli hi koshish
+  mein "Paid"** ho gaya, real transaction ID `120089643165` confirm kiya, cleanup kar diya.
   ---
