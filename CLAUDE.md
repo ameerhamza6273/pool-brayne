@@ -1949,10 +1949,32 @@ bhi payment-tokenization feature ke liye is app mein.
   charge nahi hua (koi real Authorize.net transaction bana hi nahi, safe fail), turant DB se
   delete kar diya.
 - Dono frontend aur backend typecheck clean.
-- **Baaqi/pending (is entry ke likhte waqt tak):** live Vercel/Railway par
-  `VITE_AUTHORIZENET_API_LOGIN_ID`/`VITE_AUTHORIZENET_PUBLIC_CLIENT_KEY`/
-  `VITE_AUTHORIZENET_ENVIRONMENT` (Vercel) aur `AUTHORIZENET_API_LOGIN_ID`/
-  `AUTHORIZENET_TRANSACTION_KEY`/`AUTHORIZENET_ENVIRONMENT` (Railway) env vars set karna aur
-  redeploy karke real sandbox test card (`4111111111111111`, koi bhi future expiry, koi bhi
-  CVV) se live HTTPS par end-to-end charge test karna baaqi hai — yeh agla immediate kaam hai.
+**Update (isi din, thodi der baad) — live par deploy + real charge verify ho gaya:**
+- Railway env vars (`AUTHORIZENET_API_LOGIN_ID`/`AUTHORIZENET_TRANSACTION_KEY`/
+  `AUTHORIZENET_ENVIRONMENT`) main ne khud daali (Variables tab ke "Raw Editor" se — pehli
+  koshish mein galti se `VITE_`-prefixed frontend vars bhi backend service mein daal di thin,
+  turant pakड़ kar edit karke hata di, sirf backend-relevant 3 vars final rakhi).
+  **Non-obvious Vercel navigation gotcha:** iss session mein `vercel.com/brayne-ai/...` (jo
+  pehle CLAUDE.md mein likha tha) **ab sahi project scope nahi tha** — asal project
+  `vercel.com/ameers-projects-cdd40da5/pool-brayne/...` ke neeche hai (Ameer ka apna personal
+  Vercel account, "brayne-ai"/"kahn@brayneai.io" account se bilkul alag). Isi wajah se maine
+  Vercel dashboard mein bohat der struggle kiya (settings/environment-variables baar baar 404
+  flash karta raha) — galat account/team scope try kar raha tha. **User ne khud correct URL de
+  di, tab jaake kaam hua.** Agar future mein Vercel URL kaam na kare, sabse pehle yehi check
+  karo ke sahi Vercel account/team scope use ho raha hai ya nahi.
+  User ne khud Vercel env vars (`VITE_AUTHORIZENET_API_LOGIN_ID`/
+  `VITE_AUTHORIZENET_PUBLIC_CLIENT_KEY`/`VITE_AUTHORIZENET_ENVIRONMENT`, Production scope)
+  add kar ke redeploy kiya (screenshots se confirm kiya — "Ready" deployment).
+- **Real end-to-end live test kiya:** naya test invoice (`INV-ANETLIVE-001`, $1.08) production
+  Railway API se banaya, live `pool-brayne.vercel.app` par login karke Collect Payment dialog
+  se real sandbox test card (`4111111111111111`, exp 12/2030, CVV 900) se charge kiya —
+  **pehli koshish "Accept.js is not loaded correctly" (wahi HTTPS/init-race jaisa local mein
+  mila tha, script load ke turant baad tha), dobara Charge click karne par turant successful**
+  — invoice status "Draft" → **"Paid"** ho gaya, aur DB mein real
+  `payments.provider_transaction_id = '120089642702'` (asal Authorize.net transaction ID,
+  koi fake/simulated success nahi) save hua. Test invoice + payment turant delete kar diya.
+  **Yaad rakhna:** Accept.js ka pehla charge attempt kabhi kabhi "not loaded correctly" de
+  sakta hai chahe HTTPS par ho (sirf localhost-specific nahi tha) — user ko batana ke agar
+  pehli baar fail ho to bas dobara "Charge" click karein, dusri koshish mein kaam kar jata hai.
+- **Poora Authorize.net card-payment feature ab production mein live aur working hai.**
   ---

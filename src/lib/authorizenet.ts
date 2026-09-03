@@ -32,28 +32,39 @@ type AcceptResponse = {
 
 let scriptPromise: Promise<void> | null = null;
 
+// Accept.js's onload fires before it's actually finished initializing internally (it loads a
+// second script and does device-fingerprinting setup after that), so calling dispatchData
+// immediately after onload can fail with "Accept.js is not loaded correctly" even though the
+// script is present. A short grace period after onload avoids that race.
+const ACCEPT_JS_INIT_DELAY_MS = 1200;
+
 function loadAcceptJs(): Promise<void> {
   if (window.Accept) return Promise.resolve();
   if (scriptPromise) return scriptPromise;
   scriptPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = SCRIPT_URL;
-    script.onload = () => resolve();
+    script.onload = () => setTimeout(resolve, ACCEPT_JS_INIT_DELAY_MS);
     script.onerror = () => reject(new Error("Failed to load Authorize.net Accept.js"));
     document.head.appendChild(script);
   });
   return scriptPromise;
 }
 
+// Kick off the load as soon as this module is imported (well before the user opens a payment
+// dialog and clicks Charge), rather than waiting for the first tokenizeCard() call — the biggest
+// factor in avoiding the race above is simply giving Accept.js more head start.
+if (typeof window !== "undefined" && API_LOGIN_ID && PUBLIC_CLIENT_KEY) {
+  loadAcceptJs().catch(() => {});
+}
+
 export type CardInput = { cardNumber: string; expMonth: string; expYear: string; cvv: string };
 
-export async function tokenizeCard(card: CardInput): Promise<{ dataDescriptor: string; dataValue: string }> {
-  if (!API_LOGIN_ID || !PUBLIC_CLIENT_KEY) throw new Error("Authorize.net is not configured");
-  await loadAcceptJs();
+function dispatchToAccept(card: CardInput): Promise<{ dataDescriptor: string; dataValue: string }> {
   return new Promise((resolve, reject) => {
     window.Accept!.dispatchData(
       {
-        authData: { clientKey: PUBLIC_CLIENT_KEY, apiLoginID: API_LOGIN_ID },
+        authData: { clientKey: PUBLIC_CLIENT_KEY!, apiLoginID: API_LOGIN_ID! },
         cardData: {
           cardNumber: card.cardNumber.replace(/\s/g, ""),
           month: card.expMonth,
@@ -70,4 +81,20 @@ export async function tokenizeCard(card: CardInput): Promise<{ dataDescriptor: s
       },
     );
   });
+}
+
+export async function tokenizeCard(card: CardInput): Promise<{ dataDescriptor: string; dataValue: string }> {
+  if (!API_LOGIN_ID || !PUBLIC_CLIENT_KEY) throw new Error("Authorize.net is not configured");
+  await loadAcceptJs();
+  try {
+    return await dispatchToAccept(card);
+  } catch (err) {
+    // Transparently retry once — "not loaded correctly" on the very first attempt is the known
+    // Accept.js init race, not a real card/config problem, and a second attempt reliably works.
+    if (err instanceof Error && err.message.includes("not loaded correctly")) {
+      await new Promise((r) => setTimeout(r, 500));
+      return dispatchToAccept(card);
+    }
+    throw err;
+  }
 }
