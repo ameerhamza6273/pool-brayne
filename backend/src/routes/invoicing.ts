@@ -3,6 +3,7 @@ import type postgres from "postgres";
 import { withTenantContext } from "../db.js";
 import { withQuickbooksConnection, pushInvoice } from "../lib/quickbooks.js";
 import { syncCustomerToQuickbooks } from "./customers.js";
+import { chargeOpaqueData } from "../lib/authorizenet.js";
 
 type LineItemInput = {
   description: string;
@@ -37,23 +38,35 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
   }
 }
 
-async function collectPayment(tx: postgres.TransactionSql, invoiceId: string, method: "Card" | "ACH" | "Check") {
-  const today = new Date().toISOString().slice(0, 10);
-  const [invoice] = await tx`select * from invoices where id = ${invoiceId} limit 1`;
-  const lineItems = (await tx`select * from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number }[];
+async function computeInvoiceTotal(tx: postgres.TransactionSql, invoiceId: string) {
+  const [invoiceRow] = await tx`select * from invoices where id = ${invoiceId} limit 1`;
+  const invoice = invoiceRow as unknown as { id: string; customer_id: string; amount: number };
+  const lineItems = (await tx`select amount from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number }[];
   const subtotal = lineItems.length > 0
     ? lineItems.reduce((sum, li) => sum + li.amount, 0)
     : invoice.amount;
-  const total = subtotal * 1.0825;
+  return { invoice, total: subtotal * 1.0825 };
+}
 
+// Records a payment already collected — for Card, `providerTransactionId` is the real
+// Authorize.net transaction ID from a charge that already succeeded (see the routes below,
+// which run the actual charge before ever calling this).
+async function recordPayment(
+  tx: postgres.TransactionSql,
+  invoice: { id: string; customer_id: string },
+  total: number,
+  method: "Card" | "ACH" | "Check",
+  providerTransactionId: string | null,
+) {
+  const today = new Date().toISOString().slice(0, 10);
   const [tenant] = await tx`select current_tenant_id() as id`;
   const [updated] = await tx`
     update invoices set status = 'Paid', paid_date = ${today}, payment_method = ${method}
-    where id = ${invoiceId} returning *
+    where id = ${invoice.id} returning *
   `;
   await tx`
-    insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status)
-    values (${tenant.id}, ${invoiceId}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success')
+    insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status, provider_transaction_id)
+    values (${tenant.id}, ${invoice.id}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success', ${providerTransactionId})
   `;
   return updated;
 }
@@ -124,19 +137,62 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  app.patch<{ Params: { id: string }; Body: { method: "Card" | "ACH" | "Check" } }>("/:id/collect-payment", async (req) => {
+  // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
+  // `opaqueData` is the tokenized-on-the-client payment nonce, never a raw card number. ACH/
+  // Check stay simulated (no real bank-transfer/check processor is wired up).
+  app.patch<{
+    Params: { id: string };
+    Body: { method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string } };
+  }>("/:id/collect-payment", async (req, reply) => {
     const { id } = req.params;
-    const { method } = req.body;
-    return withTenantContext(req.userId, (tx) => collectPayment(tx, id, method));
+    const { method, opaqueData } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const { invoice, total } = await computeInvoiceTotal(tx, id);
+      let providerTransactionId: string | null = null;
+      if (method === "Card") {
+        if (!opaqueData) {
+          reply.code(400).send({ error: "Card payment requires tokenized card data" });
+          return;
+        }
+        const result = await chargeOpaqueData(total, opaqueData);
+        if (!result.success) {
+          reply.code(400).send({ error: result.error });
+          return;
+        }
+        providerTransactionId = result.transactionId;
+      }
+      return recordPayment(tx, invoice, total, method, providerTransactionId);
+    });
   });
 
   // Client request 2026-09-02: bulk-collect payment across several of a customer's open
-  // invoices at once (card on file or manual check) instead of one at a time.
-  app.post<{ Body: { invoiceIds: string[]; method: "Card" | "ACH" | "Check" } }>("/bulk-collect", async (req) => {
-    const { invoiceIds, method } = req.body;
+  // invoices at once. For Card, the customer's card is charged ONCE for the combined total
+  // (not once per invoice), then every selected invoice is marked Paid with that same real
+  // Authorize.net transaction ID.
+  app.post<{
+    Body: { invoiceIds: string[]; method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string } };
+  }>("/bulk-collect", async (req, reply) => {
+    const { invoiceIds, method, opaqueData } = req.body;
     return withTenantContext(req.userId, async (tx) => {
+      const entries = await Promise.all(invoiceIds.map((id) => computeInvoiceTotal(tx, id)));
+      const combinedTotal = entries.reduce((sum, e) => sum + e.total, 0);
+
+      let providerTransactionId: string | null = null;
+      if (method === "Card") {
+        if (!opaqueData) {
+          reply.code(400).send({ error: "Card payment requires tokenized card data" });
+          return;
+        }
+        const result = await chargeOpaqueData(combinedTotal, opaqueData);
+        if (!result.success) {
+          reply.code(400).send({ error: result.error });
+          return;
+        }
+        providerTransactionId = result.transactionId;
+      }
+
       const results = [];
-      for (const id of invoiceIds) results.push(await collectPayment(tx, id, method));
+      for (const entry of entries) results.push(await recordPayment(tx, entry.invoice, entry.total, method, providerTransactionId));
       return results;
     });
   });

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
+import { chargeOpaqueData } from "../lib/authorizenet.js";
 
 type Item = { id: string };
 type Stock = { item_id: string; quantity: number };
@@ -74,15 +75,34 @@ export default async function posRoutes(app: FastifyInstance) {
       tax: number;
       total: number;
       paymentMethod: string;
+      opaqueData?: { dataDescriptor: string; dataValue: string };
       items: { id: string | null; name: string; qty: number; price: number; isService: boolean }[];
     };
-  }>("/checkout", async (req) => {
-    const { customerId, subtotal, tax, total, paymentMethod, items } = req.body;
+  }>("/checkout", async (req, reply) => {
+    const { customerId, subtotal, tax, total, paymentMethod, opaqueData, items } = req.body;
+
+    // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
+    // charged BEFORE the order/stock changes are committed, so a declined card leaves nothing
+    // behind. Cash/ACH stay simulated (no real bank processor wired up for those).
+    let providerTransactionId: string | null = null;
+    if (paymentMethod === "Card") {
+      if (!opaqueData) {
+        reply.code(400).send({ error: "Card payment requires tokenized card data" });
+        return;
+      }
+      const result = await chargeOpaqueData(total, opaqueData);
+      if (!result.success) {
+        reply.code(400).send({ error: result.error });
+        return;
+      }
+      providerTransactionId = result.transactionId;
+    }
+
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [order] = await tx`
-        insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method)
-        values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${paymentMethod})
+        insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id)
+        values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${paymentMethod}, ${providerTransactionId})
         returning id
       `;
 

@@ -41,11 +41,11 @@ export const invoicingApi = {
     lineItems?: LineItemInput[];
   }) => api.post<Invoice>("/api/invoices", data),
 
-  collectPayment: (id: string, method: "Card" | "ACH" | "Check") =>
-    api.patch<Invoice>(`/api/invoices/${id}/collect-payment`, { method }),
+  collectPayment: (id: string, method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }) =>
+    api.patch<Invoice>(`/api/invoices/${id}/collect-payment`, { method, opaqueData }),
 
-  bulkCollect: (invoiceIds: string[], method: "Card" | "ACH" | "Check") =>
-    api.post<Invoice[]>("/api/invoices/bulk-collect", { invoiceIds, method }),
+  bulkCollect: (invoiceIds: string[], method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }) =>
+    api.post<Invoice[]>("/api/invoices/bulk-collect", { invoiceIds, method, opaqueData }),
 
   recurringBilling: () => api.get<RecurringBilling[]>("/api/invoices/recurring-billing/list"),
 

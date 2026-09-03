@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { invoicingApi } from "@/lib/api/invoicing";
+import CardPaymentForm from "@/components/CardPaymentForm";
 import type { Database } from "@/lib/database.types";
 
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string; address: string | null } | null };
@@ -75,9 +76,9 @@ export default function InvoiceDetail() {
   const remainingBalance = total - downPayment;
   const totalCost = items.reduce((sum, li) => sum + (li.cost ?? 0) * li.quantity, 0);
 
-  const handleCollectPayment = async (method: "Card" | "ACH") => {
+  const handleCollectPayment = async (method: "Card" | "ACH", opaqueData?: { dataDescriptor: string; dataValue: string }) => {
     if (!id) return;
-    await invoicingApi.collectPayment(id, method);
+    await invoicingApi.collectPayment(id, method, opaqueData);
     setPayOpen(false);
     loadInvoice();
   };
@@ -123,23 +124,10 @@ export default function InvoiceDetail() {
                   <TabsTrigger value="ach" className="flex-1">ACH</TabsTrigger>
                 </TabsList>
                 <TabsContent value="card" className="space-y-4 mt-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Card Number</label>
-                    <div className="h-10 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center px-3 text-sm text-[#64748B]">
-                      **** **** **** 4242
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Expiry</label>
-                      <div className="h-10 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center px-3 text-sm text-[#64748B]">12/25</div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">CVC</label>
-                      <div className="h-10 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center px-3 text-sm text-[#64748B]">***</div>
-                    </div>
-                  </div>
-                  <Button className="w-full bg-[#16A34A] text-white" onClick={() => handleCollectPayment("Card")}>Pay ${total.toFixed(2)}</Button>
+                  {/* Charges the full invoice total, matching the backend's computeInvoiceTotal
+                      — down_payment is recorded on the invoice but not yet subtracted from what
+                      gets charged here (that would need a separate down-payment-collection flow). */}
+                  <CardPaymentForm amount={total} onCharge={(opaqueData) => handleCollectPayment("Card", opaqueData)} />
                 </TabsContent>
                 <TabsContent value="ach" className="space-y-4 mt-4">
                   <div className="space-y-2">

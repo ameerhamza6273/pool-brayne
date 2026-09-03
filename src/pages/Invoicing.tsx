@@ -18,6 +18,7 @@ import { profilesApi } from "@/lib/api/profiles";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import CardPaymentForm from "@/components/CardPaymentForm";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import type { Database } from "@/lib/database.types";
 
@@ -265,20 +266,22 @@ export default function Invoicing() {
     });
   };
 
-  const handleBulkCollect = async () => {
+  const handleBulkEmail = () => {
+    const customer = customers.find((c) => c.id === bulkInvoiceCustomerId);
+    const selected = openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id));
+    const total = selected.reduce((s, i) => s + i.amount, 0);
+    const body = selected.map((i) => `${i.number}: $${i.amount.toFixed(2)}`).join("%0D%0A");
+    window.location.href = `mailto:${customer?.email ?? ""}?subject=Open Invoices&body=Total due: $${total.toFixed(2)}%0D%0A%0D%0A${body}`;
+    setBulkInvoiceSelected(new Set());
+    setBulkOpen(false);
+  };
+
+  const handleBulkCollect = async (opaqueData?: { dataDescriptor: string; dataValue: string }) => {
     const ids = Array.from(bulkInvoiceSelected);
     if (ids.length === 0) return;
     setBulkCollecting(true);
-    if (bulkPayMethod === "Email") {
-      const customer = customers.find((c) => c.id === bulkInvoiceCustomerId);
-      const selected = openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id));
-      const total = selected.reduce((s, i) => s + i.amount, 0);
-      const body = selected.map((i) => `${i.number}: $${i.amount.toFixed(2)}`).join("%0D%0A");
-      window.location.href = `mailto:${customer?.email ?? ""}?subject=Open Invoices&body=Total due: $${total.toFixed(2)}%0D%0A%0D%0A${body}`;
-    } else {
-      await invoicingApi.bulkCollect(ids, bulkPayMethod);
-      await loadInvoicing();
-    }
+    await invoicingApi.bulkCollect(ids, bulkPayMethod as "Card" | "Check", opaqueData);
+    await loadInvoicing();
     setBulkInvoiceSelected(new Set());
     setBulkCollecting(false);
     setBulkOpen(false);
@@ -460,7 +463,7 @@ export default function Invoicing() {
                   {bulkInvoiceSelected.size > 0 && (
                     <>
                       <p className="text-right text-sm font-semibold text-[#0F172A]">
-                        Total: ${openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0).toFixed(2)}
+                        Total (before tax): ${openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0).toFixed(2)}
                       </p>
                       <div>
                         <label className="text-sm font-medium text-[#0F172A]">Payment Method</label>
@@ -476,11 +479,22 @@ export default function Invoicing() {
                           ))}
                         </div>
                       </div>
+                      {bulkPayMethod === "Card" ? (
+                        <CardPaymentForm
+                          amount={openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0) * 1.0825}
+                          onCharge={(opaqueData) => handleBulkCollect(opaqueData)}
+                        />
+                      ) : (
+                        <Button
+                          className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white"
+                          onClick={() => (bulkPayMethod === "Email" ? handleBulkEmail() : handleBulkCollect())}
+                          disabled={bulkCollecting}
+                        >
+                          {bulkPayMethod === "Email" ? "Email Selected Invoices" : "Collect Payment (Check)"}
+                        </Button>
+                      )}
                     </>
                   )}
-                  <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleBulkCollect} disabled={bulkInvoiceSelected.size === 0 || bulkCollecting}>
-                    {bulkPayMethod === "Email" ? "Email Selected Invoices" : `Collect Payment (${bulkPayMethod})`}
-                  </Button>
                 </div>
               ) : (
               <div className="space-y-4 pt-2">

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
+import CardPaymentForm from "@/components/CardPaymentForm";
 import type { Database } from "@/lib/database.types";
 
 type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"];
@@ -165,7 +166,7 @@ export default function PointOfSale() {
     setCustomerId(null);
   };
 
-  const completeSale = async () => {
+  const completeSale = async (opaqueData?: { dataDescriptor: string; dataValue: string }) => {
     if (!paymentMethod) return;
     const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(transactions.length + 1).padStart(3, "0")}`;
 
@@ -175,6 +176,7 @@ export default function PointOfSale() {
       tax,
       total,
       paymentMethod,
+      opaqueData,
       items: cart.map((item) => ({
         id: item.id,
         name: item.name,
@@ -660,14 +662,18 @@ export default function PointOfSale() {
                 })}
               </div>
             </div>
-            <Button
-              className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2"
-              disabled={!paymentMethod}
-              onClick={completeSale}
-            >
-              <CheckCircle2 className="w-5 h-5" />
-              Complete Sale · ${total.toFixed(2)}
-            </Button>
+            {paymentMethod === "Card" ? (
+              <CardPaymentForm amount={total} submitLabel={`Complete Sale · $${total.toFixed(2)}`} onCharge={(opaqueData) => completeSale(opaqueData)} />
+            ) : (
+              <Button
+                className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2"
+                disabled={!paymentMethod}
+                onClick={() => completeSale()}
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                Complete Sale · ${total.toFixed(2)}
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

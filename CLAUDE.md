@@ -1799,3 +1799,160 @@ scripts, established pattern), final stock/row-counts baseline se match karte ha
   `localhost:4000` — dono is session mein background mein chalte rahe (typecheck ke baad
   runtime smoke-test ke liye start kiye).
   ---
+
+### 2026-09-02 (continued) — Live URL verify + Smarty prep + 3629-row legacy customer list import
+
+- **Live production verify kiya** (user ne kaha "screenshot nahi lena", isliye pure Chrome
+  browser automation ka `get_page_text`/`javascript_tool` use kiya, koi screenshot capture nahi):
+  Railway backend already auto-redeployed tha naye commit ke sath (`/api/directory`,
+  `/api/tasks`, `/api/reports/*` sab live real data ke sath), Vercel frontend bhi auto-redeploy
+  ho chuka (Directory page, Reports 6-tab page, Customers list ka Phone column, Inventory ka
+  Write-Offs tab + Zebra Barcode button, Invoicing ka Tasks tab — sab live confirm kiye).
+- **Client ne `smarty.com/pricing` bheja** (real US address-autocomplete API, free Nominatim
+  ka paid alternative). Naya `src/lib/smarty.ts` (`isSmartyConfigured()` + `smartyAutocomplete()`
+  — US Autocomplete Pro REST contract: `GET us-autocomplete-pro.api.smarty.com/lookup?key=...&
+  search=...`, embedded/referrer-restricted key, browser se seedha callable, koi backend proxy
+  nahi chahiye) — `AddressAutocomplete.tsx` ab agar `VITE_SMARTY_EMBEDDED_KEY` set ho to Smarty
+  use karta hai, warna automatically Nominatim per fallback. **Smarty suggestions mein lat/lng
+  nahi aati** (alag Smarty product hai) — sirf address text milta hai, jo is component ke liye
+  kaafi hai (map-pin geocoding kahin aur, alag se, saved address text se hoti hai). Commit
+  `3183362`, push ho chuka. **Baaqi:** client/user ko khud smarty.com par account bana kar
+  "embedded key" leni hai (referrer/domain allow-list karke) — sirf itna diya jaye, phir
+  `.env` + Vercel env var mein `VITE_SMARTY_EMBEDDED_KEY` daal kar redeploy karna hoga.
+- **Client ne WhatsApp par purane un-answered sawalon ka jawab diya:**
+  1. Customer list (3629 rows) → "**One yes go ahead**" — turant import kar diya (neeche dekho).
+  2. QuickBooks → abhi test/sandbox company par hi rakhna hai, jab tak client khud na kahe
+     real QuickBooks connect nahi karna.
+  3. Hosting (Railway/Vercel) → filhal humare account par hi rahega, "move it when it's
+     completed" (jab poora system finalize ho jaye tab move karenge).
+  4. Resale/multi-tenant vision → client ne clarify kiya: ek public website banayenge jahan
+     naye pool companies sign up kar sakein aur unhe ek **"blank slate"** instance mile —
+     zero customer data, zero Bryan-specific personalization, sirf khali "Clear Pool CRM".
+     **Important observation:** yeh bohat kareeb hai jo already exist karta hai — `/signup`
+     route already har naye signup ke liye completely isolated naya tenant banata hai
+     (`handle_new_user` trigger), zero data ke sath. Client ko shayad sirf ek proper marketing/
+     landing website chahiye jahan se log signup kar sakein — asal multi-tenant isolation
+     already ban chuka hai. Agle session mein client se confirm karna hai ke exactly kya
+     missing hai (sirf landing page? ya kuch aur jaise per-tenant billing/plan enforcement?).
+  5. Authorize.net link (`authorize.net`) bheja — client ka real payment processor (pehle se
+     confirmed) — real payment collection banane ke liye unki **sandbox API Login ID +
+     Transaction Key** chahiye (free sandbox account khud bana kar milti hai).
+- **Customer list import — DONE, verified.** `customer list 8-27-26.xlsx` (Downloads,
+  3629 rows) ko poora import kiya:
+  - **Naya discovery jo pehle ki "mixed businesses" concern resolve kar gaya:** file ke saare
+    addresses **Georgia (Atlanta/Roswell/Alpharetta/Duluth, GA)** mein hain, aur `Note` column
+    mein pool-service-specific transaction history hai (SHOP OPENING/CLOSING, ALGAECIDE, PUMP
+    JANDY, "SERVICE EVERY WEEK CLEANING" waghera) — aur khud tenant ka `invoice_business_name`
+    pehle se **"Pool Supply Atlanta"** set hai (2026-08-27 session se). Yeh sab match karta hai
+    — is file mein "American Deli"/"Beef Grill" jaise commercial-sounding naam bhi asal mein
+    isi Atlanta pool-service business ke commercial customers hain, koi doosra (hydrovac)
+    business nahi. Client ke explicit "go ahead" ke sath yeh ab kaafi confident tha.
+  - `xlsx` (SheetJS) npm package temporarily install kiya (`--no-save`, `backend/` mein, kabhi
+    commit nahi hua) sirf file parse karne ke liye.
+  - Mapping: `CustomerName` → name (trailing "-" artifacts strip kiye), phone (CellPhone ya
+    HomeNumber, digits-only se "(xxx) xxx-xxxx" format), email, address ("CITY, GA-30075" →
+    "CITY, GA 30075" regex fix). **Type (Residential/Commercial) ek keyword-heuristic se guess
+    kiya** (LLC/INC/APARTMENT/HOA/CLUB/RESORT/RESTAURANT/GRILL/DELI/etc. → Commercial, warna
+    Residential) — **yeh sirf best-effort hai, kuch miss ho sakte hain** (e.g. "Holiday Inn
+    Express..." Residential ban gaya kyunki "INN" keyword list mein nahi tha, false-positive
+    risk ki wajah se jaan-boojh kar chhoड़ा) — client/staff baad mein naye Edit-Customer dialog
+    se individually fix kar sakte hain.
+  - `Lead Status`, legacy `Account` #, `QB Reward ID`, `Alternate Phone`, aur purani `Note`/
+    `GERNERAL NOTES` (kuch customers ke liye kaafi lambi transaction-history text) ko **ek
+    customer_notes row** mein combine kar ke save kiya, author `"Imported from legacy system"`
+    (isse future mein agar kabhi rollback chahiye ho to `author = 'Imported from legacy system'`
+    se saare import-time notes identify ho sakte hain).
+  - **Dry-run pehle chalaya** (`--dry-run` flag, koi DB write nahi) mapping sanity-check karne
+    ke liye, phir real import — 200-row chunks mein bulk insert (customers), phir 3629 individual
+    inserts (notes, koi bulk-note-insert helper nahi tha isliye loop) — poora chalne mein kai
+    minute lage (background task, DB progress query se live check kiya kyunki script ka apna
+    stdout sirf end mein print hota tha).
+  - **Final verify:** 28 (purane demo) + 3629 (naye) = **3657 total customers**, 3629 legacy
+    notes attached, 3518 ke paas phone, 2660 ke paas email, 3292 ke paas address, 83 Commercial/
+    3574 Residential. Production (`pool-brayne-production.up.railway.app`) par bhi seedha
+    verify kiya (same shared Supabase DB, dev/prod dono ek hi data dekhte hain — koi redeploy
+    nahi lagi is data-only operation ke liye).
+  - **Koi code file change nahi hua is import ke liye** — sirf ek data operation tha (temp
+    scripts turant delete kar diye), isliye kuch commit/push karne ko nahi tha.
+- **Agla session:** resale/multi-tenant "blank slate" vision par client se follow-up (kya
+  sirf landing/marketing website chahiye, ya kuch aur), Authorize.net sandbox credentials ka
+  wait, Smarty embedded key ka wait, Angela Torres ka $0 invoice abhi bhi fix nahi hua (client/
+  team ko khud amount daalni hai), baaqi sab pehle jaisa (global search, notifications panel,
+  dispatch-nearest-tech, QBO two-way sync/production redirect URI, JobDetail content-category
+  tabs).
+  ---
+
+### 2026-09-03 — Authorize.net sandbox account + real Accept.js card-payment integration built
+
+User ne poocha Authorize.net sandbox ke liye humein khud apna account bana kar test nahi kar
+sakte (jaisa QuickBooks mein "apna developer account use karo" hua tha) — confirm kiya: **sandbox
+testing ke liye haan**, koi business verification nahi chahiye; sirf **real/live** payments jab
+client ke apne bank account mein jani hon tab unka apna production merchant account chahiye hoga
+(QuickBooks jaisa hi pattern).
+
+**Account creation** — user ne khud `developer.authorize.net/hello_world/sandbox.html` (main
+sirf navigate/guide karta raha, password kabhi nahi dekha/handle kiya):
+- Pehli koshish fail hui — Login ID `"Ghlking123"` already kisi aur ke pass tha (Authorize.net
+  ke login IDs globally unique hote hain), phir password reject hua "too many simple patterns"
+  ki wajah se (jaise `123`/`abc`/dictionary-word+suffix) — dono baar user ko wajah bata kar fix
+  karwaya.
+- Account ban gaya, user demo.authorize.net/smb2/merchant/Home par login ho gaya (khud apna
+  password se, maine kabhi enter nahi kiya).
+- **Maine (Claude) sirf ALREADY-AUTHENTICATED session mein navigate/click kiya** (Account →
+  Account and API Settings → API Credentials and Keys) taake API Login ID, Transaction Key, aur
+  Public Client Key nikal sakoon — yeh login karna nahi tha, sirf ek already-logged-in dashboard
+  padhna tha, isliye safety rules ke mutabiq tha. Dono naye keys generate karte waqt Authorize.net
+  ne email OTP maanga (do baar) — user ne khud email check kar ke code diya, maine confirm kiya.
+- Final credentials: `API Login ID: 98CudL5R36u6`, `Transaction Key` (backend `.env` mein
+  `AUTHORIZENET_TRANSACTION_KEY`, kabhi commit nahi hoga), `Public Client Key` (frontend-safe,
+  `VITE_AUTHORIZENET_PUBLIC_CLIENT_KEY`).
+
+**Real integration bana** (pehle sirf "Collect Payment" simulate hoti thi — status seedha 'Paid'
+set ho jata, koi asal charge nahi):
+- **Frontend `src/lib/authorizenet.ts`** — Authorize.net **Accept.js** dynamically load karta
+  hai (sandbox: `jstest.authorize.net/v1/Accept.js`), `tokenizeCard()` card number/exp/cvv ko
+  **client-side hi tokenize** kar deta hai (opaque `dataDescriptor`/`dataValue` nonce) — raw
+  card number kabhi humare apne server tak nahi jata, yehi PCI-safe tareeqa hai.
+- **Naya shared `src/components/CardPaymentForm.tsx`** — card number/exp/cvv fields + "Charge
+  $X" button, khud tokenize karke `onCharge(opaqueData)` callback call karta hai. `InvoiceDetail.
+  tsx` (Collect Payment dialog), `Invoicing.tsx` (Bulk Invoice ka Card-on-file mode), aur
+  `PointOfSale.tsx` (Take Payment dialog) — teeno jagah is component se **pehle wali fake
+  "•••• 4242" placeholder UI replace** ki.
+- **Backend `backend/src/lib/authorizenet.ts`** — `chargeOpaqueData(amount, opaqueData)`
+  Authorize.net ke JSON REST API (`apitest.authorize.net/xml/v1/request.api`,
+  `createTransactionRequest`/`authCaptureTransaction`) ko seedha call karta hai, real
+  transaction ID ya decline-reason return karta hai.
+- `backend/src/routes/invoicing.ts` — `collectPayment` helper ko `computeInvoiceTotal` +
+  `recordPayment` mein split kiya. `/:id/collect-payment` aur `/bulk-collect` dono ab Card
+  method par **pehle real charge karte hain, sirf success par hi invoice Paid marked hoti hai
+  aur payment row banti hai** (decline hone par 400 error, invoice Draft/Sent hi rehti hai —
+  koi fake-success nahi). ACH/Check abhi bhi simulated hain (koi real bank/check processor
+  wired nahi hai). **Bulk-collect Card mode ek hi combined charge karta hai** (total ke liye,
+  na ke har invoice ke liye alag-alag charge) — phir sab invoices ko usi ek transaction ID se
+  Paid mark karta hai.
+- `backend/src/routes/pos.ts` checkout bhi same tarah — Card payment method par pehle real
+  charge, phir order/stock changes commit hote hain (decline hone par order banta hi nahi).
+- Naya migration `20260903090000_authorizenet_payments.sql` — `payments.provider_transaction_id`
+  aur `pos_orders.provider_transaction_id` columns (real Authorize.net transaction ID store
+  karne ke liye) — `DATABASE_URL` se direct temp-script pattern se apply kiya (access token
+  abhi bhi nahi hai).
+
+**Real bug pakड़ा gaya testing ke dauran (local dev par):** Accept.js **HTTPS require karta
+hai** (`localhost:5175` HTTP hone ki wajah se "A HTTPS connection is required" error deta hai,
+pehle "Accept.js is not loaded correctly" bhi mila jo lagta hai isi HTTPS-check ka pehla/generic
+symptom tha) — **yeh code ka bug nahi hai, Authorize.net ki security requirement hai** (card
+tokenization sirf secure context mein hoti hai, `localhost` ko bhi exempt nahi karta jaisa kuch
+doosre SDKs karte hain). Isliye poora charge-flow sirf **live HTTPS URL (Vercel) par hi
+end-to-end test ho sakta hai**, local dev par nahi — is limitation ko yaad rakhna future kisi
+bhi payment-tokenization feature ke liye is app mein.
+- Test invoice (`INV-ANETTEST-001`, $1.08) bana kar local par try kiya, upar wali HTTPS wajah se
+  charge nahi hua (koi real Authorize.net transaction bana hi nahi, safe fail), turant DB se
+  delete kar diya.
+- Dono frontend aur backend typecheck clean.
+- **Baaqi/pending (is entry ke likhte waqt tak):** live Vercel/Railway par
+  `VITE_AUTHORIZENET_API_LOGIN_ID`/`VITE_AUTHORIZENET_PUBLIC_CLIENT_KEY`/
+  `VITE_AUTHORIZENET_ENVIRONMENT` (Vercel) aur `AUTHORIZENET_API_LOGIN_ID`/
+  `AUTHORIZENET_TRANSACTION_KEY`/`AUTHORIZENET_ENVIRONMENT` (Railway) env vars set karna aur
+  redeploy karke real sandbox test card (`4111111111111111`, koi bhi future expiry, koi bhi
+  CVV) se live HTTPS par end-to-end charge test karna baaqi hai — yeh agla immediate kaam hai.
+  ---
