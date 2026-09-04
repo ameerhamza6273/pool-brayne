@@ -83,18 +83,35 @@ export default async function jobsRoutes(app: FastifyInstance) {
       customerId: string; jobType: string; techId: string | null;
       date: string | null; time: string | null; description: string | null; address: string | null; amount: number;
       itemSku?: string | null; laborSku?: string | null;
+      lineItems?: { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number }[];
     };
   }>("/", async (req) => {
-    const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku } = req.body;
+    const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku, lineItems } = req.body;
     const status = techId ? "Booked" : "Lead";
     const stage = techId ? "booked" : "lead";
+    // Client bug report 2026-09-04: "when creating a job... dynamic search or autofill for
+    // SKUs... ability to add multiple line items" -- New Job previously only had flat Item
+    // SKU/Labor SKU text fields wired to nothing. Now accepts the same line-items array
+    // Estimates/Invoices do, and the job amount is computed from them when present.
+    const computedAmount = lineItems && lineItems.length > 0
+      ? lineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0)
+      : amount ?? 0;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount, item_sku, labor_sku)
-        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${amount ?? 0}, ${itemSku ?? null}, ${laborSku ?? null})
+        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${computedAmount}, ${itemSku ?? null}, ${laborSku ?? null})
         returning *
       `;
+      if (lineItems && lineItems.length > 0) {
+        for (const li of lineItems) {
+          const lineAmount = li.quantity * li.rate;
+          await tx`
+            insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount)
+            values (${tenant.id}, ${row.id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount})
+          `;
+        }
+      }
       return row;
     });
   });

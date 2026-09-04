@@ -31,6 +31,7 @@ export const jobsApi = {
     amount: number;
     itemSku?: string | null;
     laborSku?: string | null;
+    lineItems?: JobLineItemInput[];
   }) => api.post<Job>("/api/jobs", data),
 
   update: (id: string, fields: Record<string, unknown>) => api.patch<Job>(`/api/jobs/${id}`, fields),

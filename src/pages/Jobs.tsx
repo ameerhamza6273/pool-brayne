@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { jobTypes, callTypes, callSources } from "@/lib/data";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
+import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { jobsApi } from "@/lib/api/jobs";
 import { profilesApi } from "@/lib/api/profiles";
 import { customersApi } from "@/lib/api/customers";
@@ -79,7 +81,12 @@ export default function Jobs() {
   const [technicians, setTechnicians] = useState<Profile[]>([]);
   const [recurringRoutes, setRecurringRoutes] = useState<RecurringRoute[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", itemSku: "", laborSku: "" });
+  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
+  // Client bug report 2026-09-04: "dynamic search or autofill for SKUs... ability to add
+  // multiple line items" — New Job's old Item SKU/Labor SKU text fields weren't wired to
+  // inventory at all. Same LineItemsEditor + inventory search as Estimates/Invoices now.
+  const [newJobLineItems, setNewJobLineItems] = useState<DraftLineItem[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [mapDate, setMapDate] = useState(() => new Date().toISOString().slice(0, 10));
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -96,10 +103,12 @@ export default function Jobs() {
     profilesApi.list().then((data) => setTechnicians(data ?? []));
     customersApi.list().then((data) => setCustomers(data ?? []));
     recurringRoutesApi.list().then((data) => setRecurringRoutes(data ?? []));
+    inventoryApi.summary().then((data) => setInventoryItems(data.items));
   }, [loadJobs]);
 
   const handleCreateJob = async () => {
     if (!newJob.customerId || !newJob.jobType) return;
+    const lineItems = newJobLineItems.filter((li) => li.description.trim());
     await jobsApi.create({
       customerId: newJob.customerId,
       jobType: newJob.jobType,
@@ -109,10 +118,12 @@ export default function Jobs() {
       description: newJob.description || null,
       address: customers.find((c) => c.id === newJob.customerId)?.address ?? null,
       amount: parseFloat(newJob.amount) || 0,
-      itemSku: newJob.itemSku || null,
-      laborSku: newJob.laborSku || null,
+      lineItems: lineItems.length > 0
+        ? lineItems.map((li) => ({ description: li.description, sku: li.sku ?? null, itemType: li.itemType ?? "material", quantity: li.quantity, cost: li.cost ?? 0, rate: li.rate }))
+        : undefined,
     });
-    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", itemSku: "", laborSku: "" });
+    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
+    setNewJobLineItems([]);
     setNewJobOpen(false);
     loadJobs();
   };
@@ -302,19 +313,22 @@ export default function Jobs() {
                   <Input placeholder="Job description..." className="mt-1" value={newJob.description} onChange={(e) => setNewJob((p) => ({ ...p, description: e.target.value }))} />
                 </div>
                 <div>
-                  <Label>Amount</Label>
-                  <Input type="number" placeholder="0.00" className="mt-1" value={newJob.amount} onChange={(e) => setNewJob((p) => ({ ...p, amount: e.target.value }))} />
-                  <p className="text-xs text-[#64748B] mt-1">Used for the invoice generated when this job is marked complete.</p>
+                  <Label>Line Items</Label>
+                  <div className="mt-1">
+                    <LineItemsEditor items={newJobLineItems} onChange={setNewJobLineItems} inventoryItems={inventoryItems} />
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Item SKU</Label>
-                    <Input placeholder="e.g. HAY-SP15" className="mt-1" value={newJob.itemSku} onChange={(e) => setNewJob((p) => ({ ...p, itemSku: e.target.value }))} />
-                  </div>
-                  <div>
-                    <Label>Labor SKU</Label>
-                    <Input placeholder="e.g. SVC-LABOR" className="mt-1" value={newJob.laborSku} onChange={(e) => setNewJob((p) => ({ ...p, laborSku: e.target.value }))} />
-                  </div>
+                <div>
+                  <Label>Amount {newJobLineItems.length > 0 && <span className="text-xs text-[#64748B]">(from line items)</span>}</Label>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    className="mt-1"
+                    value={newJobLineItems.length > 0 ? newJobLineItems.reduce((s, li) => s + li.quantity * li.rate, 0).toFixed(2) : newJob.amount}
+                    onChange={(e) => setNewJob((p) => ({ ...p, amount: e.target.value }))}
+                    disabled={newJobLineItems.length > 0}
+                  />
+                  <p className="text-xs text-[#64748B] mt-1">Used for the invoice generated when this job is marked complete.</p>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateJob}>
                   Create Job
