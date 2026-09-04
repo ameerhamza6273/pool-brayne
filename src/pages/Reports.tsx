@@ -206,7 +206,7 @@ export default function Reports() {
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> Add Reminder Type</Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Add Reminder Type</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>

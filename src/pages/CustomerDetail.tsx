@@ -495,7 +495,7 @@ export default function CustomerDetail() {
           </Card>
 
           <Dialog open={reminderTypeOpen} onOpenChange={setReminderTypeOpen}>
-            <DialogContent>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Add Reminder Type</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div><Label>Label</Label><Input className="mt-1" placeholder="e.g. Filter Cleaning" value={reminderTypeDraft.label} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, label: e.target.value }))} /></div>
@@ -824,7 +824,7 @@ export default function CustomerDetail() {
 
       {/* Add Other Contact (client bug report 2026-09-02) */}
       <Dialog open={addContactOpen} onOpenChange={setAddContactOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Add Other Contact</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">

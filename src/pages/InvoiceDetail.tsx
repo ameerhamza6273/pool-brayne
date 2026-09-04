@@ -116,7 +116,7 @@ export default function InvoiceDetail() {
                 <CreditCard className="w-4 h-4" /> Collect Payment
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Collect Payment</DialogTitle></DialogHeader>
               <Tabs defaultValue="card">
                 <TabsList className="w-full">

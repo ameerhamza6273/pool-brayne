@@ -640,7 +640,7 @@ export default function Invoicing() {
                 <Plus className="w-4 h-4" /> New Vendor Bill
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg">
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Create New Vendor Bill</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>

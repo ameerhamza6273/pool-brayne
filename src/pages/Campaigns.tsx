@@ -170,7 +170,7 @@ export default function Campaigns() {
                   <Plus className="w-4 h-4" /> New Campaign
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>New Campaign</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div><Label>Name</Label><Input className="mt-1" placeholder="Campaign name" value={newCampaign.name} onChange={(e) => setNewCampaign((p) => ({ ...p, name: e.target.value }))} /></div>

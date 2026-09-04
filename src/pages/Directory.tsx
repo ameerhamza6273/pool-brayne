@@ -49,7 +49,7 @@ export default function Directory() {
           <DialogTrigger asChild>
             <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> Add Contact</Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Add Directory Contact</DialogTitle></DialogHeader>
             <div className="space-y-4 pt-2">
               <div><Label>Name</Label><Input className="mt-1" value={newContact.name} onChange={(e) => setNewContact((p) => ({ ...p, name: e.target.value }))} /></div>

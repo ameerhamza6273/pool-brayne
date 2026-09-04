@@ -264,7 +264,7 @@ export default function PointOfSale() {
                 <span className="hidden sm:inline">Custom Item</span>
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-sm">
+            <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Add Non-Stock Item</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div><Label>Description</Label><Input className="mt-1" placeholder="e.g. Special order material" value={customItem.description} onChange={(e) => setCustomItem((p) => ({ ...p, description: e.target.value }))} /></div>
@@ -610,7 +610,7 @@ export default function PointOfSale() {
 
       {/* Customer Dialog */}
       <Dialog open={customerOpen} onOpenChange={setCustomerOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Attach Customer</DialogTitle>
           </DialogHeader>
@@ -647,7 +647,7 @@ export default function PointOfSale() {
 
       {/* Discount Dialog */}
       <Dialog open={discountOpen} onOpenChange={setDiscountOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Apply Discount</DialogTitle>
           </DialogHeader>
@@ -686,7 +686,7 @@ export default function PointOfSale() {
 
       {/* Payment Dialog */}
       <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Take Payment</DialogTitle>
           </DialogHeader>
@@ -778,7 +778,7 @@ export default function PointOfSale() {
 
       {/* Receipt Dialog */}
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
           <div className="text-center py-4">
             <div className="w-16 h-16 rounded-full bg-[#16A34A]/10 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-9 h-9 text-[#16A34A]" />

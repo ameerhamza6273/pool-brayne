@@ -241,7 +241,7 @@ export default function Settings() {
                   <Plus className="w-4 h-4" /> Invite User
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Invite Team Member</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>

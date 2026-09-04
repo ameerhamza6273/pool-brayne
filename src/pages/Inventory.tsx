@@ -628,7 +628,7 @@ export default function Inventory() {
                   <Plus className="w-4 h-4" /> Add Supplier
                 </Button>
               </DialogTrigger>
-              <DialogContent><DialogHeader><DialogTitle>{editSupplier ? "Edit Supplier" : "Add Supplier"}</DialogTitle></DialogHeader>
+              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{editSupplier ? "Edit Supplier" : "Add Supplier"}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div><Label>Name</Label><Input className="mt-1" value={newSupplier.name} onChange={(e) => setNewSupplier((p) => ({ ...p, name: e.target.value }))} /></div>
                   <div><Label>Contact</Label><Input className="mt-1" value={newSupplier.contact} onChange={(e) => setNewSupplier((p) => ({ ...p, contact: e.target.value }))} /></div>
@@ -673,7 +673,7 @@ export default function Inventory() {
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> New PO</Button>
               </DialogTrigger>
-              <DialogContent><DialogHeader><DialogTitle>New Purchase Order</DialogTitle></DialogHeader>
+              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>New Purchase Order</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div><Label>PO Number</Label><Input className="mt-1" placeholder="PO-2026-001" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} /></div>
                   <div><Label>Supplier</Label>
@@ -690,7 +690,7 @@ export default function Inventory() {
           </div>
 
           <Dialog open={!!poDetail} onOpenChange={(open) => !open && setPoDetail(null)}>
-            <DialogContent><DialogHeader><DialogTitle>Purchase Order {poDetail?.number}</DialogTitle></DialogHeader>
+            <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Purchase Order {poDetail?.number}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div><Label>PO Number</Label><Input className="mt-1" value={poDetailDraft.number} onChange={(e) => setPoDetailDraft((p) => ({ ...p, number: e.target.value }))} /></div>
                 <div><Label>Supplier</Label>
@@ -791,7 +791,7 @@ export default function Inventory() {
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> Write Off SKU</Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Write Off SKU</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
@@ -868,7 +868,7 @@ export default function Inventory() {
 
       {/* QBO account mapping (client request 2026-08-27): COGS/Income/Asset accounts per item */}
       <Dialog open={!!qboDialogItem} onOpenChange={(open) => !open && setQboDialogItem(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle>QuickBooks Accounts — {qboDialogItem?.name}</DialogTitle></DialogHeader>
           {qboError && <p className="text-sm text-red-600">{qboError}</p>}
           {!qboError && !qboAccountList && <p className="text-sm text-[#64748B]">Loading QuickBooks chart of accounts...</p>}
