@@ -2166,8 +2166,81 @@ par clean rahe.
    Gusto client accounts, Railway/Vercel client-account move, global search bar, notifications
    panel, dispatch-nearest-tech, QBO two-way sync, QBO production redirect URI, JobDetail ke 10
    content-category tabs).
-5. **Is poore session ke changes (7 naye migrations + saari code changes) abhi commit nahi hue**
-   — commit se pehle user se confirm lena (established rule).
+5. ~~Is poore session ke changes (7 naye migrations + saari code changes) abhi commit nahi hue~~
+   — **commit `01f82b0` ho gaya, user ne khud go-ahead diya, push bhi ho gaya same session mein
+   (continue neeche dekho).**
 - **Dev servers is session ke end tak:** frontend `localhost:5175`, backend `localhost:4000` —
   dono is session se pehle se hi background mein chal rahe thay (dobara start nahi karne pade).
+  ---
+
+### 2026-09-04 (continued) — 3rd file (`labor skus.xlsx`), real notifications, full product-edit
+dialog, aur poori app mein pagination audit
+
+User ne kaha Downloads mein ek aur file hai — `labor skus.xlsx`, client ka apna **67 labor/service
+SKUs ka catalog** (SKU `service-1`..`service-67`, Short/Long Description, Cost, Price, UOM —
+"Weekly Service", "Sand Change", "Salt System Installation" jaise services). AskUserQuestion se
+go-ahead liya, import kiya (`backend/_tmp-import-labor-skus.cjs`, run karke turant delete):
+naya `category: "Labor"` (POS grid mein nahi dikhte — `pos_enabled: false` — sirf Estimate/Job/
+Invoice/Write-off ke line-item pickers mein select hote hain), `department: "Labor"`. Total
+inventory ab **2,644 items**. "Labor" ko Catalog page ke category-filter dropdown mein bhi add
+kiya.
+
+**User ne phir commit se pehle poocha:** "notification icon jo header mein hai wo dynamic nahi
+hai, final ki taraf ja rahe hain, koi glitch nahi hona chahiye" — is se 2 bade follow-up kaam hue:
+
+1. **Notifications bell — real bana diya.** `NotificationsPanel.tsx` pehle bilkul fake tha
+   (hardcoded `initialNotifications` array, ek link purane mock ID format `/jobs/j3` par point
+   karta tha jo real UUIDs ke against 404 deta — yeh gap 2026-07-28 se hi flagged tha, is session
+   mein finally fix hua). Naya backend `GET /api/notifications`
+   (`backend/src/routes/notifications.ts`) — koi naya table nahi banaya (koi push/SMS/email
+   channel hi nahi hai jo notifications *create* kare), balke real recent-activity ko live compute
+   karta hai: completed jobs (last 7 din), real payments (last 7 din — pehle bina date-filter ke
+   test karte waqt 2024 ke purane payments bhi aa rahe thay, fix kiya), low-stock items (negative
+   stock ko `Math.max(0, ...)` se clamp kiya display ke liye), customer SMS replies, fleet geofence
+   alerts — sab real UUIDs/links ke sath. "Read" status **client-side localStorage** mein track
+   hoti hai (`poolbrayne_read_notification_ids` key) — bilkul Dashboard ke Restock-List
+   checkmarks jaisa established pattern (koi schema nahi, per-browser convenience). Real backend
+   se curl test kiya (5 real notifications aayin: 4 low-stock + 1 completed job).
+
+2. **Inventory Catalog "Edit" — poora product editable.** Pehle pencil-icon sirf 2-field
+   (Cost/Price) dialog kholta tha. Naya `PATCH /api/inventory/items/:id`
+   (`backend/src/routes/inventory.ts`) — Name/SKU/Category/Unit/Cost/Price/Short+Long
+   Description/Department/Sub-department/Manufacturer/Barcode/Default Distributor/Taxable sab
+   ek "Add Product"-jaisi dialog mein editable. Curl se real test kiya (manufacturer/barcode/
+   distributor/taxable update karke verify kiya, phir revert kiya).
+
+3. **User ne phir kaha "sab pages dekh lo, kahin aur pagination/same issue na ho"** — poori app
+   audit ki (DB row-counts se + code grep se). **6 aur jagah wahi "poori list DOM mein mount ho
+   rahi hai" issue mila** (Inventory Catalog jaisa hi, ab jab customers 3,657 aur inventory
+   2,644 ho chuke hain):
+   - **Customers page** (Table aur Grid dono views) — dono `filtered.map` full array render kar
+     rahe thay. Pagination add ki (50/page), "Showing X–Y of Z" + Previous/Next.
+   - **POS product grid** — 2,559 `pos_enabled` items ek sath (scrollable div ke andar sahi, lekin
+     phir bhi sab DOM mein). Pagination add ki (60/page).
+   - **POS "Attach Customer" dialog** — dialog khulte hi (search khali hote hue bhi) saare 3,657
+     customer names buttons ke tor par render hote thay. Fix: search khali ho to sirf "Walk-in"
+     dikhta hai, typing shuru karne par max 25 results.
+   - **Reports > Inventory Valuation tab** — backend query (`backend/src/routes/reports.ts`)
+     har inventory item ka ek row deta hai (2,644), koi limit nahi thi. Pagination add ki
+     (50/page) — total value ka calculation poore array se hi hota hai (sirf rows ka render
+     paginate hua, total nahi).
+   - **`SearchableSelect.tsx`** (naya combobox jo isi session mein pehle banaya tha) — **khud bhi
+     is issue se affected tha**: cmdk library filter text ke bawajood saare `options` DOM mein
+     mount kar deti hai (sirf CSS se hide karti hai, unmount nahi karti). Poora rewrite kiya —
+     apna khud ka JS-level filtering + `shouldFilter={false}` (cmdk ka internal filter disable
+     kiya), aur results ko max **50** tak cap kiya ("+N more — keep typing to narrow down"
+     message). Yeh fix Estimate/Invoice/Job/Task/Reminder/Write-off — jahan bhi
+     SearchableSelect use hota hai wahan automatically apply ho gaya.
+   - **`Field.tsx` Parts Used list** (mobile tech view) — pehle search-filter tha lekin search
+     khali hone par sab ~2,577 non-service items dikhate thay. Fix: search khali ho to sirf
+     already-selected parts (agar koi hon) dikhte hain, warna "Search above to find a part."
+     message — search shuru karne par max 50 results.
+   - **Baaqi saari tables check kar li** (jobs=14, invoices=22, estimates=1, vendor_bills=0,
+     tasks=0, vehicles=4, timesheets=7, directory_contacts=49, purchase_orders=4, etc.) — sab
+     chhoti hain, koi pagination ki zaroorat nahi.
+- Frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) dono clean, real curl/DB tests
+  se verify kiya (checkout/notifications/item-edit endpoints).
+- **Commit `224dec6` ho gaya, push bhi ho chuka** (user ne go-ahead diya).
+- **Baaqi/pending:** pehle se pending sab kuch waisa hi hai. Koi naya open item nahi is
+  continuation se — customer-list/resale/Authorize.net-production/etc. sab pehle jaisa.
   ---
