@@ -73,16 +73,17 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       department: string | null;
       subDepartment: string | null;
       manufacturer: string | null;
+      reorderThreshold: number;
     };
   }>("/items", async (req) => {
-    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer } = req.body;
+    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         insert into inventory_items
-          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer)
+          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold)
         values
-          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer})
+          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0})
         returning *
       `;
       return row;
@@ -120,23 +121,48 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       defaultDistributor: string | null;
       unit: string | null;
       taxable: boolean;
+      reorderThreshold: number;
+      storeQuantity: number | null;
     };
   }>("/items/:id", async (req) => {
     const { id } = req.params;
     const {
       name, sku, category, unitCost, price, shortDescription, longDescription,
-      department, subDepartment, manufacturer, barcode, defaultDistributor, unit, taxable,
+      department, subDepartment, manufacturer, barcode, defaultDistributor, unit, taxable, reorderThreshold,
+      storeQuantity,
     } = req.body;
     return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         update inventory_items set
           name = ${name}, sku = ${sku}, category = ${category}, unit_cost = ${unitCost}, price = ${price},
           short_description = ${shortDescription}, long_description = ${longDescription},
           department = ${department}, sub_department = ${subDepartment}, manufacturer = ${manufacturer},
-          barcode = ${barcode}, default_distributor = ${defaultDistributor}, unit = ${unit}, taxable = ${taxable}
+          barcode = ${barcode}, default_distributor = ${defaultDistributor}, unit = ${unit}, taxable = ${taxable},
+          reorder_threshold = ${reorderThreshold ?? 0}
         where id = ${id}
         returning *
       `;
+
+      // Client request 2026-09-04: "if stock runs out, be able to mark it Out; if it's back, mark
+      // it In Stock" from the same edit screen — status is computed live from real quantity
+      // everywhere else in the app (Catalog, Dashboard, POS, notifications), so the honest way to
+      // do this is to let the edit set the actual on-hand Store quantity, not a separate flag
+      // that could disagree with it.
+      if (storeQuantity !== null && storeQuantity !== undefined) {
+        const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
+        if (store) {
+          const [stockRow] = await tx`
+            select id from inventory_stock where item_id = ${id} and location_id = ${store.id} limit 1
+          ` as unknown as { id: string }[];
+          if (stockRow) {
+            await tx`update inventory_stock set quantity = ${storeQuantity} where id = ${stockRow.id}`;
+          } else {
+            await tx`insert into inventory_stock (tenant_id, item_id, location_id, quantity) values (${tenant.id}, ${id}, ${store.id}, ${storeQuantity})`;
+          }
+        }
+      }
+
       return row;
     });
   });

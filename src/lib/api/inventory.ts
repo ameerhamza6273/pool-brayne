@@ -48,6 +48,7 @@ export const inventoryApi = {
     department: string | null;
     subDepartment: string | null;
     manufacturer: string | null;
+    reorderThreshold: number;
   }) => api.post<InventoryItem>("/api/inventory/items", data),
 
   updatePricing: (itemId: string, unitCost: number, price: number | null) =>
@@ -70,6 +71,8 @@ export const inventoryApi = {
       defaultDistributor: string | null;
       unit: string | null;
       taxable: boolean;
+      reorderThreshold: number;
+      storeQuantity: number | null;
     },
   ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
 

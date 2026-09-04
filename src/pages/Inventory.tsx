@@ -132,7 +132,7 @@ export default function Inventory() {
   const [editProductDraft, setEditProductDraft] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
-    barcode: "", defaultDistributor: "", unit: "", taxable: true,
+    barcode: "", defaultDistributor: "", unit: "", taxable: true, reorderThreshold: "", storeQuantity: "",
   });
   // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
   // inventory (2,600+ items) was imported.
@@ -156,7 +156,7 @@ export default function Inventory() {
   const [qboSelection, setQboSelection] = useState<QboAccounts>({});
   const [newProduct, setNewProduct] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
-    shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
+    shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "",
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
   const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001` });
@@ -198,8 +198,9 @@ export default function Inventory() {
       department: newProduct.department || null,
       subDepartment: newProduct.subDepartment || null,
       manufacturer: newProduct.manufacturer || null,
+      reorderThreshold: parseInt(newProduct.reorderThreshold, 10) || 0,
     });
-    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "" });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "" });
     setAddOpen(false);
     loadInventory();
   };
@@ -223,6 +224,8 @@ export default function Inventory() {
       defaultDistributor: item.default_distributor ?? "",
       unit: item.unit ?? "",
       taxable: item.taxable,
+      reorderThreshold: String(item.reorder_threshold),
+      storeQuantity: String(item.storeQty),
     });
   };
 
@@ -243,6 +246,8 @@ export default function Inventory() {
       defaultDistributor: editProductDraft.defaultDistributor || null,
       unit: editProductDraft.unit || null,
       taxable: editProductDraft.taxable,
+      reorderThreshold: parseInt(editProductDraft.reorderThreshold, 10) || 0,
+      storeQuantity: editProductDraft.storeQuantity === "" ? null : parseInt(editProductDraft.storeQuantity, 10) || 0,
     });
     setEditProductItem(null);
     loadInventory();
@@ -436,6 +441,11 @@ export default function Inventory() {
                   <div><Label>Sub-department</Label><Input className="mt-1" placeholder="e.g. Sanitizers" value={newProduct.subDepartment} onChange={(e) => setNewProduct((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
                 </div>
                 <div><Label>Manufacturer</Label><Input className="mt-1" placeholder="e.g. Pentair" value={newProduct.manufacturer} onChange={(e) => setNewProduct((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
+                <div>
+                  <Label>Reorder Threshold</Label>
+                  <Input className="mt-1" type="number" placeholder="0" value={newProduct.reorderThreshold} onChange={(e) => setNewProduct((p) => ({ ...p, reorderThreshold: e.target.value }))} />
+                  <p className="text-xs text-[#64748B] mt-1">Shows as "Low Stock" once total quantity drops to this number or below.</p>
+                </div>
                 <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>Save Product</Button>
               </div>
             </DialogContent>
@@ -895,6 +905,48 @@ export default function Inventory() {
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit Product — {editProductItem?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
+            {/* Client request 2026-09-04: "if stock runs out, be able to mark it Out; if it's
+                back, mark it In Stock" — status is computed live from real quantity everywhere
+                else in the app, so this edits the actual Store quantity + reorder threshold that
+                drive it, with quick buttons for the common cases. */}
+            {editProductItem && (() => {
+              const storeQty = parseInt(editProductDraft.storeQuantity, 10) || 0;
+              const threshold = parseInt(editProductDraft.reorderThreshold, 10) || 0;
+              const total = storeQty + editProductItem.vehicleQty;
+              const previewStatus = total === 0 ? "Out" : total <= threshold ? "Low" : "In Stock";
+              return (
+                <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-3 bg-[#F8FAFC]">
+                  <div className="flex items-center justify-between">
+                    <Label>Store Stock Quantity</Label>
+                    <Badge className={`${statusColors[previewStatus]} text-[10px] px-1.5 py-0`}>{previewStatus}</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <Input
+                      type="number"
+                      value={editProductDraft.storeQuantity}
+                      onChange={(e) => setEditProductDraft((p) => ({ ...p, storeQuantity: e.target.value }))}
+                    />
+                    <div className="flex gap-2">
+                      <Button type="button" size="sm" variant="outline" className="flex-1 border-[#E2E8F0]" onClick={() => setEditProductDraft((p) => ({ ...p, storeQuantity: "0" }))}>
+                        Mark Out
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 border-[#E2E8F0]"
+                        onClick={() => setEditProductDraft((p) => ({ ...p, storeQuantity: String(Math.max(threshold + 1, 1)) }))}
+                      >
+                        Mark In Stock
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-[#64748B]">
+                    Vehicle stock ({editProductItem.vehicleQty}) is managed separately and isn't editable here.
+                  </p>
+                </div>
+              );
+            })()}
             <div><Label>Name</Label><Input className="mt-1" value={editProductDraft.name} onChange={(e) => setEditProductDraft((p) => ({ ...p, name: e.target.value }))} /></div>
             <div><Label>SKU</Label><Input className="mt-1" value={editProductDraft.sku} onChange={(e) => setEditProductDraft((p) => ({ ...p, sku: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
@@ -920,6 +972,11 @@ export default function Inventory() {
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Barcode</Label><Input className="mt-1" value={editProductDraft.barcode} onChange={(e) => setEditProductDraft((p) => ({ ...p, barcode: e.target.value }))} /></div>
               <div><Label>Default Distributor</Label><Input className="mt-1" value={editProductDraft.defaultDistributor} onChange={(e) => setEditProductDraft((p) => ({ ...p, defaultDistributor: e.target.value }))} /></div>
+            </div>
+            <div>
+              <Label>Reorder Threshold</Label>
+              <Input className="mt-1" type="number" value={editProductDraft.reorderThreshold} onChange={(e) => setEditProductDraft((p) => ({ ...p, reorderThreshold: e.target.value }))} />
+              <p className="text-xs text-[#64748B] mt-1">Shows as "Low Stock" once total quantity drops to this number or below.</p>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2.5">
               <Label className="cursor-pointer" htmlFor="edit-taxable">Taxable</Label>
