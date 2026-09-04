@@ -87,6 +87,16 @@ export default function Customers() {
     return matchesSearch && matchesTag;
   });
 
+  // Client request 2026-09-04: the Table/Grid views rendered all 3,600+ customers with no
+  // pagination at all (same issue flagged and fixed in Inventory's Catalog table).
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    setPage(1);
+  }, [search, tagFilter, viewMode]);
+
   // Client request 2026-08-28: periodic service reminders (repeat jobs 2-3x/year) — no real
   // notification channel is wired up, so "auto-remind" surfaces here as a due/overdue list with
   // a badge count, rather than an actual push/SMS/email.
@@ -263,7 +273,7 @@ export default function Customers() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => (
+                {paginated.map((c) => (
                   <tr
                     key={c.id}
                     className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer transition-colors"
@@ -322,8 +332,19 @@ export default function Customers() {
               </tbody>
             </table>
           </div>
-          <div className="px-4 py-3 border-t border-[#E2E8F0] text-sm text-[#64748B]">
-            Showing {filtered.length} of {customers.length} customers
+          <div className="flex items-center justify-between px-4 py-3 border-t border-[#E2E8F0] text-sm">
+            <p className="text-[#64748B]">
+              Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </Button>
+              <span className="text-[#64748B] text-xs">Page {page} of {totalPages}</span>
+              <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -331,7 +352,7 @@ export default function Customers() {
       {/* Grid View */}
       {!isLoading && viewMode === "grid" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((c) => (
+          {paginated.map((c) => (
             <div
               key={c.id}
               className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm hover:shadow-md transition-shadow cursor-pointer"
@@ -376,6 +397,23 @@ export default function Customers() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {!isLoading && viewMode === "grid" && filtered.length > 0 && (
+        <div className="flex items-center justify-between px-1 text-sm">
+          <p className="text-[#64748B]">
+            Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+              Previous
+            </Button>
+            <span className="text-[#64748B] text-xs">Page {page} of {totalPages}</span>
+            <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </Button>
+          </div>
         </div>
       )}
 

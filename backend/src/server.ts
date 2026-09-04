@@ -18,6 +18,7 @@ import quickbooksRoutes from "./routes/quickbooks.js";
 import tasksRoutes from "./routes/tasks.js";
 import directoryRoutes from "./routes/directory.js";
 import reportsRoutes from "./routes/reports.js";
+import notificationsRoutes from "./routes/notifications.js";
 
 const app = Fastify({ logger: true });
 
@@ -49,6 +50,7 @@ await app.register(quickbooksRoutes, { prefix: "/api/quickbooks" });
 await app.register(tasksRoutes, { prefix: "/api/tasks" });
 await app.register(directoryRoutes, { prefix: "/api/directory" });
 await app.register(reportsRoutes, { prefix: "/api/reports" });
+await app.register(notificationsRoutes, { prefix: "/api/notifications" });
 
 const port = Number(process.env.PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

@@ -51,6 +51,10 @@ export default function PointOfSale() {
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
+  // Client request 2026-09-04: the product grid rendered every catalog item at once (2,500+
+  // after the real inventory import) -- same pagination fix applied to Inventory/Customers.
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 60;
   const [cart, setCart] = useState<CartItem[]>([]);
   const [customerName, setCustomerName] = useState("Walk-in");
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -121,8 +125,18 @@ export default function PointOfSale() {
     const matchesCat = category === "All" || p.category === category;
     return matchesSearch && matchesCat;
   });
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginatedProducts = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    setPage(1);
+  }, [search, category]);
 
-  const filteredCustomers = ["Walk-in", ...customers.map((c) => c.name)].filter((n) => n.toLowerCase().includes(customerSearch.toLowerCase()));
+  // Client request 2026-09-04: the Attach Customer dialog rendered all 3,600+ customer names as
+  // buttons the moment it opened (before any search text was typed) -- capped to a manageable
+  // result count, same issue class as the Catalog/Customers/Valuation pagination fixes above.
+  const filteredCustomers = customerSearch.trim()
+    ? ["Walk-in", ...customers.map((c) => c.name)].filter((n) => n.toLowerCase().includes(customerSearch.toLowerCase())).slice(0, 25)
+    : ["Walk-in"];
 
   const subtotal = useMemo(() => cart.reduce((s, i) => s + i.price * i.qty, 0), [cart]);
   const discountAmount = useMemo(() => {
@@ -327,7 +341,7 @@ export default function PointOfSale() {
 
           <div className="p-4 max-h-[560px] overflow-y-auto">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {filtered.map((p) => {
+              {paginatedProducts.map((p) => {
                 const isService = p.category === "Services";
                 // Client request 2026-09-02: out-of-stock items are still sellable (inventory is
                 // allowed to go negative) rather than blocked.
@@ -366,6 +380,22 @@ export default function PointOfSale() {
               </div>
             )}
           </div>
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E2E8F0] text-sm">
+              <p className="text-[#64748B] text-xs">
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-7 text-xs border-[#E2E8F0]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                  Previous
+                </Button>
+                <span className="text-[#64748B] text-xs">Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" className="h-7 text-xs border-[#E2E8F0]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Cart Panel */}

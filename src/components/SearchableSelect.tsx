@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -7,8 +7,15 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 
 export type SearchableSelectOption = { value: string; label: string; sublabel?: string };
 
+const RESULT_CAP = 50;
+
 // Client request 2026-09-03: plain <Select> dropdowns became unusable once the real
 // customer (3,600+) and inventory (2,500+) lists were imported — needs type-to-filter search.
+// Client request 2026-09-04: cmdk mounts every item it's given regardless of the filter text, so
+// passing it the full 2,500-3,600-item array directly (as this component originally did) still
+// meant thousands of DOM nodes on every open — filtering is done here in JS instead, and only a
+// capped number of matches is ever rendered (same "unpaginated big list" issue as the Catalog/
+// Customers/Valuation tables, just inside a combobox instead of a plain table).
 export function SearchableSelect({
   options,
   value,
@@ -27,10 +34,20 @@ export function SearchableSelect({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const selected = options.find((o) => o.value === value);
 
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const matches = q
+      ? options.filter((o) => `${o.label} ${o.sublabel ?? ""}`.toLowerCase().includes(q))
+      : options;
+    return matches.slice(0, RESULT_CAP);
+  }, [options, query]);
+  const hiddenCount = (query.trim() ? options.filter((o) => `${o.label} ${o.sublabel ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).length : options.length) - visible.length;
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -44,18 +61,12 @@ export function SearchableSelect({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command
-          filter={(itemValue, search) => {
-            const opt = options.find((o) => o.value === itemValue);
-            const haystack = `${opt?.label ?? ""} ${opt?.sublabel ?? ""}`.toLowerCase();
-            return haystack.includes(search.toLowerCase()) ? 1 : 0;
-          }}
-        >
-          <CommandInput placeholder={searchPlaceholder} />
+        <Command shouldFilter={false}>
+          <CommandInput placeholder={searchPlaceholder} value={query} onValueChange={setQuery} />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {options.map((o) => (
+              {visible.map((o) => (
                 <CommandItem
                   key={o.value}
                   value={o.value}
@@ -71,6 +82,11 @@ export function SearchableSelect({
                   </div>
                 </CommandItem>
               ))}
+              {hiddenCount > 0 && (
+                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                  +{hiddenCount} more — keep typing to narrow down
+                </p>
+              )}
             </CommandGroup>
           </CommandList>
         </Command>

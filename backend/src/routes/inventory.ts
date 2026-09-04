@@ -99,6 +99,48 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     `);
   });
 
+  // Client request 2026-09-04: editing a product only ever let you change Cost/Price -- every
+  // other field (name, SKU, category, descriptions, department, manufacturer, barcode,
+  // distributor, unit, taxable) had no edit path once the item was created. Full-record edit,
+  // same field set as "Add Product" plus the extra fields real imported items actually carry.
+  app.patch<{
+    Params: { id: string };
+    Body: {
+      name: string;
+      sku: string;
+      category: string;
+      unitCost: number;
+      price: number | null;
+      shortDescription: string | null;
+      longDescription: string | null;
+      department: string | null;
+      subDepartment: string | null;
+      manufacturer: string | null;
+      barcode: string | null;
+      defaultDistributor: string | null;
+      unit: string | null;
+      taxable: boolean;
+    };
+  }>("/items/:id", async (req) => {
+    const { id } = req.params;
+    const {
+      name, sku, category, unitCost, price, shortDescription, longDescription,
+      department, subDepartment, manufacturer, barcode, defaultDistributor, unit, taxable,
+    } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        update inventory_items set
+          name = ${name}, sku = ${sku}, category = ${category}, unit_cost = ${unitCost}, price = ${price},
+          short_description = ${shortDescription}, long_description = ${longDescription},
+          department = ${department}, sub_department = ${subDepartment}, manufacturer = ${manufacturer},
+          barcode = ${barcode}, default_distributor = ${defaultDistributor}, unit = ${unit}, taxable = ${taxable}
+        where id = ${id}
+        returning *
+      `;
+      return row;
+    });
+  });
+
   app.get("/suppliers", async (req) => withTenantContext(req.userId, (tx) => tx`select * from suppliers order by name`));
 
   app.post<{ Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null } }>("/suppliers", async (req) => {

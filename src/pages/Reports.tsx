@@ -78,6 +78,11 @@ export default function Reports() {
 
   const today = new Date().toISOString().slice(0, 10);
   const totalValuation = valuation.reduce((s, v) => s + Number(v.value), 0);
+  // Client request 2026-09-04: this report rendered all 2,600+ inventory items unpaginated.
+  const [valuationPage, setValuationPage] = useState(1);
+  const VALUATION_PAGE_SIZE = 50;
+  const valuationTotalPages = Math.max(1, Math.ceil(valuation.length / VALUATION_PAGE_SIZE));
+  const paginatedValuation = valuation.slice((valuationPage - 1) * VALUATION_PAGE_SIZE, valuationPage * VALUATION_PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -277,7 +282,7 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {valuation.map((v, i) => (
+                  {paginatedValuation.map((v, i) => (
                     <tr key={i} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{v.name}</td>
                       <td className="py-3 px-4 text-[#64748B]">{v.sku}</td>
@@ -289,6 +294,22 @@ export default function Reports() {
                 </tbody>
               </table>
             </div>
+            {valuation.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E2E8F0] text-sm">
+                <p className="text-[#64748B] text-xs">
+                  {(valuationPage - 1) * VALUATION_PAGE_SIZE + 1}–{Math.min(valuationPage * VALUATION_PAGE_SIZE, valuation.length)} of {valuation.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" className="h-7 text-xs border-[#E2E8F0]" disabled={valuationPage <= 1} onClick={() => setValuationPage((p) => p - 1)}>
+                    Previous
+                  </Button>
+                  <span className="text-[#64748B] text-xs">Page {valuationPage} of {valuationTotalPages}</span>
+                  <Button variant="outline" size="sm" className="h-7 text-xs border-[#E2E8F0]" disabled={valuationPage >= valuationTotalPages} onClick={() => setValuationPage((p) => p + 1)}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="px-4 py-3 border-t border-[#E2E8F0] text-sm font-semibold text-[#0F172A] text-right">
               Total Inventory Value: ${totalValuation.toFixed(2)}
             </div>

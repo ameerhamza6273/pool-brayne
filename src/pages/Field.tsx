@@ -342,12 +342,18 @@ export default function Field() {
                 {inventoryItems
                   .filter((item) => item.category !== "Services")
                   .filter((item) => {
-                    if (!partsSearch.trim()) return true;
+                    // Client request 2026-09-04: with 2,500+ real parts, showing everything before
+                    // the user types anything was the same "unpaginated big list" issue seen
+                    // elsewhere — always keep already-selected parts visible, otherwise require a
+                    // search term (same cap approach as SearchableSelect).
+                    if ((partsUsed[item.id] ?? 0) > 0) return true;
+                    if (!partsSearch.trim()) return false;
                     const q = partsSearch.toLowerCase();
                     return [item.name, item.sku, item.short_description, item.long_description]
                       .filter(Boolean)
                       .some((f) => (f as string).toLowerCase().includes(q));
                   })
+                  .slice(0, 50)
                   .map((item) => (
                   <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-[#F1F5F9] last:border-b-0">
                     <span className="text-sm text-[#0F172A] truncate">{item.name}</span>
@@ -368,6 +374,9 @@ export default function Field() {
                     </div>
                   </div>
                 ))}
+                {!partsSearch.trim() && Object.values(partsUsed).every((q) => !q) && (
+                  <p className="px-3 py-3 text-sm text-[#64748B]">Search above to find a part.</p>
+                )}
               </div>
             </div>
 

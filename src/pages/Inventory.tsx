@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { inventoryApi } from "@/lib/api/inventory";
 import type { Database } from "@/lib/database.types";
@@ -18,7 +19,7 @@ type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null };
 type InventoryVariance = Database["public"]["Tables"]["inventory_variance"]["Row"] & { inventory_items: { name: string } | null };
 
-const categories = ["All", "Chemicals", "Parts", "Equipment", "Accessories"];
+const categories = ["All", "Chemicals", "Parts", "Equipment", "Accessories", "Labor"];
 
 const statusColors: Record<string, string> = {
   "In Stock": "bg-[#16A34A]/10 text-[#16A34A]",
@@ -125,8 +126,18 @@ export default function Inventory() {
   const [addOpen, setAddOpen] = useState(false);
   const [poOpen, setPoOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [pricingItem, setPricingItem] = useState<ItemWithStock | null>(null);
-  const [pricingDraft, setPricingDraft] = useState({ unitCost: "", price: "" });
+  // Client request 2026-09-04: editing a product previously only opened a 2-field Cost/Price
+  // dialog -- now opens a full "Add Product"-shaped editor with every field.
+  const [editProductItem, setEditProductItem] = useState<ItemWithStock | null>(null);
+  const [editProductDraft, setEditProductDraft] = useState({
+    name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
+    shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
+    barcode: "", defaultDistributor: "", unit: "", taxable: true,
+  });
+  // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
+  // inventory (2,600+ items) was imported.
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 50;
   const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "purchase" ? "purchase" : "catalog"));
 
   useEffect(() => {
@@ -193,22 +204,47 @@ export default function Inventory() {
     loadInventory();
   };
 
-  // Client request 2026-08-28: Price (customer-facing) needs to be editable separately from
-  // Cost (internal only) — previously only unit_cost could ever be set, so Estimate/Invoice
-  // line items picked from inventory always defaulted price == cost.
-  const openPricingDialog = (item: ItemWithStock) => {
-    setPricingItem(item);
-    setPricingDraft({ unitCost: String(item.unit_cost), price: item.price !== null ? String(item.price) : "" });
+  // Client request 2026-09-04: full product edit (every field, same shape as Add Product) —
+  // replaces the old Cost/Price-only dialog.
+  const openEditProduct = (item: ItemWithStock) => {
+    setEditProductItem(item);
+    setEditProductDraft({
+      name: item.name,
+      sku: item.sku,
+      category: item.category,
+      unitCost: String(item.unit_cost),
+      price: item.price !== null ? String(item.price) : "",
+      shortDescription: item.short_description ?? "",
+      longDescription: item.long_description ?? "",
+      department: item.department ?? "",
+      subDepartment: item.sub_department ?? "",
+      manufacturer: item.manufacturer ?? "",
+      barcode: item.barcode ?? "",
+      defaultDistributor: item.default_distributor ?? "",
+      unit: item.unit ?? "",
+      taxable: item.taxable,
+    });
   };
 
-  const savePricing = async () => {
-    if (!pricingItem) return;
-    await inventoryApi.updatePricing(
-      pricingItem.id,
-      parseFloat(pricingDraft.unitCost) || 0,
-      pricingDraft.price ? parseFloat(pricingDraft.price) : null,
-    );
-    setPricingItem(null);
+  const saveEditProduct = async () => {
+    if (!editProductItem) return;
+    await inventoryApi.updateItem(editProductItem.id, {
+      name: editProductDraft.name,
+      sku: editProductDraft.sku,
+      category: editProductDraft.category,
+      unitCost: parseFloat(editProductDraft.unitCost) || 0,
+      price: editProductDraft.price ? parseFloat(editProductDraft.price) : null,
+      shortDescription: editProductDraft.shortDescription || null,
+      longDescription: editProductDraft.longDescription || null,
+      department: editProductDraft.department || null,
+      subDepartment: editProductDraft.subDepartment || null,
+      manufacturer: editProductDraft.manufacturer || null,
+      barcode: editProductDraft.barcode || null,
+      defaultDistributor: editProductDraft.defaultDistributor || null,
+      unit: editProductDraft.unit || null,
+      taxable: editProductDraft.taxable,
+    });
+    setEditProductItem(null);
     loadInventory();
   };
 
@@ -321,6 +357,13 @@ export default function Inventory() {
     const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, categoryFilter]);
 
   const toggleSelected = (id: string) => {
     setSelectedIds((prev) => {
@@ -494,7 +537,7 @@ export default function Inventory() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((p) => (
+                  {paginated.map((p) => (
                     <tr key={p.id} className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] ${p.status === "Out" ? "bg-[#DC2626]/5" : p.status === "Low" ? "bg-[#F59E0B]/5" : ""}`}>
                       <td className="py-3 px-4">
                         <input type="checkbox" checked={selectedIds.has(p.id)} onChange={() => toggleSelected(p.id)} />
@@ -535,7 +578,7 @@ export default function Inventory() {
                         </button>
                       </td>
                       <td className="text-center py-3 px-4">
-                        <button className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]" title="Edit Cost/Price" onClick={() => openPricingDialog(p)}>
+                        <button className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]" title="Edit Product" onClick={() => openEditProduct(p)}>
                           <Pencil className="w-4 h-4" />
                         </button>
                       </td>
@@ -544,6 +587,22 @@ export default function Inventory() {
                 </tbody>
               </table>
             </div>
+            {filtered.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-[#E2E8F0] text-sm">
+                <p className="text-[#64748B]">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                    Previous
+                  </Button>
+                  <span className="text-[#64748B] text-xs">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -830,20 +889,43 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Cost/Price edit (client request 2026-08-28) */}
-      <Dialog open={!!pricingItem} onOpenChange={(open) => !open && setPricingItem(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit Pricing — {pricingItem?.name}</DialogTitle></DialogHeader>
+      {/* Client request 2026-09-04: full product edit, same shape as Add Product plus every
+          other field a real item carries (barcode, distributor, unit, taxable). */}
+      <Dialog open={!!editProductItem} onOpenChange={(open) => !open && setEditProductItem(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>Edit Product — {editProductItem?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
-            <div>
-              <Label>Cost (internal — never shown to customer)</Label>
-              <Input type="number" className="mt-1" value={pricingDraft.unitCost} onChange={(e) => setPricingDraft((p) => ({ ...p, unitCost: e.target.value }))} />
+            <div><Label>Name</Label><Input className="mt-1" value={editProductDraft.name} onChange={(e) => setEditProductDraft((p) => ({ ...p, name: e.target.value }))} /></div>
+            <div><Label>SKU</Label><Input className="mt-1" value={editProductDraft.sku} onChange={(e) => setEditProductDraft((p) => ({ ...p, sku: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Category</Label>
+                <Select value={editProductDraft.category} onValueChange={(v) => setEditProductDraft((p) => ({ ...p, category: v }))}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>{categories.filter(c => c !== "All").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div><Label>Unit</Label><Input className="mt-1" placeholder="ea" value={editProductDraft.unit} onChange={(e) => setEditProductDraft((p) => ({ ...p, unit: e.target.value }))} /></div>
             </div>
-            <div>
-              <Label>Price (customer-facing)</Label>
-              <Input type="number" className="mt-1" placeholder="0.00" value={pricingDraft.price} onChange={(e) => setPricingDraft((p) => ({ ...p, price: e.target.value }))} />
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Cost (internal)</Label><Input className="mt-1" type="number" value={editProductDraft.unitCost} onChange={(e) => setEditProductDraft((p) => ({ ...p, unitCost: e.target.value }))} /></div>
+              <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" value={editProductDraft.price} onChange={(e) => setEditProductDraft((p) => ({ ...p, price: e.target.value }))} /></div>
             </div>
-            <Button className="w-full bg-[#0891B2] text-white" onClick={savePricing}>Save</Button>
+            <div><Label>Short Description</Label><Input className="mt-1" value={editProductDraft.shortDescription} onChange={(e) => setEditProductDraft((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
+            <div><Label>Long Description</Label><Input className="mt-1" value={editProductDraft.longDescription} onChange={(e) => setEditProductDraft((p) => ({ ...p, longDescription: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Department</Label><Input className="mt-1" value={editProductDraft.department} onChange={(e) => setEditProductDraft((p) => ({ ...p, department: e.target.value }))} /></div>
+              <div><Label>Sub-department</Label><Input className="mt-1" value={editProductDraft.subDepartment} onChange={(e) => setEditProductDraft((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
+            </div>
+            <div><Label>Manufacturer</Label><Input className="mt-1" value={editProductDraft.manufacturer} onChange={(e) => setEditProductDraft((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Barcode</Label><Input className="mt-1" value={editProductDraft.barcode} onChange={(e) => setEditProductDraft((p) => ({ ...p, barcode: e.target.value }))} /></div>
+              <div><Label>Default Distributor</Label><Input className="mt-1" value={editProductDraft.defaultDistributor} onChange={(e) => setEditProductDraft((p) => ({ ...p, defaultDistributor: e.target.value }))} /></div>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2.5">
+              <Label className="cursor-pointer" htmlFor="edit-taxable">Taxable</Label>
+              <Switch id="edit-taxable" checked={editProductDraft.taxable} onCheckedChange={(v) => setEditProductDraft((p) => ({ ...p, taxable: v }))} />
+            </div>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={saveEditProduct}>Save Changes</Button>
           </div>
         </DialogContent>
       </Dialog>

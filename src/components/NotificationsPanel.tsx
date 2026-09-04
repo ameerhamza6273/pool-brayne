@@ -1,26 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bell, CheckCircle2, Truck, DollarSign, Package, MessageSquare, Wrench, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
-
-interface Notification {
-  id: string;
-  type: "job" | "payment" | "inventory" | "message" | "fleet";
-  title: string;
-  description: string;
-  time: string;
-  read: boolean;
-  link?: string;
-}
-
-const initialNotifications: Notification[] = [
-  { id: "n1", type: "job", title: "Job completed", description: "Jose completed maintenance at James Thompson's pool", time: "2 min ago", read: false, link: "/jobs/j3" },
-  { id: "n2", type: "payment", title: "Payment received", description: "$156.96 from The Henderson Family via Stripe", time: "15 min ago", read: false, link: "/invoicing" },
-  { id: "n3", type: "inventory", title: "Low stock alert", description: "3\" Chlorine Tablets at 5 units (reorder: 10)", time: "1 hour ago", read: false, link: "/inventory" },
-  { id: "n4", type: "message", title: "New SMS reply", description: "Maria Rodriguez: \"Can you come Tuesday instead?\"", time: "2 hours ago", read: false, link: "/campaigns" },
-  { id: "n5", type: "fleet", title: "Vehicle alert", description: "Vehicle 3 (Truck 3) left geofence zone at 14:22", time: "3 hours ago", read: false, link: "/fleet" },
-  { id: "n6", type: "job", title: "New booking", description: "New maintenance job booked for tomorrow at 9:00 AM", time: "5 hours ago", read: true, link: "/jobs" },
-];
+import { notificationsApi, type Notification } from "@/lib/api/notifications";
 
 const iconMap: Record<string, React.ReactNode> = {
   job: <Wrench className="w-4 h-4 text-[#0891B2]" />,
@@ -30,27 +12,75 @@ const iconMap: Record<string, React.ReactNode> = {
   fleet: <Truck className="w-4 h-4 text-[#F59E0B]" />,
 };
 
+function timeAgo(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+// Client bug report 2026-09-04: this was entirely fake (hardcoded array, one link even pointed
+// at a stale mock id "/jobs/j3" that 404s against real data) -- now computed live on the backend
+// from real recent activity (completed jobs, payments, low stock, SMS replies, fleet alerts). No
+// push/SMS/email channel exists to *create* notifications, so there's nothing to persist beyond
+// the source tables -- "read" state is tracked client-side only (localStorage), same pattern as
+// the Dashboard restock-list checkmarks.
+const READ_STORAGE_KEY = "poolbrayne_read_notification_ids";
+
+function loadReadIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_STORAGE_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveReadIds(ids: Set<string>) {
+  try {
+    localStorage.setItem(READ_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // ignore (private browsing / storage disabled)
+  }
+}
+
 export default function NotificationsPanel() {
   const [open, setOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(() => loadReadIds());
   const navigate = useNavigate();
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  useEffect(() => {
+    notificationsApi.list().then(setNotifications).catch(() => setNotifications([]));
+  }, []);
+
+  const unreadCount = notifications.filter((n) => !readIds.has(n.id)).length;
 
   const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+    setReadIds((prev) => {
+      const next = new Set(prev).add(id);
+      saveReadIds(next);
+      return next;
+    });
   };
 
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setReadIds((prev) => {
+      const next = new Set(prev);
+      notifications.forEach((n) => next.add(n.id));
+      saveReadIds(next);
+      return next;
+    });
   };
 
   const handleClick = (n: Notification) => {
     markAsRead(n.id);
     setOpen(false);
-    if (n.link) navigate(n.link);
+    navigate(n.link);
   };
 
   return (
@@ -102,36 +132,39 @@ export default function NotificationsPanel() {
                   <p className="text-sm text-[#64748B]">No notifications</p>
                 </div>
               ) : (
-                notifications.map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => handleClick(n)}
-                    className={`w-full text-left p-3 border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] transition-colors flex items-start gap-3 ${
-                      !n.read ? "bg-[#0891B2]/5" : ""
-                    }`}
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0 mt-0.5">
-                      {iconMap[n.type] || <Bell className="w-4 h-4 text-[#64748B]" />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-medium text-[#0F172A]">{n.title}</p>
-                        {!n.read && <div className="w-2 h-2 rounded-full bg-[#0891B2] shrink-0" />}
+                notifications.map((n) => {
+                  const read = readIds.has(n.id);
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => handleClick(n)}
+                      className={`w-full text-left p-3 border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] transition-colors flex items-start gap-3 ${
+                        !read ? "bg-[#0891B2]/5" : ""
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0 mt-0.5">
+                        {iconMap[n.type] || <Bell className="w-4 h-4 text-[#64748B]" />}
                       </div>
-                      <p className="text-xs text-[#64748B] mt-0.5">{n.description}</p>
-                      <p className="text-xs text-[#64748B] mt-1">{n.time}</p>
-                    </div>
-                    {!n.read && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
-                        className="p-1 rounded hover:bg-[#E2E8F0] shrink-0 mt-0.5"
-                        title="Mark as read"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-[#0891B2]" />
-                      </button>
-                    )}
-                  </button>
-                ))
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-[#0F172A]">{n.title}</p>
+                          {!read && <div className="w-2 h-2 rounded-full bg-[#0891B2] shrink-0" />}
+                        </div>
+                        <p className="text-xs text-[#64748B] mt-0.5">{n.description}</p>
+                        <p className="text-xs text-[#64748B] mt-1">{timeAgo(n.time)}</p>
+                      </div>
+                      {!read && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
+                          className="p-1 rounded hover:bg-[#E2E8F0] shrink-0 mt-0.5"
+                          title="Mark as read"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-[#0891B2]" />
+                        </button>
+                      )}
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>

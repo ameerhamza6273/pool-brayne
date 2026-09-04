@@ -53,6 +53,26 @@ export const inventoryApi = {
   updatePricing: (itemId: string, unitCost: number, price: number | null) =>
     api.patch<InventoryItem>(`/api/inventory/items/${itemId}/pricing`, { unitCost, price }),
 
+  updateItem: (
+    itemId: string,
+    data: {
+      name: string;
+      sku: string;
+      category: string;
+      unitCost: number;
+      price: number | null;
+      shortDescription: string | null;
+      longDescription: string | null;
+      department: string | null;
+      subDepartment: string | null;
+      manufacturer: string | null;
+      barcode: string | null;
+      defaultDistributor: string | null;
+      unit: string | null;
+      taxable: boolean;
+    },
+  ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
+
   createPurchaseOrder: (data: { supplierId: string; number: string }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),
 
