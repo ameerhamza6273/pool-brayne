@@ -28,7 +28,7 @@ export const customersApi = {
   detail: (id: string) => api.get<CustomerDetailBundle>(`/api/customers/${id}`),
 
   create: (data: {
-    contacts: { name: string; email: string | null; phone: string | null }[];
+    contacts: { firstName: string; lastName: string; email: string | null; phone: string | null }[];
     type: string;
     tags: string[];
     address: string | null;
@@ -54,6 +54,8 @@ export const customersApi = {
     customerId: string,
     data: Partial<{
       name: string;
+      firstName: string;
+      lastName: string;
       type: string;
       phone: string | null;
       email: string | null;
@@ -63,7 +65,7 @@ export const customersApi = {
     }>,
   ) => api.patch<Customer>(`/api/customers/${customerId}`, data),
 
-  addHouseholdMember: (customerId: string, data: { name: string; email: string | null; phone: string | null }) =>
+  addHouseholdMember: (customerId: string, data: { firstName: string; lastName: string; email: string | null; phone: string | null }) =>
     api.post<Customer>(`/api/customers/${customerId}/household`, data),
 
   deleteAttachment: (customerId: string, attachmentId: string) =>

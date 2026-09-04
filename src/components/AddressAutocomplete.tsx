@@ -13,15 +13,22 @@ import { isSmartyConfigured, smartyAutocomplete } from "@/lib/smarty";
 export default function AddressAutocomplete({
   value,
   onChange,
+  onSelectParts,
   placeholder,
   className,
 }: {
   value: string;
   onChange: (value: string, coords?: { lat: number; lng: number }) => void;
+  // Client bug report 2026-09-03: reports need street/city/state/zip as separate fields —
+  // callers that show those fields can pass this to capture the structured parts of whichever
+  // suggestion the user picked (works with both Smarty and the Nominatim fallback).
+  onSelectParts?: (parts: { streetLine: string; city: string; state: string; zip: string }) => void;
   placeholder?: string;
   className?: string;
 }) {
-  const [suggestions, setSuggestions] = useState<{ label: string; lat?: number; lng?: number }[]>([]);
+  const [suggestions, setSuggestions] = useState<
+    { label: string; lat?: number; lng?: number; streetLine: string; city: string; state: string; zip: string }[]
+  >([]);
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -32,8 +39,13 @@ export default function AddressAutocomplete({
       return;
     }
     timerRef.current = setTimeout(async () => {
-      const results = isSmartyConfigured() ? await smartyAutocomplete(value) : await searchAddressSuggestions(value);
-      setSuggestions(results);
+      if (isSmartyConfigured()) {
+        const results = await smartyAutocomplete(value);
+        setSuggestions(results.map((s) => ({ label: s.label, streetLine: [s.streetLine, s.secondary].filter(Boolean).join(" "), city: s.city, state: s.state, zip: s.zipcode })));
+      } else {
+        const results = await searchAddressSuggestions(value);
+        setSuggestions(results);
+      }
     }, 500);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
@@ -60,6 +72,7 @@ export default function AddressAutocomplete({
               onMouseDown={(e) => {
                 e.preventDefault();
                 onChange(s.label, s.lat !== undefined && s.lng !== undefined ? { lat: s.lat, lng: s.lng } : undefined);
+                onSelectParts?.({ streetLine: s.streetLine, city: s.city, state: s.state, zip: s.zip });
                 setSuggestions([]);
                 setOpen(false);
               }}

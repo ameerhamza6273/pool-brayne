@@ -4,7 +4,10 @@ import { ArrowLeft, Download, FileText, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { invoicingApi } from "@/lib/api/invoicing";
+import { invoicingApi, type EstimateAttachment } from "@/lib/api/invoicing";
+import DocumentsSection from "@/components/DocumentsSection";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
 
 type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
@@ -23,9 +26,12 @@ export default function EstimateDetail() {
   const navigate = useNavigate();
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; invoice_business_name: string | null } | null>(null);
+  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [converting, setConverting] = useState(false);
+  const [documents, setDocuments] = useState<EstimateAttachment[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const { tenantId } = useAuth();
 
   const loadEstimate = useCallback(async () => {
     if (!id) return;
@@ -35,6 +41,7 @@ export default function EstimateDetail() {
       setEstimate(bundle.estimate as Estimate);
       setLineItems(bundle.lineItems);
       setBusiness(bundle.business);
+      invoicingApi.getEstimateAttachments(id).then(setDocuments);
     } catch {
       setEstimate(null);
     }
@@ -74,6 +81,32 @@ export default function EstimateDetail() {
     navigate(`/invoicing/${invoiceId}`);
   };
 
+  // Client question 2026-09-03: "How to convert an estimate to a Job".
+  const handleConvertToJob = async () => {
+    if (!id) return;
+    setConverting(true);
+    const { jobId } = await invoicingApi.convertEstimateToJob(id);
+    navigate(`/jobs/${jobId}`);
+  };
+
+  // Client request 2026-09-03: Documents section on an estimate — reuses the same
+  // job-attachments bucket (its RLS only checks the tenant_id path segment) under an
+  // `estimates/` sub-path instead of a job id.
+  const handleUploadDocument = async (file: File, label: string) => {
+    if (!id || !tenantId) return;
+    setDocsUploading(true);
+    try {
+      const path = `${tenantId}/estimates/${id}/document-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      await invoicingApi.addEstimateAttachment(id, { url: data.publicUrl, label, filename: file.name });
+      invoicingApi.getEstimateAttachments(id).then(setDocuments);
+    } finally {
+      setDocsUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -87,14 +120,23 @@ export default function EstimateDetail() {
           </div>
         </div>
         {estimate.status !== "Converted" ? (
-          <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9" onClick={handleConvert} disabled={converting}>
-            <ArrowRight className="w-4 h-4" /> {converting ? "Converting..." : "Convert to Invoice"}
-          </Button>
-        ) : (
+          <div className="flex gap-2">
+            <Button variant="outline" className="h-9 border-[#E2E8F0] gap-2" onClick={handleConvertToJob} disabled={converting}>
+              <ArrowRight className="w-4 h-4" /> {converting ? "Converting..." : "Convert to Job"}
+            </Button>
+            <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9" onClick={handleConvert} disabled={converting}>
+              <ArrowRight className="w-4 h-4" /> {converting ? "Converting..." : "Convert to Invoice"}
+            </Button>
+          </div>
+        ) : estimate.converted_invoice_id ? (
           <Button variant="outline" className="h-9 border-[#E2E8F0]" onClick={() => navigate(`/invoicing/${estimate.converted_invoice_id}`)}>
             View Invoice
           </Button>
-        )}
+        ) : estimate.converted_job_id ? (
+          <Button variant="outline" className="h-9 border-[#E2E8F0]" onClick={() => navigate(`/jobs/${estimate.converted_job_id}`)}>
+            View Job
+          </Button>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -114,6 +156,9 @@ export default function EstimateDetail() {
                 <h2 className="text-xl font-bold text-[#0F172A]">{business?.invoice_business_name || business?.name || "—"}</h2>
               </div>
               {business?.address && <p className="text-sm text-[#64748B]">{business.address}</p>}
+              {(business?.city || business?.state || business?.zip) && (
+                <p className="text-sm text-[#64748B]">{[business?.city, business?.state].filter(Boolean).join(", ")} {business?.zip ?? ""}</p>
+              )}
               {business?.phone && <p className="text-sm text-[#64748B]">{business.phone}</p>}
             </div>
             <div className="text-right">
@@ -221,6 +266,8 @@ export default function EstimateDetail() {
           </div>
         </CardContent>
       </Card>
+
+      <DocumentsSection documents={documents} onUpload={handleUploadDocument} uploading={docsUploading} />
     </div>
   );
 }

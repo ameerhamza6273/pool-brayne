@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { reportsApi, type ItemMovementRow, type DepositRow, type InvoiceDueRow, type CustomerReminder, type ValuationRow } from "@/lib/api/reports";
 import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
@@ -206,10 +206,15 @@ export default function Reports() {
                 <div className="space-y-4 pt-2">
                   <div>
                     <Label>Customer</Label>
-                    <Select value={newReminder.customerId} onValueChange={(v) => setNewReminder((p) => ({ ...p, customerId: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                      <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <div className="mt-1">
+                      <SearchableSelect
+                        value={newReminder.customerId}
+                        onChange={(v) => setNewReminder((p) => ({ ...p, customerId: v }))}
+                        placeholder="Select customer"
+                        searchPlaceholder="Search customers..."
+                        options={customers.map((c) => ({ value: c.id, label: c.name }))}
+                      />
+                    </div>
                   </div>
                   <div><Label>Label</Label><Input className="mt-1" placeholder="e.g. Filter Cleaning" value={newReminder.label} onChange={(e) => setNewReminder((p) => ({ ...p, label: e.target.value }))} /></div>
                   <div className="grid grid-cols-2 gap-4">

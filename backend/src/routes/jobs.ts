@@ -108,6 +108,75 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously
+  // only had a flat `amount`, no itemized breakdown like Estimates/Invoices already have.
+  app.get<{ Params: { id: string } }>("/:id/line-items", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`select * from job_line_items where job_id = ${id}`);
+  });
+
+  type LineItemInput = { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number };
+
+  // Replaces the full set of line items for a job and recomputes job.amount from their total —
+  // simplest correct model (matches how Estimate/Invoice line items are edited as a full set).
+  app.patch<{ Params: { id: string }; Body: { lineItems: LineItemInput[] } }>("/:id/line-items", async (req) => {
+    const { id } = req.params;
+    const { lineItems } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      await tx`delete from job_line_items where job_id = ${id}`;
+      let amount = 0;
+      for (const li of lineItems) {
+        const lineAmount = li.quantity * li.rate;
+        amount += lineAmount;
+        await tx`
+          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount)
+          values (${tenant.id}, ${id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount})
+        `;
+      }
+      const [row] = await tx`update jobs set amount = ${amount} where id = ${id} returning *`;
+      return row;
+    });
+  });
+
+  // Client question 2026-09-03: "How to reverse a Job back to an estimate" — spins off a new
+  // Estimate from the job's current data/line items rather than mutating the job itself (safer
+  // than trying to literally "undo" a job that may already have real work/notes attached).
+  app.post<{ Params: { id: string } }>("/:id/convert-to-estimate", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [job] = await tx`select * from jobs where id = ${id} limit 1`;
+      if (!job) throw new Error("Job not found");
+      if (job.converted_to_estimate_id) return { estimateId: job.converted_to_estimate_id };
+
+      const jobLineItems = (await tx`select * from job_line_items where job_id = ${id}`) as unknown as {
+        description: string;
+        sku: string | null;
+        item_type: string;
+        quantity: number;
+        cost: number;
+        rate: number;
+        amount: number;
+      }[];
+
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const estimateNumber = `EST-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${id.replace(/-/g, "").slice(-4).toUpperCase()}`;
+      const [estimate] = await tx`
+        insert into estimates (tenant_id, customer_id, job_id, number, amount, status, job_description)
+        values (${tenant.id}, ${job.customer_id}, ${job.id}, ${estimateNumber}, ${job.amount}, 'Draft', ${job.description})
+        returning *
+      `;
+      for (const li of jobLineItems) {
+        await tx`
+          insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount)
+          values (${tenant.id}, ${estimate.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount})
+        `;
+      }
+      await tx`update jobs set converted_to_estimate_id = ${estimate.id} where id = ${id}`;
+      return { estimateId: estimate.id };
+    });
+  });
+
   // Module 3 (Developer Brief) gap fix: parts/products used on a job, auto-deducted from
   // store inventory at job completion (mirrors the deduct logic in pos.ts checkout).
   app.get<{ Params: { id: string } }>("/:id/parts", async (req) => {
@@ -158,14 +227,18 @@ export default async function jobsRoutes(app: FastifyInstance) {
     `);
   });
 
-  app.post<{ Params: { id: string }; Body: { type: "photo" | "signature"; url: string } }>("/:id/attachments", async (req) => {
+  // Client request 2026-09-03: "document" type added alongside photo/signature, with an
+  // optional label (e.g. "Sand Change Form") and original filename for the Documents section.
+  app.post<{ Params: { id: string }; Body: { type: "photo" | "signature" | "document"; url: string; label?: string | null; filename?: string | null } }>(
+    "/:id/attachments",
+    async (req) => {
     const { id } = req.params;
-    const { type, url } = req.body;
+    const { type, url, label, filename } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into job_attachments (tenant_id, job_id, type, url)
-        values (${tenant.id}, ${id}, ${type}, ${url})
+        insert into job_attachments (tenant_id, job_id, type, url, label, filename)
+        values (${tenant.id}, ${id}, ${type}, ${url}, ${label ?? null}, ${filename ?? null})
         returning *
       `;
       return row;

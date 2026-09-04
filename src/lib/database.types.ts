@@ -209,10 +209,12 @@ export type Database = {
           customer_since: string | null
           email: string | null
           equipment: Json
+          first_name: string | null
           gate_codes: Json
           household_id: string | null
           id: string
           last_contact: string | null
+          last_name: string | null
           last_service: string | null
           lat: number | null
           lifetime_value: number
@@ -232,10 +234,12 @@ export type Database = {
           customer_since?: string | null
           email?: string | null
           equipment?: Json
+          first_name?: string | null
           gate_codes?: Json
           household_id?: string | null
           id?: string
           last_contact?: string | null
+          last_name?: string | null
           last_service?: string | null
           lat?: number | null
           lifetime_value?: number
@@ -255,10 +259,12 @@ export type Database = {
           customer_since?: string | null
           email?: string | null
           equipment?: Json
+          first_name?: string | null
           gate_codes?: Json
           household_id?: string | null
           id?: string
           last_contact?: string | null
+          last_name?: string | null
           last_service?: string | null
           lat?: number | null
           lifetime_value?: number
@@ -364,8 +370,10 @@ export type Database = {
       }
       inventory_items: {
         Row: {
+          barcode: string | null
           category: string
           created_at: string
+          default_distributor: string | null
           department: string | null
           id: string
           item_number: number | null
@@ -385,8 +393,10 @@ export type Database = {
           unit_cost: number
         }
         Insert: {
+          barcode?: string | null
           category: string
           created_at?: string
+          default_distributor?: string | null
           department?: string | null
           id?: string
           item_number?: number | null
@@ -406,8 +416,10 @@ export type Database = {
           unit_cost?: number
         }
         Update: {
+          barcode?: string | null
           category?: string
           created_at?: string
+          default_distributor?: string | null
           department?: string | null
           id?: string
           item_number?: number | null
@@ -693,6 +705,7 @@ export type Database = {
         Row: {
           amount: number
           converted_invoice_id: string | null
+          converted_job_id: string | null
           created_at: string
           customer_id: string
           down_payment: number
@@ -708,6 +721,7 @@ export type Database = {
         Insert: {
           amount?: number
           converted_invoice_id?: string | null
+          converted_job_id?: string | null
           created_at?: string
           customer_id: string
           down_payment?: number
@@ -723,6 +737,7 @@ export type Database = {
         Update: {
           amount?: number
           converted_invoice_id?: string | null
+          converted_job_id?: string | null
           created_at?: string
           customer_id?: string
           down_payment?: number
@@ -1058,6 +1073,7 @@ export type Database = {
           amount: number
           arrived_at: string | null
           completed_at: string | null
+          converted_to_estimate_id: string | null
           created_at: string
           customer_id: string
           description: string | null
@@ -1078,6 +1094,7 @@ export type Database = {
           amount?: number
           arrived_at?: string | null
           completed_at?: string | null
+          converted_to_estimate_id?: string | null
           created_at?: string
           customer_id: string
           description?: string | null
@@ -1098,6 +1115,7 @@ export type Database = {
           amount?: number
           arrived_at?: string | null
           completed_at?: string | null
+          converted_to_estimate_id?: string | null
           created_at?: string
           customer_id?: string
           description?: string | null

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck, Layers, ClipboardList, Camera, X } from "lucide-react";
+import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck, Layers, ClipboardList, Camera, X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { profilesApi } from "@/lib/api/profiles";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import type { Database } from "@/lib/database.types";
@@ -26,7 +27,7 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { 
 type UninvoicedJob = Database["public"]["Tables"]["jobs"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
-type Customer = { id: string; name: string; email: string | null; phone: string | null };
+type Customer = { id: string; name: string; email: string | null; phone: string | null; address: string | null };
 type Supplier = { id: string; name: string };
 
 const statusColors: Record<string, string> = {
@@ -86,7 +87,8 @@ export default function Invoicing() {
   const [tasks, setTasks] = useState<FreeformTask[]>([]);
   const [techs, setTechs] = useState<{ id: string; name: string }[]>([]);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
-  const [newTask, setNewTask] = useState({ customerId: "", techId: "", address: "", type: "Repair", notes: "", startDate: "", endDate: "" });
+  const [newTask, setNewTask] = useState({ customerId: "", techId: "", address: "", email: "", type: "Repair", notes: "", startDate: "", endDate: "" });
+  const [editTask, setEditTask] = useState<FreeformTask | null>(null);
   const [newTaskPhotos, setNewTaskPhotos] = useState<string[]>([]);
   const [taskPhotoUploading, setTaskPhotoUploading] = useState(false);
 
@@ -206,26 +208,49 @@ export default function Invoicing() {
     e.target.value = "";
   };
 
-  const handleCreateTask = async () => {
+  const handleTaskStatusChange = async (id: string, status: string) => {
+    await tasksApi.updateStatus(id, status);
+    loadInvoicing();
+  };
+
+  const openEditTask = (t: FreeformTask) => {
+    setEditTask(t);
+    setNewTask({
+      customerId: t.customer_id ?? "",
+      techId: t.tech_id ?? "",
+      address: t.address ?? "",
+      email: t.email ?? "",
+      type: t.type,
+      notes: t.notes ?? "",
+      startDate: t.start_date ?? "",
+      endDate: t.end_date ?? "",
+    });
+    setNewTaskPhotos((t.photos as string[] | null) ?? []);
+    setNewTaskOpen(true);
+  };
+
+  const handleSaveTask = async () => {
     if (!newTask.type) return;
-    await tasksApi.create({
+    const data = {
       customerId: newTask.customerId || null,
       techId: newTask.techId || null,
       address: newTask.address || null,
+      email: newTask.email || null,
       type: newTask.type,
       notes: newTask.notes || null,
       photos: newTaskPhotos,
       startDate: newTask.startDate || null,
       endDate: newTask.endDate || null,
-    });
-    setNewTask({ customerId: "", techId: "", address: "", type: "Repair", notes: "", startDate: "", endDate: "" });
+    };
+    if (editTask) {
+      await tasksApi.update(editTask.id, data);
+    } else {
+      await tasksApi.create(data);
+    }
+    setNewTask({ customerId: "", techId: "", address: "", email: "", type: "Repair", notes: "", startDate: "", endDate: "" });
     setNewTaskPhotos([]);
+    setEditTask(null);
     setNewTaskOpen(false);
-    loadInvoicing();
-  };
-
-  const handleTaskStatusChange = async (id: string, status: string) => {
-    await tasksApi.updateStatus(id, status);
     loadInvoicing();
   };
 
@@ -255,7 +280,9 @@ export default function Invoicing() {
     });
   };
 
+  const customerOptions = customers.map((c) => ({ value: c.id, label: c.name, sublabel: [c.phone, c.email].filter(Boolean).join(" · ") || undefined }));
   const customersWithOpenInvoices = customers.filter((c) => invoices.some((i) => i.customer_id === c.id && i.status !== "Paid"));
+  const customersWithOpenInvoicesOptions = customersWithOpenInvoices.map((c) => ({ value: c.id, label: c.name }));
   const openInvoicesForCustomer = invoices.filter((i) => i.customer_id === bulkInvoiceCustomerId && i.status !== "Paid");
   const toggleBulkInvoice = (id: string) => {
     setBulkInvoiceSelected((prev) => {
@@ -356,10 +383,9 @@ export default function Invoicing() {
               <div className="space-y-4 pt-2">
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">Customer</label>
-                  <Select value={newInvoice.customerId} onValueChange={(v) => setNewInvoice((p) => ({ ...p, customerId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                    <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <div className="mt-1">
+                    <SearchableSelect value={newInvoice.customerId} onChange={(v) => setNewInvoice((p) => ({ ...p, customerId: v }))} placeholder="Select customer" searchPlaceholder="Search customers..." options={customerOptions} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -437,13 +463,16 @@ export default function Invoicing() {
                   <p className="text-xs text-[#64748B]">Pick a customer with open invoices, select the ones to combine, then collect payment on all of them at once.</p>
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">Customer</label>
-                    <Select value={bulkInvoiceCustomerId} onValueChange={(v) => { setBulkInvoiceCustomerId(v); setBulkInvoiceSelected(new Set()); }}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                      <SelectContent>
-                        {customersWithOpenInvoices.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                        {customersWithOpenInvoices.length === 0 && <div className="px-2 py-1.5 text-sm text-[#64748B]">No customers with open invoices</div>}
-                      </SelectContent>
-                    </Select>
+                    <div className="mt-1">
+                      <SearchableSelect
+                        value={bulkInvoiceCustomerId}
+                        onChange={(v) => { setBulkInvoiceCustomerId(v); setBulkInvoiceSelected(new Set()); }}
+                        placeholder="Select customer"
+                        searchPlaceholder="Search customers..."
+                        emptyText="No customers with open invoices."
+                        options={customersWithOpenInvoicesOptions}
+                      />
+                    </div>
                   </div>
                   {bulkInvoiceCustomerId && (
                     <div>
@@ -501,10 +530,9 @@ export default function Invoicing() {
                 <p className="text-xs text-[#64748B]">Combine several weeks of completed jobs for one customer into a single invoice — one line item per job.</p>
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">Customer</label>
-                  <Select value={bulkForm.customerId} onValueChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                    <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <div className="mt-1">
+                    <SearchableSelect value={bulkForm.customerId} onChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))} placeholder="Select customer" searchPlaceholder="Search customers..." options={customerOptions} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -554,10 +582,9 @@ export default function Invoicing() {
               <div className="space-y-4 pt-2">
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">Customer</label>
-                  <Select value={newEstimate.customerId} onValueChange={(v) => setNewEstimate((p) => ({ ...p, customerId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                    <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <div className="mt-1">
+                    <SearchableSelect value={newEstimate.customerId} onChange={(v) => setNewEstimate((p) => ({ ...p, customerId: v }))} placeholder="Select customer" searchPlaceholder="Search customers..." options={customerOptions} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -840,19 +867,50 @@ export default function Invoicing() {
 
         <TabsContent value="tasks" className="mt-4 space-y-3">
           <div className="flex justify-end">
-            <Dialog open={newTaskOpen} onOpenChange={setNewTaskOpen}>
+            <Dialog
+              open={newTaskOpen}
+              onOpenChange={(open) => {
+                setNewTaskOpen(open);
+                if (!open) {
+                  setEditTask(null);
+                  setNewTask({ customerId: "", techId: "", address: "", email: "", type: "Repair", notes: "", startDate: "", endDate: "" });
+                  setNewTaskPhotos([]);
+                }
+              }}
+            >
               <DialogTrigger asChild>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> New Task</Button>
+                <Button
+                  className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"
+                  onClick={() => {
+                    setEditTask(null);
+                    setNewTask({ customerId: "", techId: "", address: "", email: "", type: "Repair", notes: "", startDate: "", endDate: "" });
+                    setNewTaskPhotos([]);
+                  }}
+                >
+                  <Plus className="w-4 h-4" /> New Task
+                </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>New Task</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{editTask ? "Edit Task" : "New Task"}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">Customer (optional)</label>
-                    <Select value={newTask.customerId} onValueChange={(v) => setNewTask((p) => ({ ...p, customerId: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                      <SelectContent>{customers.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <div className="mt-1">
+                      <SearchableSelect
+                        value={newTask.customerId}
+                        onChange={(v) => {
+                          const picked = customers.find((c) => c.id === v);
+                          setNewTask((p) => ({ ...p, customerId: v, address: picked?.address ?? p.address, email: picked?.email ?? p.email }));
+                        }}
+                        placeholder="Select customer"
+                        searchPlaceholder="Search customers..."
+                        options={customerOptions}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Email (optional)</label>
+                    <Input className="mt-1" value={newTask.email} onChange={(e) => setNewTask((p) => ({ ...p, email: e.target.value }))} />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">Address</label>
@@ -915,7 +973,7 @@ export default function Invoicing() {
                       </div>
                     )}
                   </div>
-                  <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateTask}>Save Task</Button>
+                  <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveTask}>{editTask ? "Save Changes" : "Save Task"}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -932,6 +990,7 @@ export default function Invoicing() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Dates</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Photos</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -953,10 +1012,15 @@ export default function Invoicing() {
                           </SelectContent>
                         </Select>
                       </td>
+                      <td className="text-center py-3 px-4">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditTask(t)}>
+                          <Pencil className="w-3.5 h-3.5 text-[#64748B]" />
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                   {tasks.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No tasks yet</td></tr>
+                    <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">No tasks yet</td></tr>
                   )}
                 </tbody>
               </table>

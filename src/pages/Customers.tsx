@@ -50,7 +50,8 @@ export default function Customers() {
     if (validContacts.length === 0) return;
     await customersApi.create({
       contacts: validContacts.map((c) => ({
-        name: `${c.firstName} ${c.lastName}`,
+        firstName: c.firstName,
+        lastName: c.lastName,
         email: c.email || null,
         phone: c.phone || null,
       })),

@@ -9,10 +9,11 @@ export default async function settingsRoutes(app: FastifyInstance) {
         tx`select id, tenant_id, name, status, description, icon, provider from integrations order by name`,
         tx`select * from subscription_plans order by price`,
         tx`select * from billing_history order by billed_date desc`,
-        tx`select name, plan_id, phone, address, invoice_business_name, payroll_week_start_day from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, plan_id, phone, address, city, state, zip, invoice_business_name, payroll_week_start_day from tenants where id = current_tenant_id() limit 1`,
       ]);
       const tenant = tenantRows[0] as {
         name: string; plan_id: string | null; phone: string | null; address: string | null;
+        city: string | null; state: string | null; zip: string | null;
         invoice_business_name: string | null; payroll_week_start_day: number;
       } | undefined;
       return {
@@ -24,19 +25,27 @@ export default async function settingsRoutes(app: FastifyInstance) {
         planId: tenant?.plan_id ?? null,
         phone: tenant?.phone ?? "",
         address: tenant?.address ?? "",
+        city: tenant?.city ?? "",
+        state: tenant?.state ?? "",
+        zip: tenant?.zip ?? "",
         invoiceBusinessName: tenant?.invoice_business_name ?? "",
         payrollWeekStartDay: tenant?.payroll_week_start_day ?? 1,
       };
     });
   });
 
-  app.patch<{ Body: { name: string; phone: string; address: string; invoiceBusinessName: string } }>("/company", async (req) => {
-    const { name, phone, address, invoiceBusinessName } = req.body;
-    return withTenantContext(req.userId, (tx) => tx`
-      update tenants set name = ${name}, phone = ${phone}, address = ${address}, invoice_business_name = ${invoiceBusinessName}
-      where id = current_tenant_id() returning *
-    `);
-  });
+  app.patch<{ Body: { name: string; phone: string; address: string; city: string; state: string; zip: string; invoiceBusinessName: string } }>(
+    "/company",
+    async (req) => {
+      const { name, phone, address, city, state, zip, invoiceBusinessName } = req.body;
+      return withTenantContext(req.userId, (tx) => tx`
+        update tenants
+        set name = ${name}, phone = ${phone}, address = ${address}, city = ${city}, state = ${state}, zip = ${zip},
+            invoice_business_name = ${invoiceBusinessName}
+        where id = current_tenant_id() returning *
+      `);
+    },
+  );
 
   // Client request 2026-09-02: "Allow us to change the first day of the week when running
   // payroll" (they run Wed-Tue) — Timesheets computes its week_start from this instead of

@@ -9,6 +9,8 @@ export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { cust
 export type EstimateLineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
 export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null };
 
+export type EstimateAttachment = { id: string; estimate_id: string; url: string; label: string | null; filename: string | null; created_at: string };
+
 export type LineItemInput = {
   description: string;
   sku?: string | null;
@@ -18,7 +20,15 @@ export type LineItemInput = {
   rate: number;
 };
 
-type Business = { name: string; phone: string | null; address: string | null; invoice_business_name: string | null };
+type Business = {
+  name: string;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  invoice_business_name: string | null;
+};
 
 export const invoicingApi = {
   list: () => api.get<Invoice[]>("/api/invoices"),
@@ -71,6 +81,13 @@ export const invoicingApi = {
   }) => api.post<Estimate>("/api/invoices/estimates", data),
 
   convertEstimateToInvoice: (id: string) => api.post<{ invoiceId: string }>(`/api/invoices/estimates/${id}/convert-to-invoice`, {}),
+
+  convertEstimateToJob: (id: string) => api.post<{ jobId: string }>(`/api/invoices/estimates/${id}/convert-to-job`, {}),
+
+  getEstimateAttachments: (id: string) => api.get<EstimateAttachment[]>(`/api/invoices/estimates/${id}/attachments`),
+
+  addEstimateAttachment: (id: string, data: { url: string; label?: string | null; filename?: string | null }) =>
+    api.post<EstimateAttachment>(`/api/invoices/estimates/${id}/attachments`, data),
 
   vendorBills: () => api.get<VendorBill[]>("/api/invoices/vendor-bills/list"),
 

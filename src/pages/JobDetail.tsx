@@ -23,13 +23,18 @@ import {
 } from "@/lib/data";
 import { useTranslator } from "@/hooks/use-translator";
 import { useLanguage } from "@/lib/language-context";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, Pencil } from "lucide-react";
 import WaterTestingForm from "@/components/forms/WaterTestingForm";
 import MaintenanceChecklist from "@/components/forms/MaintenanceChecklist";
 import OneOffJobChecklist from "@/components/forms/OneOffJobChecklist";
-import { jobsApi, type JobPartUsed } from "@/lib/api/jobs";
+import { jobsApi, type JobPartUsed, type JobLineItem, type JobAttachment } from "@/lib/api/jobs";
 import { invoicingApi } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
+import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
+import LineItemsEditor, { newDraftLineItem, type DraftLineItem } from "@/components/LineItemsEditor";
+import DocumentsSection from "@/components/DocumentsSection";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
 
 type JobRow = Database["public"]["Tables"]["jobs"]["Row"] & {
@@ -106,6 +111,8 @@ export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [job, setJob] = useState<JobRow | null>(null);
+  const [descEditing, setDescEditing] = useState(false);
+  const [descDraft, setDescDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("trip_details");
   const [noteText, setNoteText] = useState("");
@@ -119,6 +126,16 @@ export default function JobDetail() {
   const { lang, setLang, t } = useLanguage();
   const { states: trStates, translateDebounced } = useTranslator();
 
+  // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously
+  // only had a flat `amount`, no itemized breakdown.
+  const [jobLineItems, setJobLineItems] = useState<JobLineItem[]>([]);
+  const [lineItemsEditing, setLineItemsEditing] = useState(false);
+  const [lineItemsDraft, setLineItemsDraft] = useState<DraftLineItem[]>([]);
+  const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
+  const [documents, setDocuments] = useState<JobAttachment[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const { tenantId } = useAuth();
+
   const loadJob = () => {
     if (!id) return;
     setIsLoading(true);
@@ -128,9 +145,50 @@ export default function JobDetail() {
       .finally(() => setIsLoading(false));
     invoicingApi.byJob(id).then((data) => setInvoiceId(data?.id ?? null));
     jobsApi.getParts(id).then(setPartsUsed);
+    jobsApi.getLineItems(id).then(setJobLineItems);
+    jobsApi.getAttachments(id).then((data) => setDocuments(data.filter((a) => a.type === "document")));
+  };
+
+  // Client request 2026-09-03: Documents section on a job (same storage bucket/path convention
+  // as the existing photo/signature uploads, just a "document" attachment type).
+  const handleUploadDocument = async (file: File, label: string) => {
+    if (!id || !tenantId) return;
+    setDocsUploading(true);
+    try {
+      const path = `${tenantId}/${id}/document-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      await jobsApi.addAttachment(id, { type: "document", url: data.publicUrl, label, filename: file.name });
+      jobsApi.getAttachments(id).then((docs) => setDocuments(docs.filter((a) => a.type === "document")));
+    } finally {
+      setDocsUploading(false);
+    }
   };
 
   useEffect(loadJob, [id]);
+  useEffect(() => {
+    inventoryApi.summary().then((data) => setInventoryItems(data.items));
+  }, []);
+
+  const openLineItemsEditor = () => {
+    setLineItemsDraft(
+      jobLineItems.length > 0
+        ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate }))
+        : [newDraftLineItem()],
+    );
+    setLineItemsEditing(true);
+  };
+
+  const handleSaveLineItems = async () => {
+    if (!id) return;
+    await jobsApi.saveLineItems(
+      id,
+      lineItemsDraft.map((li) => ({ description: li.description, sku: li.sku ?? null, itemType: li.itemType ?? "material", quantity: li.quantity, cost: li.cost ?? 0, rate: li.rate })),
+    );
+    setLineItemsEditing(false);
+    loadJob();
+  };
 
   // When user types a note, translate to the OTHER language in real time
   const handleNoteChange = (val: string) => {
@@ -181,6 +239,25 @@ export default function JobDetail() {
   const handleToggleEnRoute = async () => {
     if (!job) return;
     await jobsApi.update(job.id, { en_route_at: job.en_route_at ? null : new Date().toISOString() });
+    loadJob();
+  };
+
+  // Client question 2026-09-03: "How to reverse a Job back to an estimate" — spins off a new
+  // Estimate from this job's current data/line items rather than mutating the job itself.
+  const [convertingToEstimate, setConvertingToEstimate] = useState(false);
+  const handleConvertToEstimate = async () => {
+    if (!job) return;
+    setConvertingToEstimate(true);
+    const { estimateId } = await jobsApi.convertToEstimate(job.id);
+    navigate(`/invoicing/estimates/${estimateId}`);
+  };
+
+  // Client bug report 2026-09-03: "How to put job description on a job" (after creation) —
+  // Description was previously set once at creation only, never editable afterward.
+  const handleSaveDescription = async () => {
+    if (!job) return;
+    await jobsApi.update(job.id, { description: descDraft });
+    setDescEditing(false);
     loadJob();
   };
 
@@ -273,6 +350,17 @@ export default function JobDetail() {
             <Copy className="w-4 h-4" />
             <span className="hidden sm:inline">Clone Job</span>
           </Button>
+          {job.converted_to_estimate_id ? (
+            <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={() => navigate(`/invoicing/estimates/${job.converted_to_estimate_id}`)}>
+              <span className="hidden sm:inline">View Estimate</span>
+              <span className="sm:hidden">Estimate</span>
+            </Button>
+          ) : (
+            <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={handleConvertToEstimate} disabled={convertingToEstimate}>
+              <span className="hidden sm:inline">{convertingToEstimate ? "Converting..." : "Convert to Estimate"}</span>
+              <span className="sm:hidden">To Estimate</span>
+            </Button>
+          )}
           <Button
             className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9"
             disabled={generatingInvoice || (job.status === "Completed" && !!invoiceId)}
@@ -382,8 +470,28 @@ export default function JobDetail() {
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                <p className="text-sm font-medium text-[#0F172A] mb-1">{t("Description")}</p>
-                <p className="text-sm text-[#64748B]">{job.description}</p>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-medium text-[#0F172A]">{t("Description")}</p>
+                  {!descEditing && (
+                    <button
+                      className="text-[#64748B] hover:text-[#0891B2]"
+                      onClick={() => { setDescDraft(job.description ?? ""); setDescEditing(true); }}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                {descEditing ? (
+                  <div className="space-y-2">
+                    <Textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)} className="text-sm" rows={3} />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="bg-[#0891B2] text-white h-7 text-xs" onClick={handleSaveDescription}>Save</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-[#E2E8F0]" onClick={() => setDescEditing(false)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#64748B]">{job.description || "No description yet."}</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -669,38 +777,81 @@ export default function JobDetail() {
             </div>
           )}
 
-          {/* Line Items */}
+          {/* Line Items — client question 2026-09-03: "How to add items to a service ticket/Job" */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex items-center justify-between">
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Line Items")}</CardTitle>
-              <Button variant="ghost" size="sm" className="h-8 gap-1 text-[#0891B2]"><Plus className="w-4 h-4" /> Add</Button>
+              {!lineItemsEditing && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1 text-[#0891B2]" onClick={openLineItemsEditor}>
+                  <Pencil className="w-3.5 h-3.5" /> {jobLineItems.length > 0 ? "Edit" : "Add Items"}
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="pt-0">
-              <div className="divide-y divide-[#F1F5F9]">
-                <div className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <Wrench className="w-4 h-4 text-[#0891B2]" />
-                    <div>
-                      <p className="text-sm font-medium text-[#0F172A]">{job.type}</p>
-                    </div>
+              {lineItemsEditing ? (
+                <div className="space-y-3">
+                  <LineItemsEditor items={lineItemsDraft} onChange={setLineItemsDraft} inventoryItems={inventoryItems} />
+                  <div className="flex gap-2">
+                    <Button size="sm" className="bg-[#0891B2] text-white h-8 text-xs" onClick={handleSaveLineItems}>Save</Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs border-[#E2E8F0]" onClick={() => setLineItemsEditing(false)}>Cancel</Button>
                   </div>
-                  <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                 </div>
-                <div className="flex items-center justify-between py-3">
-                  <span className="text-sm font-medium text-[#0F172A]">Subtotal</span>
-                  <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
+              ) : jobLineItems.length > 0 ? (
+                <div className="divide-y divide-[#F1F5F9]">
+                  {jobLineItems.map((li) => (
+                    <div key={li.id} className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3">
+                        <Wrench className="w-4 h-4 text-[#0891B2]" />
+                        <div>
+                          <p className="text-sm font-medium text-[#0F172A]">{li.description}</p>
+                          <p className="text-xs text-[#64748B]">{li.sku ? `${li.sku} · ` : ""}{li.quantity} × ${li.rate.toFixed(2)}{li.item_type === "labor" ? " · Labor" : ""}</p>
+                        </div>
+                      </div>
+                      <span className="font-semibold text-[#0F172A]">${li.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-sm font-medium text-[#0F172A]">Subtotal</span>
+                    <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-sm text-[#64748B]">Tax (8.25%)</span>
+                    <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-base font-semibold text-[#0F172A]">Total</span>
+                    <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between py-3">
-                  <span className="text-sm text-[#64748B]">Tax (8.25%)</span>
-                  <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
+              ) : (
+                <div className="divide-y divide-[#F1F5F9]">
+                  <div className="flex items-center justify-between py-3">
+                    <div className="flex items-center gap-3">
+                      <Wrench className="w-4 h-4 text-[#0891B2]" />
+                      <div>
+                        <p className="text-sm font-medium text-[#0F172A]">{job.type}</p>
+                      </div>
+                    </div>
+                    <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-sm font-medium text-[#0F172A]">Subtotal</span>
+                    <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-sm text-[#64748B]">Tax (8.25%)</span>
+                    <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-3">
+                    <span className="text-base font-semibold text-[#0F172A]">Total</span>
+                    <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between py-3">
-                  <span className="text-base font-semibold text-[#0F172A]">Total</span>
-                  <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
+
+          <DocumentsSection documents={documents} onUpload={handleUploadDocument} uploading={docsUploading} />
 
           {/* Parts Used (auto-deducted from store inventory on job completion) */}
           {partsUsed.length > 0 && (

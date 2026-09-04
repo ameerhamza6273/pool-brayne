@@ -1988,3 +1988,186 @@ bhi payment-tokenization feature ke liye is app mein.
   ke turant Collect Payment → card fill → Charge, sab ek hi batch mein) — **pehli hi koshish
   mein "Paid"** ho gaya, real transaction ID `120089643165` confirm kiya, cleanup kar diya.
   ---
+
+### 2026-09-04 — 2 naye files (`crm changes 9-3-26.pdf` bug/feature list +
+`version one data cleaned up.xlsx` real inventory) — poora backlog + inventory import ek session mein
+
+User ne kaha Downloads mein 2 naye files hain jo client ne bheji — check karke bataya jaye kya
+karna hai. Dono padh kar summary di gayi, phir **AskUserQuestion se do decisions confirm hue**:
+inventory import turant "go ahead", aur PDF wali poori list "sab ek sath shuru kar do".
+
+**1. Real inventory import — DONE.** `version one data cleaned up.xlsx` asal Pool Supply Atlanta
+legacy inventory export tha (client ne khud "Cleaned up list" bhej kar clean kiya hua, ek
+"Cleanup Notes" tab ke sath jisme unhon ne apne data-quality issues already document kiye
+the — malformed CSV reconstruct kiya, blank/duplicate SKUs flag kiye). **2,545 distinct products**
+import kiye (`backend/_tmp-import-inventory.cjs`, run karke turant delete — established pattern,
+access token nahi tha isliye phir se `DATABASE_URL` se direct `postgres` package use kiya):
+- Naya migration `20260904090000_inventory_legacy_import_fields.sql` — `inventory_items.barcode` +
+  `default_distributor` columns (baaqi fields jaise short/long description, department, manufacturer
+  pehle se 2026-08-27 se maujood thay, is baar seedha map ho gaye).
+- **Dedup logic:** source ka `ItemNumber` akela reliable nahi tha — 8 item numbers genuinely
+  alag products ke liye reuse hote paye gaye (jaise "328" 3 alag SHIPPING line-items ke liye) —
+  isliye grouping key `ItemNumber+Brand+ItemName+SKU+Description` banaya, na ke sirf ItemNumber.
+  Blank SKUs (`LEGACY-<itemnumber>` fallback) aur duplicate SKUs (36 cases, `-<itemnumber>-N`
+  suffix) dono ke liye synthetic unique SKU generate kiya taake `unique(tenant_id, sku)` constraint
+  na tootay.
+- **2 rows mein `ItemNumber` column mein galti se ek barcode-jaisi lambi value thi**
+  (`2325150001`, `004302418403` — int4 range se bahar) — dono ke liye `item_number` ko null
+  chhoड़ diya (koi legacy number nahi milta unhe, baaqi sab theek se import hua).
+- Naya `inventory_locations` row **"Customer Location"** (type `vehicle`) banaya — source ka
+  "PSA Retail" hamare existing "Store" location par map kiya, "Customer Location" (jo trucks/
+  customer-sites par pada stock represent karta hai) apna naya row.
+- Final: **2,577 total inventory_items** (32 demo + 2,545 real), **3,520 total inventory_stock
+  rows**. `QtyAllocated`/`QtyOnOrder` columns skip kiye (app mein kahin bhi modeled nahi hain).
+  `InventoryAssetAccount` (jahan non-empty tha) QBO `qbo_accounts.asset` jsonb field mein
+  pre-fill kar diya — future QBO account-mapping ka head start.
+
+**2. `crm changes 9-3-26.pdf` — poora bug/feature backlog, ek session mein complete kiya:**
+
+*Real bugs fix kiye:*
+- **New PO "does not allow me to create"** — asal wajah silent no-op tha (`if (!supplierId ||
+  !number) return;` bina kisi error message ke, aur PO Number field ka placeholder text ("PO-2026-
+  001") user ko lagta tha ke woh already filled hai). Fix: auto-generated default PO number
+  + real validation error message, `Inventory.tsx`.
+- **Suppliers/vendors "cannot add or edit"** — pehle sirf read-only list tha. Naya
+  `POST/PATCH /api/inventory/suppliers` + Add/Edit dialog.
+- **Purchase Orders "needs a view and edit option"** — naya PO detail/edit dialog (Number/
+  Supplier/Status/Item Count/Total/Received Date), naya `PATCH /api/inventory/purchase-orders/:id`.
+- **Customer field merge bug** ("starts as two different fields but after input it merges to
+  one") — Add-Customer dialog ke First/Last Name fields save hote waqt ek combined `name` string
+  ban jate the, alag se kabhi store nahi hote the. Naya migration
+  `20260904092000_customer_first_last_name.sql` — `customers.first_name`/`last_name` columns.
+  Customer create/edit/household-add teeno routes (`backend/src/routes/customers.ts`) ab dono
+  alag fields accept + store karte hain (`name` derived rehta hai display/search ke liye).
+  Edit-Customer dialog (`CustomerDetail.tsx`) mein bhi ab 2 separate inputs hain (single "Name"
+  ki jagah), legacy customers (jinke paas first/last nahi hai, sirf `name`) ke liye
+  `name.split(" ")` se best-effort fallback pre-fill hoti hai.
+- **Task dialog "after selecting the name: address does not populate"** — customer select karne
+  par ab real address/email auto-fill hote hain (`Invoicing.tsx` Tasks tab), Email field bhi add
+  ki (naya `tasks.email` column, migration `20260904091000_tasks_email_and_more.sql`), aur naya
+  **Edit button** (pehle sirf status-dropdown tha, poora record edit karne ka koi tareeqa nahi
+  tha) — naya `PATCH /api/tasks/:id`.
+- **Address autocomplete "coming up the world"** — Nominatim query mein `countrycodes=us` add
+  kiya, aur raw `display_name` (jisme county/neighborhood/country cruft tha, jaise client ne
+  apne example mein khud cross-out kiya tha) ki jagah `addressdetails=1` se clean
+  `street, city+state, zip` label banaya (`src/lib/geocode.ts`). Smarty path (jab configured ho)
+  already US-only + structured tha, is se affect nahi hua.
+- **Store address ko separate Address/City/State/Zip fields mein split kiya** ("easier to run
+  reports when they are in separate fields") — naya migration
+  `20260904093000_tenant_address_split.sql` (`tenants.city/state/zip`), Settings > Company tab
+  mein 3 naye fields (+ existing Address field ab `AddressAutocomplete` use karta hai, select
+  karne par city/state/zip alag se auto-fill ho jate hain via naya `onSelectParts` callback jo
+  `AddressAutocomplete.tsx` mein add kiya — Smarty aur Nominatim dono providers se kaam karta
+  hai). Invoice/Estimate letterhead (`InvoiceDetail.tsx`/`EstimateDetail.tsx`) ab city/state/zip
+  bhi dikhate hain.
+
+*Dynamic search — poori app mein* (naya reusable `src/components/SearchableSelect.tsx`,
+Popover+Command/cmdk se banaya, already-installed shadcn primitives use kiye, koi nayi
+dependency nahi lagi): 2,577 inventory items aur 3,657 customers ab kisi bhi plain `<Select>`
+dropdown mein scroll karne ki jagah type-ahead search karte hain. Jahan-jahan lagaya: Estimate/
+Invoice/Job/Write-off ke inventory-item pickers (name+SKU+long-description match karta hai —
+client ki "search the long and short descriptions" request), aur customer pickers (New Invoice/
+New Estimate/Bulk Invoice/New Job/Task/Reminder — sab jagah). POS ka customer search pehle se hi
+real tha (text-input based), Field.tsx ke Parts Used list (steppers wali, single-select nahi) mein
+combobox ki jagah simple search-filter text box add kiya (UX zyada fit karta hai us list ke liye).
+
+*POS:*
+- **Split tender** ("Allow us to use more than one payment type or multiple credit card") — naya
+  migration `20260904094000_pos_split_tender.sql` (`pos_order_payments` table — ek row per tender
+  line). Checkout ab `payments: {method, amount, opaqueData?}[]` array leta hai (single
+  `paymentMethod` ki jagah) — har Card line **alag se real Authorize.net charge** hoti hai order
+  commit hone se pehle (koi bhi decline ho to poora sale abort, kuch commit nahi hota).
+  `pos_orders.payment_method` ab "Split" dikhata hai jab >1 tender line ho. "Check" bhi tender
+  option mein add kiya (client ne explicitly "card, cash, check" kaha tha).
+- **Serial number notes** ("Notes area to add serial numbers... when ring it up") — naya
+  `pos_order_items.serial_number` column, cart ke har line item ke neeche ek chhota optional
+  text input.
+- Return-mode/negative-qty (client ka "sell a negative number as return") **pehle se already
+  built tha** (2026-09-02 session), is baar dobara touch nahi kiya.
+
+*Write-off:* "Weekly Service Use" reason option add kiya (existing Store Use/Truck Use/
+Shrinkage/Other list mein).
+
+*Zebra barcode by Item #:* naya toggle (SKU vs Item #) — client ne kaha barcode scanner labels
+Item # se customize karne chahiye, `printZebraLabels()` ab dono modes support karta hai.
+
+*Jobs & Estimates — naya schema, "how to" questions ka jawab:*
+- Naya migration `20260904095000_job_line_items_and_conversions.sql`: **`job_line_items`**
+  table (Estimate/Invoice line-items jaisa hi shape) — Jobs ab bhi itemized breakdown support
+  karte hain ("How to add items to a service ticket/Job"). `JobDetail.tsx` ka pehle se maujood
+  **dead "Add" button** (Line Items card par, kabhi kaam nahi karta tha) ab real
+  `LineItemsEditor` kholta hai, save par `PATCH /api/jobs/:id/line-items` (poora set replace
+  karta hai + `job.amount` ko line-items ke total se recompute karta hai).
+- **Estimate → Job conversion** ("How to convert an estimate to a Job") — naya
+  `POST /api/invoices/estimates/:id/convert-to-job` (existing convert-to-invoice jaisa hi
+  pattern — naya job banata hai + estimate ke line items copy karta hai + estimate.status =
+  'Converted' + naya `estimates.converted_job_id`). `EstimateDetail.tsx` mein "Convert to Job"
+  button (existing "Convert to Invoice" ke bagal).
+- **Job → Estimate ("reverse")** ("How to reverse a Job back to an estimate") — job ko
+  literally undo/delete karne ke bajaye (risky, agar real kaam/notes already attached hon), naya
+  `POST /api/jobs/:id/convert-to-estimate` job ke current data se ek **nayi Estimate spin off**
+  karta hai (job khud untouched rehta hai, sirf naya `jobs.converted_to_estimate_id` set hota
+  hai traceability ke liye). `JobDetail.tsx` mein "Convert to Estimate"/"View Estimate" button.
+- **Job description edit** ("How to put job description on a job") — pehle sirf creation ke
+  waqt set hoti thi, kabhi edit nahi ho sakti thi. Ab pencil-icon inline edit
+  (`JobDetail.tsx`, `PATCH /api/jobs/:id`).
+- **"How to edit job notes"** — jaan-boojh kar naya `jobs.notes` column nahi banaya; existing
+  "Job Notes → Save to Customer Record" flow (`customer_notes` insert, 2026-07-28 se) hi is ka
+  jawab rehta hai — job-linked note-taking already possible tha, sirf customer record ke through.
+- **"How to create a job form"** — **jaan-boojh kar out of scope rakha** (yeh ek asal form-builder
+  hai, JobDetail ke 10 content-category tabs jaisa hi pehle se flagged bada scope-item — "upload
+  a job form" wala hissa Documents section se cover ho gaya, "create" wala nahi).
+
+*Documents section* ("Need a Document section to send to customers on an estimate / job") — naya
+shared `src/components/DocumentsSection.tsx` (label dropdown: Sand Change Form/Automation
+Checklist/Weekly Service Form/Other + file upload + list-with-download-links), dono
+`JobDetail.tsx` aur `EstimateDetail.tsx` mein use hota hai. Naya migration
+`20260904096000_job_estimate_documents.sql` — `job_attachments.type` check-constraint mein
+`'document'` add kiya (pehle sirf photo/signature), + `label`/`filename` columns; naya
+**`estimate_attachments`** table (estimates ke paas pehle koi attachment table hi nahi thi) —
+same `job-attachments` storage bucket reuse kiya `estimates/<id>/...` sub-path se (bucket ki RLS
+sirf pehla path-segment = tenant_id check karti hai, existing established pattern jaisa
+tasks/customer-photos ke liye pehle bhi hua tha).
+
+*Baaqi chhote items:*
+- **Phone app admin/tech toggle** ("toggle between admin and tech view") — `Field.tsx` header mein
+  naya "Admin View" button (seedha `/dashboard` navigate karta hai). **Note:** poori sidebar
+  already mobile hamburger-menu se bhi reachable thi (`AppShell.tsx` ka existing `Sheet`), yeh
+  button sirf ek explicit direct shortcut hai jo client ki literal request ko match karta hai.
+- **Customer profile "+" reminders** ("Add plus icon to add more service reminders") — existing
+  multi-reminder system (`customer_reminders` table, pehle sirf Reports > Reminders tab mein
+  tha, 2026-09-02 se) ab seedha `CustomerDetail.tsx` par bhi "Other Reminders" card ke tor par
+  surface hota hai (naya "+" button se Add Reminder Type dialog, Mark Done/Delete actions) —
+  koi naya backend code nahi laga, sirf UI reuse hua.
+- **Hover-over-customer-name job description** — check kiya, **already working tha** (2026-08-27
+  se `title` attribute Jobs.tsx pipeline cards par) — is session mein koi change nahi kiya, sirf
+  verify kiya.
+
+**End-to-end verify kiya** (is baar bhi koi browser automation nahi use ki, seedha curl + real
+JWT + direct DB queries se, jaisa 2026-09-02 mein bhi hua tha): split-tender POS checkout (2 tender
+lines, real DB rows confirm), job line-items save + Estimate↔Job dono directions ka conversion
+(real rows verify kiye, job.amount recompute confirm kiya), Job aur Estimate dono documents
+upload+list. Saara test data turant clean kar diya (established pattern, `backend/_tmp-*.cjs`
+scripts run karke turant delete).
+
+Frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) dono session ke har checkpoint
+par clean rahe.
+
+**Baaqi/pending:**
+1. "How to create a job form" (custom form builder) — jaan-boojh kar out of scope, genuinely
+   naya architecture kaam hai (jaisa JobDetail ke 10 content-category tabs pehle se hain).
+2. Tech-picker (Assign Tech dropdown, Task dialog) ko "search by role" nahi banaya — staff list
+   chhoti hai (~6 log), low priority chhoड़ diya.
+3. Estimate/Job/Invoice line items abhi bhi kisi inventory stock ko deduct nahi karte (sirf
+   POS aur job-parts-used flow karte hain) — pehle se jaan-boojh kar out of scope tha, is
+   session mein bhi nahi chheड़ा.
+4. Pehle se pending sab kuch waisa hi hai (customer-list ka koi naya import nahi tha is baar,
+   resale/pluggable-integrations reply, Authorize.net production switch, Twilio/Stripe/SendGrid/
+   Gusto client accounts, Railway/Vercel client-account move, global search bar, notifications
+   panel, dispatch-nearest-tech, QBO two-way sync, QBO production redirect URI, JobDetail ke 10
+   content-category tabs).
+5. **Is poore session ke changes (7 naye migrations + saari code changes) abhi commit nahi hue**
+   — commit se pehle user se confirm lena (established rule).
+- **Dev servers is session ke end tak:** frontend `localhost:5175`, backend `localhost:4000` —
+  dono is session se pehle se hi background mein chal rahe thay (dobara start nahi karne pade).
+  ---

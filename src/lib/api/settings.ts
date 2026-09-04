@@ -16,11 +16,14 @@ export const settingsApi = {
     planId: string | null;
     phone: string;
     address: string;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
     invoiceBusinessName: string;
     payrollWeekStartDay: number;
   }>("/api/settings"),
 
-  saveCompany: (data: { name: string; phone: string; address: string; invoiceBusinessName: string }) =>
+  saveCompany: (data: { name: string; phone: string; address: string; city: string; state: string; zip: string; invoiceBusinessName: string }) =>
     api.patch("/api/settings/company", data),
 
   savePayrollWeekStart: (payrollWeekStartDay: number) => api.patch("/api/settings/payroll", { payrollWeekStartDay }),

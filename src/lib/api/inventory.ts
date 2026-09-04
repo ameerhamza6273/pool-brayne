@@ -26,6 +26,17 @@ export const inventoryApi = {
 
   suppliers: () => api.get<Supplier[]>("/api/inventory/suppliers"),
 
+  addSupplier: (data: { name: string; contact: string | null; phone: string | null; leadTime: string | null }) =>
+    api.post<Supplier>("/api/inventory/suppliers", data),
+
+  updateSupplier: (id: string, data: { name: string; contact: string | null; phone: string | null; leadTime: string | null }) =>
+    api.patch<Supplier>(`/api/inventory/suppliers/${id}`, data),
+
+  updatePurchaseOrder: (
+    id: string,
+    data: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null },
+  ) => api.patch<PurchaseOrder>(`/api/inventory/purchase-orders/${id}`, data),
+
   addItem: (data: {
     name: string;
     sku: string;

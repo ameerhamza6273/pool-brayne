@@ -6,6 +6,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
 import { jobsApi } from "@/lib/api/jobs";
 import { customersApi } from "@/lib/api/customers";
@@ -42,6 +43,7 @@ export default function Field() {
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [partsUsed, setPartsUsed] = useState<Record<string, number>>({});
+  const [partsSearch, setPartsSearch] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -206,9 +208,19 @@ export default function Field() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-bold text-[#0F172A]">My Day</h1>
-        <div className="ml-auto flex items-center gap-1 text-sm text-[#64748B]">
-          <Clock className="w-4 h-4" />
-          <span>{myJobs.length} jobs</span>
+        <div className="ml-auto flex items-center gap-3">
+          {/* Client request 2026-09-03: "On the phone app be able to toggle between admin and
+              tech view" — jumps straight to the full desktop-style Dashboard/nav. */}
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="text-xs font-medium text-[#0891B2] border border-[#0891B2]/30 rounded-md px-2 py-1 hover:bg-[#0891B2]/10"
+          >
+            Admin View
+          </button>
+          <div className="flex items-center gap-1 text-sm text-[#64748B]">
+            <Clock className="w-4 h-4" />
+            <span>{myJobs.length} jobs</span>
+          </div>
         </div>
       </div>
 
@@ -320,8 +332,23 @@ export default function Field() {
             {/* Parts Used */}
             <div>
               <p className="text-sm font-medium text-[#0F172A] mb-2">Parts Used</p>
+              <Input
+                placeholder="Search parts by name, SKU, or description..."
+                className="mb-2 h-9 text-sm"
+                value={partsSearch}
+                onChange={(e) => setPartsSearch(e.target.value)}
+              />
               <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-[#E2E8F0]">
-                {inventoryItems.filter((item) => item.category !== "Services").map((item) => (
+                {inventoryItems
+                  .filter((item) => item.category !== "Services")
+                  .filter((item) => {
+                    if (!partsSearch.trim()) return true;
+                    const q = partsSearch.toLowerCase();
+                    return [item.name, item.sku, item.short_description, item.long_description]
+                      .filter(Boolean)
+                      .some((f) => (f as string).toLowerCase().includes(q));
+                  })
+                  .map((item) => (
                   <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-[#F1F5F9] last:border-b-0">
                     <span className="text-sm text-[#0F172A] truncate">{item.name}</span>
                     <div className="flex items-center gap-2 shrink-0">

@@ -98,7 +98,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           where i.id = ${id} limit 1
         `,
         tx`select * from invoice_line_items where invoice_id = ${id}`,
-        tx`select name, phone, address, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, phone, address, city, state, zip, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
       ]);
       return { invoice: invoiceRows[0] ?? null, lineItems, business: tenantRows[0] ?? null };
     });
@@ -251,7 +251,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           where e.id = ${id} limit 1
         `,
         tx`select * from estimate_line_items where estimate_id = ${id}`,
-        tx`select name, phone, address, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, phone, address, city, state, zip, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
       ]);
       return { estimate: estimateRows[0] ?? null, lineItems, business: tenantRows[0] ?? null };
     });
@@ -261,6 +261,32 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     }
     return result;
   });
+
+  // Client request 2026-09-03: "Need a Document section to send to customers on an estimate /
+  // job" (sand-change form, automation checklist, weekly service form, or any upload).
+  app.get<{ Params: { id: string } }>("/estimates/:id/attachments", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`
+      select * from estimate_attachments where estimate_id = ${id} order by created_at
+    `);
+  });
+
+  app.post<{ Params: { id: string }; Body: { url: string; label?: string | null; filename?: string | null } }>(
+    "/estimates/:id/attachments",
+    async (req) => {
+      const { id } = req.params;
+      const { url, label, filename } = req.body;
+      return withTenantContext(req.userId, async (tx) => {
+        const [tenant] = await tx`select current_tenant_id() as id`;
+        const [row] = await tx`
+          insert into estimate_attachments (tenant_id, estimate_id, url, label, filename)
+          values (${tenant.id}, ${id}, ${url}, ${label ?? null}, ${filename ?? null})
+          returning *
+        `;
+        return row;
+      });
+    },
+  );
 
   app.post<{
     Body: {
@@ -321,6 +347,44 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       }
       await tx`update estimates set status = 'Converted', converted_invoice_id = ${invoice.id} where id = ${id}`;
       return { invoiceId: invoice.id };
+    });
+  });
+
+  // Client question 2026-09-03: "How to convert an estimate to a Job" — mirrors
+  // convert-to-invoice above, but creates a real dispatchable job (with its own line items)
+  // instead of a bill.
+  app.post<{ Params: { id: string } }>("/estimates/:id/convert-to-job", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [estimate] = await tx`select * from estimates where id = ${id} limit 1`;
+      if (!estimate) throw new Error("Estimate not found");
+      if (estimate.converted_job_id) return { jobId: estimate.converted_job_id };
+
+      const estimateLineItems = (await tx`select * from estimate_line_items where estimate_id = ${id}`) as unknown as {
+        description: string;
+        sku: string | null;
+        item_type: string;
+        quantity: number;
+        cost: number;
+        rate: number;
+        amount: number;
+      }[];
+      const [customer] = await tx`select address from customers where id = ${estimate.customer_id} limit 1`;
+
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [job] = await tx`
+        insert into jobs (tenant_id, customer_id, type, status, stage, description, address, amount)
+        values (${tenant.id}, ${estimate.customer_id}, 'Estimate', 'Booked', 'booked', ${estimate.job_description}, ${customer?.address ?? null}, ${estimate.amount})
+        returning *
+      `;
+      for (const li of estimateLineItems) {
+        await tx`
+          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount)
+          values (${tenant.id}, ${job.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount})
+        `;
+      }
+      await tx`update estimates set status = 'Converted', converted_job_id = ${job.id} where id = ${id}`;
+      return { jobId: job.id };
     });
   });
 

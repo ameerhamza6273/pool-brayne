@@ -7,7 +7,7 @@ type Job = Database["public"]["Tables"]["jobs"]["Row"] & {
 };
 
 export type JobPartUsed = { id: string; item_id: string; quantity: number; item_name: string; item_sku: string };
-export type JobAttachment = { id: string; job_id: string; type: "photo" | "signature"; url: string; created_at: string };
+export type JobAttachment = { id: string; job_id: string; type: "photo" | "signature" | "document"; url: string; label: string | null; filename: string | null; created_at: string };
 
 export const jobsApi = {
   list: () => api.get<Job[]>("/api/jobs"),
@@ -45,6 +45,26 @@ export const jobsApi = {
 
   getAttachments: (jobId: string) => api.get<JobAttachment[]>(`/api/jobs/${jobId}/attachments`),
 
-  addAttachment: (jobId: string, data: { type: "photo" | "signature"; url: string }) =>
+  addAttachment: (jobId: string, data: { type: "photo" | "signature" | "document"; url: string; label?: string | null; filename?: string | null }) =>
     api.post<JobAttachment>(`/api/jobs/${jobId}/attachments`, data),
+
+  getLineItems: (jobId: string) => api.get<JobLineItem[]>(`/api/jobs/${jobId}/line-items`),
+
+  saveLineItems: (jobId: string, lineItems: JobLineItemInput[]) =>
+    api.patch<Job>(`/api/jobs/${jobId}/line-items`, { lineItems }),
+
+  convertToEstimate: (jobId: string) => api.post<{ estimateId: string }>(`/api/jobs/${jobId}/convert-to-estimate`, {}),
 };
+
+export type JobLineItem = {
+  id: string;
+  description: string;
+  sku: string | null;
+  item_type: string;
+  quantity: number;
+  cost: number;
+  rate: number;
+  amount: number;
+};
+
+export type JobLineItemInput = { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number };

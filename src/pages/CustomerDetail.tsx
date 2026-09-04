@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Phone, MessageSquare, Mail, ArrowLeft, MapPin,
-  Wrench, FileText, Camera, Plus, Bell, CheckCircle2, Pencil, X,
+  Wrench, FileText, Camera, Plus, Bell, CheckCircle2, Pencil, X, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { customersApi, type CustomerAttachment, type CustomerDetailBundle, type PreviousSale } from "@/lib/api/customers";
+import { reportsApi, type CustomerReminder } from "@/lib/api/reports";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { formatPhoneInput } from "@/lib/phone";
@@ -67,10 +68,17 @@ export default function CustomerDetail() {
   // edit Equipment on File — all three are now real (Gate Codes below were rendered but never
   // wired up to save at all, that's fixed here too).
   const [editOpen, setEditOpen] = useState(false);
-  const [editDraft, setEditDraft] = useState({ name: "", type: "Residential", phone: "", email: "", address: "", pump: "", heater: "", filter: "", salt: "" });
+  const [editDraft, setEditDraft] = useState({ firstName: "", lastName: "", type: "Residential", phone: "", email: "", address: "", pump: "", heater: "", filter: "", salt: "" });
   const [gateDraft, setGateDraft] = useState({ frontGate: "", houseGate: "", padlock: "", subdivisionEntrance: "none", notes: "" });
   const [addContactOpen, setAddContactOpen] = useState(false);
   const [contactDraft, setContactDraft] = useState({ firstName: "", lastName: "", phone: "", email: "" });
+
+  // Client request 2026-09-03: "Add plus icon to add more service reminders in the customer
+  // profile" -- reuses the same customer_reminders system already built for the Reports page,
+  // just surfaced directly here so staff don't have to leave the customer to add one.
+  const [reminders, setReminders] = useState<CustomerReminder[]>([]);
+  const [reminderTypeOpen, setReminderTypeOpen] = useState(false);
+  const [reminderTypeDraft, setReminderTypeDraft] = useState({ label: "", frequencyMonths: "", nextDue: "" });
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -87,10 +95,14 @@ export default function CustomerDetail() {
       setInvoices(bundle.invoices);
       setHousehold(bundle.household);
       setPreviousSales(bundle.previousSales);
+      const allReminders = await reportsApi.reminders();
+      setReminders(allReminders.filter((r) => r.customer_id === id));
       const eq = (bundle.customer.equipment ?? {}) as Record<string, string>;
       const gc = (bundle.customer.gate_codes ?? {}) as Record<string, string>;
+      const [fallbackFirst, ...fallbackRest] = bundle.customer.name.split(" ");
       setEditDraft({
-        name: bundle.customer.name,
+        firstName: bundle.customer.first_name ?? fallbackFirst ?? "",
+        lastName: bundle.customer.last_name ?? fallbackRest.join(" "),
         type: bundle.customer.type,
         phone: bundle.customer.phone ?? "",
         email: bundle.customer.email ?? "",
@@ -174,6 +186,29 @@ export default function CustomerDetail() {
     load();
   };
 
+  const handleAddReminderType = async () => {
+    if (!id || !reminderTypeDraft.label || !reminderTypeDraft.frequencyMonths || !reminderTypeDraft.nextDue) return;
+    await reportsApi.addReminder({
+      customerId: id,
+      label: reminderTypeDraft.label,
+      frequencyMonths: parseInt(reminderTypeDraft.frequencyMonths, 10),
+      nextDue: reminderTypeDraft.nextDue,
+    });
+    setReminderTypeDraft({ label: "", frequencyMonths: "", nextDue: "" });
+    setReminderTypeOpen(false);
+    load();
+  };
+
+  const handleMarkReminderDone = async (reminderId: string) => {
+    await reportsApi.markReminderDone(reminderId);
+    load();
+  };
+
+  const handleDeleteReminder = async (reminderId: string) => {
+    await reportsApi.deleteReminder(reminderId);
+    load();
+  };
+
   const handleSyncToQuickbooks = async () => {
     if (!id) return;
     setQboSyncing(true);
@@ -190,7 +225,8 @@ export default function CustomerDetail() {
   const handleSaveEdit = async () => {
     if (!id) return;
     await customersApi.update(id, {
-      name: editDraft.name,
+      firstName: editDraft.firstName,
+      lastName: editDraft.lastName,
       type: editDraft.type,
       phone: editDraft.phone || null,
       email: editDraft.email || null,
@@ -209,7 +245,8 @@ export default function CustomerDetail() {
   const handleAddContact = async () => {
     if (!id || !contactDraft.firstName || !contactDraft.lastName) return;
     await customersApi.addHouseholdMember(id, {
-      name: `${contactDraft.firstName} ${contactDraft.lastName}`,
+      firstName: contactDraft.firstName,
+      lastName: contactDraft.lastName,
       phone: contactDraft.phone || null,
       email: contactDraft.email || null,
     });
@@ -418,6 +455,58 @@ export default function CustomerDetail() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Client request 2026-09-03: "Add plus icon to add more service reminders" — several
+              named reminder types per customer (Filter Cleaning every 4mo, Salt Cell every 6mo,
+              etc.), distinct from the single reminder above. */}
+          <Card className="border-[#E2E8F0] shadow-sm">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
+              <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+                <Bell className="w-4 h-4 text-[#0891B2]" /> Other Reminders
+              </CardTitle>
+              <Button size="icon" variant="outline" className="h-7 w-7 border-[#E2E8F0]" onClick={() => setReminderTypeOpen(true)}>
+                <Plus className="w-3.5 h-3.5" />
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-0">
+              {reminders.length === 0 && <p className="text-xs text-[#64748B]">No additional reminders yet.</p>}
+              {reminders.map((r) => {
+                const overdue = new Date(r.next_due) <= new Date();
+                return (
+                  <div key={r.id} className="flex items-center justify-between rounded-lg border border-[#F1F5F9] px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium text-[#0F172A]">{r.label}</p>
+                      <p className={`text-xs ${overdue ? "text-[#DC2626] font-medium" : "text-[#64748B]"}`}>
+                        Due {r.next_due} · every {r.frequency_months}mo{overdue ? " · overdue" : ""}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleMarkReminderDone(r.id)}>
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteReminder(r.id)}>
+                        <Trash2 className="w-3.5 h-3.5 text-[#DC2626]" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Dialog open={reminderTypeOpen} onOpenChange={setReminderTypeOpen}>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Add Reminder Type</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div><Label>Label</Label><Input className="mt-1" placeholder="e.g. Filter Cleaning" value={reminderTypeDraft.label} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, label: e.target.value }))} /></div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Frequency (months)</Label><Input type="number" className="mt-1" placeholder="e.g. 4" value={reminderTypeDraft.frequencyMonths} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, frequencyMonths: e.target.value }))} /></div>
+                  <div><Label>Next Due</Label><Input type="date" className="mt-1" value={reminderTypeDraft.nextDue} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, nextDue: e.target.value }))} /></div>
+                </div>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddReminderType}>Save</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Equipment on File (client bug report 2026-09-02: now editable via the header Edit
               button) */}
@@ -698,17 +787,18 @@ export default function CustomerDetail() {
           <DialogHeader><DialogTitle>Edit Customer</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Name</Label><Input className="mt-1" value={editDraft.name} onChange={(e) => setEditDraft((p) => ({ ...p, name: e.target.value }))} /></div>
-              <div>
-                <Label>Type</Label>
-                <Select value={editDraft.type} onValueChange={(v) => setEditDraft((p) => ({ ...p, type: v }))}>
-                  <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Residential">Residential</SelectItem>
-                    <SelectItem value="Commercial">Commercial</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              <div><Label>First Name</Label><Input className="mt-1" value={editDraft.firstName} onChange={(e) => setEditDraft((p) => ({ ...p, firstName: e.target.value }))} /></div>
+              <div><Label>Last Name</Label><Input className="mt-1" value={editDraft.lastName} onChange={(e) => setEditDraft((p) => ({ ...p, lastName: e.target.value }))} /></div>
+            </div>
+            <div>
+              <Label>Type</Label>
+              <Select value={editDraft.type} onValueChange={(v) => setEditDraft((p) => ({ ...p, type: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Residential">Residential</SelectItem>
+                  <SelectItem value="Commercial">Commercial</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><Label>Phone</Label><Input className="mt-1" value={editDraft.phone} onChange={(e) => setEditDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>

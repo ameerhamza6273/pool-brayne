@@ -21,8 +21,7 @@ export const posApi = {
     subtotal: number;
     tax: number;
     total: number;
-    paymentMethod: string;
-    opaqueData?: { dataDescriptor: string; dataValue: string };
-    items: { id: string | null; name: string; qty: number; price: number; isService: boolean }[];
+    payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[];
+    items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null }[];
   }) => api.post<{ id: string }>("/api/pos/checkout", data),
 };

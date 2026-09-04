@@ -2,6 +2,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import type { LineItemInput } from "@/lib/api/invoicing";
 import type { ItemWithStock } from "@/lib/api/inventory";
 
@@ -51,14 +52,21 @@ export default function LineItemsEditor({
                 </SelectContent>
               </Select>
               {inventoryItems.length > 0 && (
-                <Select value="" onValueChange={(v) => applyInventoryPick(idx, v)}>
-                  <SelectTrigger className="h-8 flex-1 text-xs"><SelectValue placeholder="Pick from inventory (optional)" /></SelectTrigger>
-                  <SelectContent>
-                    {inventoryItems.map((inv) => (
-                      <SelectItem key={inv.id} value={inv.id}>{inv.sku} — {inv.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex-1">
+                  <SearchableSelect
+                    className="h-8 text-xs"
+                    value=""
+                    onChange={(v) => applyInventoryPick(idx, v)}
+                    placeholder="Pick from inventory (optional)"
+                    searchPlaceholder="Search name, SKU, or description..."
+                    emptyText="No matching items."
+                    options={inventoryItems.map((inv) => ({
+                      value: inv.id,
+                      label: `${inv.sku} — ${inv.name}`,
+                      sublabel: [inv.long_description, inv.manufacturer].filter(Boolean).join(" · ") || undefined,
+                    }))}
+                  />
+                </div>
               )}
               <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-[#DC2626] shrink-0" onClick={() => removeLine(idx)}>
                 <Trash2 className="w-4 h-4" />

@@ -28,7 +28,7 @@ export default function InvoiceDetail() {
   const navigate = useNavigate();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; invoice_business_name: string | null } | null>(null);
+  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [payOpen, setPayOpen] = useState(false);
   const [qboSyncing, setQboSyncing] = useState(false);
@@ -184,6 +184,9 @@ export default function InvoiceDetail() {
                 <h2 className="text-xl font-bold text-[#0F172A]">{business?.invoice_business_name || business?.name || "—"}</h2>
               </div>
               {business?.address && <p className="text-sm text-[#64748B]">{business.address}</p>}
+              {(business?.city || business?.state || business?.zip) && (
+                <p className="text-sm text-[#64748B]">{[business?.city, business?.state].filter(Boolean).join(", ")} {business?.zip ?? ""}</p>
+              )}
               {business?.phone && <p className="text-sm text-[#64748B]">{business.phone}</p>}
             </div>
             <div className="text-right">

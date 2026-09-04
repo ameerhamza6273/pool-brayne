@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { jobTypes, callTypes, callSources } from "@/lib/data";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { jobsApi } from "@/lib/api/jobs";
 import { profilesApi } from "@/lib/api/profiles";
 import { customersApi } from "@/lib/api/customers";
@@ -225,14 +226,15 @@ export default function Jobs() {
               <div className="space-y-4 pt-2">
                 <div>
                   <Label>Customer</Label>
-                  <Select value={newJob.customerId} onValueChange={(v) => setNewJob((p) => ({ ...p, customerId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select customer" /></SelectTrigger>
-                    <SelectContent>
-                      {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={newJob.customerId}
+                      onChange={(v) => setNewJob((p) => ({ ...p, customerId: v }))}
+                      placeholder="Select customer"
+                      searchPlaceholder="Search customers..."
+                      options={customers.map((c) => ({ value: c.id, label: c.name, sublabel: [c.phone, c.address].filter(Boolean).join(" · ") || undefined }))}
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label>Job Type</Label>

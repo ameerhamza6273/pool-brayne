@@ -42,7 +42,7 @@ export default async function customersRoutes(app: FastifyInstance) {
   // row, linked by a shared `household_id` when there's more than one.
   app.post<{
     Body: {
-      contacts: { name: string; email: string | null; phone: string | null }[];
+      contacts: { firstName: string; lastName: string; email: string | null; phone: string | null }[];
       type: string;
       tags: string[];
       address: string | null;
@@ -55,9 +55,10 @@ export default async function customersRoutes(app: FastifyInstance) {
       const householdId = householdRow.id;
       const rows = [];
       for (const contact of contacts) {
+        const name = `${contact.firstName} ${contact.lastName}`.trim();
         const [row] = await tx`
-          insert into customers (tenant_id, name, type, tags, email, phone, address, household_id)
-          values (${tenant.id}, ${contact.name}, ${type}, ${tags}, ${contact.email}, ${contact.phone}, ${address}, ${householdId})
+          insert into customers (tenant_id, name, first_name, last_name, type, tags, email, phone, address, household_id)
+          values (${tenant.id}, ${name}, ${contact.firstName}, ${contact.lastName}, ${type}, ${tags}, ${contact.email}, ${contact.phone}, ${address}, ${householdId})
           returning *
         `;
         rows.push(row);
@@ -73,6 +74,8 @@ export default async function customersRoutes(app: FastifyInstance) {
     Params: { id: string };
     Body: {
       name?: string;
+      firstName?: string;
+      lastName?: string;
       type?: string;
       phone?: string | null;
       email?: string | null;
@@ -82,10 +85,16 @@ export default async function customersRoutes(app: FastifyInstance) {
     };
   }>("/:id", async (req) => {
     const { id } = req.params;
-    const { name, type, phone, email, address, equipment, gateCodes } = req.body;
+    const { name, firstName, lastName, type, phone, email, address, equipment, gateCodes } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const fields: Record<string, unknown> = {};
-      if (name !== undefined) fields.name = name;
+      if (firstName !== undefined) fields.first_name = firstName;
+      if (lastName !== undefined) fields.last_name = lastName;
+      if (firstName !== undefined && lastName !== undefined) {
+        fields.name = `${firstName} ${lastName}`.trim();
+      } else if (name !== undefined) {
+        fields.name = name;
+      }
       if (type !== undefined) fields.type = type;
       if (phone !== undefined) fields.phone = phone;
       if (email !== undefined) fields.email = email;
@@ -99,11 +108,12 @@ export default async function customersRoutes(app: FastifyInstance) {
 
   // Client bug report 2026-09-02: "cannot add Other Contacts" after a customer already exists —
   // adds another customer row sharing the same property address/household.
-  app.post<{ Params: { id: string }; Body: { name: string; email: string | null; phone: string | null } }>(
+  app.post<{ Params: { id: string }; Body: { firstName: string; lastName: string; email: string | null; phone: string | null } }>(
     "/:id/household",
     async (req) => {
       const { id } = req.params;
-      const { name, email, phone } = req.body;
+      const { firstName, lastName, email, phone } = req.body;
+      const name = `${firstName} ${lastName}`.trim();
       return withTenantContext(req.userId, async (tx) => {
         const [existing] = await tx`select household_id, type, tags, address from customers where id = ${id} limit 1`;
         const [tenant] = await tx`select current_tenant_id() as id`;
@@ -114,8 +124,8 @@ export default async function customersRoutes(app: FastifyInstance) {
           await tx`update customers set household_id = ${householdId} where id = ${id}`;
         }
         const [row] = await tx`
-          insert into customers (tenant_id, name, type, tags, email, phone, address, household_id)
-          values (${tenant.id}, ${name}, ${existing.type}, ${existing.tags}, ${email}, ${phone}, ${existing.address}, ${householdId})
+          insert into customers (tenant_id, name, first_name, last_name, type, tags, email, phone, address, household_id)
+          values (${tenant.id}, ${name}, ${firstName}, ${lastName}, ${existing.type}, ${existing.tags}, ${email}, ${phone}, ${existing.address}, ${householdId})
           returning *
         `;
         return row;

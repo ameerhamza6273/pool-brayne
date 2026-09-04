@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { settingsApi } from "@/lib/api/settings";
 import { profilesApi } from "@/lib/api/profiles";
 import { quickbooksApi } from "@/lib/api/quickbooks";
@@ -50,6 +51,9 @@ export default function Settings() {
   const [tenantName, setTenantName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zip, setZip] = useState("");
   const [invoiceBusinessName, setInvoiceBusinessName] = useState("");
   const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
@@ -65,6 +69,9 @@ export default function Settings() {
     setTenantName(data.tenantName);
     setPhone(data.phone);
     setAddress(data.address);
+    setCity(data.city ?? "");
+    setState(data.state ?? "");
+    setZip(data.zip ?? "");
     setInvoiceBusinessName(data.invoiceBusinessName);
     setPayrollWeekStartDay(data.payrollWeekStartDay);
     setSelectedPlan(data.planId);
@@ -81,7 +88,7 @@ export default function Settings() {
   }, [loadSettings]);
 
   const handleSaveCompany = async () => {
-    await settingsApi.saveCompany({ name: tenantName, phone, address, invoiceBusinessName });
+    await settingsApi.saveCompany({ name: tenantName, phone, address, city, state, zip, invoiceBusinessName });
   };
 
   const handleSavePayrollWeekStart = async (value: string) => {
@@ -165,7 +172,29 @@ export default function Settings() {
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="text-sm font-medium text-[#0F172A]">Address</Label>
-                  <Input value={address} onChange={(e) => setAddress(e.target.value)} className="mt-1 h-10" />
+                  <AddressAutocomplete
+                    className="mt-1 h-10"
+                    value={address}
+                    onChange={setAddress}
+                    onSelectParts={(parts) => {
+                      setAddress(parts.streetLine);
+                      setCity(parts.city);
+                      setState(parts.state);
+                      setZip(parts.zip);
+                    }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-[#0F172A]">City</Label>
+                  <Input value={city} onChange={(e) => setCity(e.target.value)} className="mt-1 h-10" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-[#0F172A]">State</Label>
+                  <Input value={state} onChange={(e) => setState(e.target.value)} className="mt-1 h-10" />
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-[#0F172A]">Zip Code</Label>
+                  <Input value={zip} onChange={(e) => setZip(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div className="sm:col-span-2">
                   <Label className="text-sm font-medium text-[#0F172A]">Invoice Business Name</Label>

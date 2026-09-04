@@ -101,6 +101,34 @@ export default async function inventoryRoutes(app: FastifyInstance) {
 
   app.get("/suppliers", async (req) => withTenantContext(req.userId, (tx) => tx`select * from suppliers order by name`));
 
+  app.post<{ Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null } }>("/suppliers", async (req) => {
+    const { name, contact, phone, leadTime } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [row] = await tx`
+        insert into suppliers (tenant_id, name, contact, phone, lead_time)
+        values (${tenant.id}, ${name}, ${contact}, ${phone}, ${leadTime})
+        returning *
+      `;
+      return row;
+    });
+  });
+
+  app.patch<{ Params: { id: string }; Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null } }>(
+    "/suppliers/:id",
+    async (req) => {
+      const { id } = req.params;
+      const { name, contact, phone, leadTime } = req.body;
+      return withTenantContext(req.userId, async (tx) => {
+        const [row] = await tx`
+          update suppliers set name = ${name}, contact = ${contact}, phone = ${phone}, lead_time = ${leadTime}
+          where id = ${id} returning *
+        `;
+        return row;
+      });
+    },
+  );
+
   // Client request 2026-08-27: map each inventory item to QuickBooks COGS/Income/Asset accounts.
   app.get("/qbo-accounts", async (req) => withQuickbooksConnection(req.userId, getChartOfAccounts));
 
@@ -158,6 +186,25 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       const [row] = await tx`
         insert into purchase_orders (tenant_id, number, supplier_id, status)
         values (${tenant.id}, ${number}, ${supplierId}, 'Draft')
+        returning *
+      `;
+      return row;
+    });
+  });
+
+  // Client request 2026-09-03: PO list had no way to view/edit an existing order.
+  app.patch<{
+    Params: { id: string };
+    Body: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null };
+  }>("/purchase-orders/:id", async (req) => {
+    const { id } = req.params;
+    const { number, supplierId, status, itemCount, total, receivedDate } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        update purchase_orders
+        set number = ${number}, supplier_id = ${supplierId}, status = ${status},
+            item_count = ${itemCount}, total = ${total}, received_date = ${receivedDate}
+        where id = ${id}
         returning *
       `;
       return row;

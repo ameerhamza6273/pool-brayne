@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { inventoryApi } from "@/lib/api/inventory";
 import type { Database } from "@/lib/database.types";
 import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff } from "@/lib/api/inventory";
@@ -72,18 +73,24 @@ const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit
 
 // Client request 2026-09-02: a real scannable barcode (Code128, from the SKU) sized for a
 // 2"x1" Zebra label printer, distinct from the text-only Avery sheet above.
-const printZebraLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost">[]) => {
+// Client request 2026-09-03: "customize labels for barcode scanner using item #" — barcode can
+// now encode either the SKU or the internal Item # (`inventory_items.item_number`).
+const printZebraLabels = (
+  items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost" | "item_number">[],
+  barcodeSource: "sku" | "itemNumber" = "sku",
+) => {
   const win = window.open("", "_blank");
   if (!win || !win.document) return;
   const labelsHtml = items
     .map((item) => {
+      const code = barcodeSource === "itemNumber" && item.item_number != null ? String(item.item_number) : item.sku;
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      JsBarcode(svg, item.sku, { format: "CODE128", width: 1.5, height: 32, displayValue: false, margin: 0 });
+      JsBarcode(svg, code, { format: "CODE128", width: 1.5, height: 32, displayValue: false, margin: 0 });
       return `
         <div class="label">
           <div class="name">${item.name}</div>
           ${svg.outerHTML}
-          <div class="row"><span class="sku">${item.sku}</span><span class="price">$${(item.price ?? item.unit_cost).toFixed(2)}</span></div>
+          <div class="row"><span class="sku">${code}</span><span class="price">$${(item.price ?? item.unit_cost).toFixed(2)}</span></div>
         </div>`;
     })
     .join("");
@@ -140,7 +147,12 @@ export default function Inventory() {
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
   });
-  const [newPo, setNewPo] = useState({ supplierId: "", number: "" });
+  const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
+  const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001` });
+  const [poError, setPoError] = useState("");
+  const [newSupplier, setNewSupplier] = useState({ name: "", contact: "", phone: "", leadTime: "" });
+  const [supplierOpen, setSupplierOpen] = useState(false);
+  const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
 
   // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage etc.
   const [writeoffs, setWriteoffs] = useState<(InventoryWriteoff & { inventory_items: { name: string; sku: string } | null })[]>([]);
@@ -201,10 +213,78 @@ export default function Inventory() {
   };
 
   const handleCreatePo = async () => {
-    if (!newPo.supplierId || !newPo.number) return;
+    if (!newPo.supplierId) {
+      setPoError("Pick a supplier first.");
+      return;
+    }
+    if (!newPo.number.trim()) {
+      setPoError("PO number can't be blank.");
+      return;
+    }
+    setPoError("");
     await inventoryApi.createPurchaseOrder({ supplierId: newPo.supplierId, number: newPo.number });
-    setNewPo({ supplierId: "", number: "" });
+    setNewPo({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(purchaseOrders.length + 2).padStart(3, "0")}` });
     setPoOpen(false);
+    loadInventory();
+  };
+
+  // Client request 2026-09-03: "Cannot add or edit -- suppliers / vendors".
+  const openAddSupplier = () => {
+    setEditSupplier(null);
+    setNewSupplier({ name: "", contact: "", phone: "", leadTime: "" });
+    setSupplierOpen(true);
+  };
+
+  const openEditSupplier = (s: Supplier) => {
+    setEditSupplier(s);
+    setNewSupplier({ name: s.name, contact: s.contact ?? "", phone: s.phone ?? "", leadTime: s.lead_time ?? "" });
+    setSupplierOpen(true);
+  };
+
+  const handleSaveSupplier = async () => {
+    if (!newSupplier.name.trim()) return;
+    const data = {
+      name: newSupplier.name,
+      contact: newSupplier.contact || null,
+      phone: newSupplier.phone || null,
+      leadTime: newSupplier.leadTime || null,
+    };
+    if (editSupplier) {
+      await inventoryApi.updateSupplier(editSupplier.id, data);
+    } else {
+      await inventoryApi.addSupplier(data);
+    }
+    setSupplierOpen(false);
+    loadInventory();
+  };
+
+  // Client request 2026-09-03: PO list needed a view/edit option.
+  const [poDetail, setPoDetail] = useState<PurchaseOrder | null>(null);
+  const [poDetailDraft, setPoDetailDraft] = useState({ number: "", supplierId: "", status: "Draft", itemCount: "", total: "", receivedDate: "" });
+
+  const openPoDetail = (po: PurchaseOrder) => {
+    setPoDetail(po);
+    setPoDetailDraft({
+      number: po.number,
+      supplierId: po.supplier_id ?? "",
+      status: po.status,
+      itemCount: String(po.item_count),
+      total: String(po.total),
+      receivedDate: po.received_date ?? "",
+    });
+  };
+
+  const handleSavePoDetail = async () => {
+    if (!poDetail) return;
+    await inventoryApi.updatePurchaseOrder(poDetail.id, {
+      number: poDetailDraft.number,
+      supplierId: poDetailDraft.supplierId,
+      status: poDetailDraft.status,
+      itemCount: parseInt(poDetailDraft.itemCount, 10) || 0,
+      total: parseFloat(poDetailDraft.total) || 0,
+      receivedDate: poDetailDraft.receivedDate || null,
+    });
+    setPoDetail(null);
     loadInventory();
   };
 
@@ -260,7 +340,7 @@ export default function Inventory() {
   const handlePrintZebraLabels = () => {
     const toPrint = selectedIds.size > 0 ? filtered.filter((p) => selectedIds.has(p.id)) : filtered;
     if (toPrint.length === 0) return;
-    printZebraLabels(toPrint);
+    printZebraLabels(toPrint, barcodeSource);
   };
 
   const handleCreateWriteoff = async () => {
@@ -378,6 +458,13 @@ export default function Inventory() {
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintLabels}>
                 <Tag className="w-4 h-4" /> Print Labels{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
               </Button>
+              <Select value={barcodeSource} onValueChange={(v) => setBarcodeSource(v as "sku" | "itemNumber")}>
+                <SelectTrigger className="h-10 w-32 bg-white border-[#E2E8F0]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sku">Barcode: SKU</SelectItem>
+                  <SelectItem value="itemNumber">Barcode: Item #</SelectItem>
+                </SelectContent>
+              </Select>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintZebraLabels}>
                 <Barcode className="w-4 h-4" /> Zebra Barcode{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
               </Button>
@@ -460,7 +547,25 @@ export default function Inventory() {
           </div>
         </TabsContent>
 
-        <TabsContent value="suppliers" className="mt-4">
+        <TabsContent value="suppliers" className="mt-4 space-y-3">
+          <div className="flex justify-end">
+            <Dialog open={supplierOpen} onOpenChange={setSupplierOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10" onClick={openAddSupplier}>
+                  <Plus className="w-4 h-4" /> Add Supplier
+                </Button>
+              </DialogTrigger>
+              <DialogContent><DialogHeader><DialogTitle>{editSupplier ? "Edit Supplier" : "Add Supplier"}</DialogTitle></DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <div><Label>Name</Label><Input className="mt-1" value={newSupplier.name} onChange={(e) => setNewSupplier((p) => ({ ...p, name: e.target.value }))} /></div>
+                  <div><Label>Contact</Label><Input className="mt-1" value={newSupplier.contact} onChange={(e) => setNewSupplier((p) => ({ ...p, contact: e.target.value }))} /></div>
+                  <div><Label>Phone</Label><Input className="mt-1" value={newSupplier.phone} onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))} /></div>
+                  <div><Label>Lead Time</Label><Input className="mt-1" placeholder="3-5 days" value={newSupplier.leadTime} onChange={(e) => setNewSupplier((p) => ({ ...p, leadTime: e.target.value }))} /></div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveSupplier}>{editSupplier ? "Save Changes" : "Add Supplier"}</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -470,15 +575,17 @@ export default function Inventory() {
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Contact</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Phone</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Lead Time</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {suppliers.map((s) => (
-                    <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                    <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => openEditSupplier(s)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{s.name}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.contact}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.phone}</td>
                       <td className="text-right py-3 px-4"><Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{s.lead_time}</Badge></td>
+                      <td className="text-right py-3 px-4"><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -502,11 +609,42 @@ export default function Inventory() {
                       <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
+                  {poError && <p className="text-sm text-[#DC2626]">{poError}</p>}
                   <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreatePo}>Create PO</Button>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
+
+          <Dialog open={!!poDetail} onOpenChange={(open) => !open && setPoDetail(null)}>
+            <DialogContent><DialogHeader><DialogTitle>Purchase Order {poDetail?.number}</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div><Label>PO Number</Label><Input className="mt-1" value={poDetailDraft.number} onChange={(e) => setPoDetailDraft((p) => ({ ...p, number: e.target.value }))} /></div>
+                <div><Label>Supplier</Label>
+                  <Select value={poDetailDraft.supplierId} onValueChange={(v) => setPoDetailDraft((p) => ({ ...p, supplierId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                    <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div><Label>Status</Label>
+                  <Select value={poDetailDraft.status} onValueChange={(v) => setPoDetailDraft((p) => ({ ...p, status: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Draft">Draft</SelectItem>
+                      <SelectItem value="Ordered">Ordered</SelectItem>
+                      <SelectItem value="Received">Received</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>Item Count</Label><Input type="number" className="mt-1" value={poDetailDraft.itemCount} onChange={(e) => setPoDetailDraft((p) => ({ ...p, itemCount: e.target.value }))} /></div>
+                  <div><Label>Total ($)</Label><Input type="number" className="mt-1" value={poDetailDraft.total} onChange={(e) => setPoDetailDraft((p) => ({ ...p, total: e.target.value }))} /></div>
+                </div>
+                <div><Label>Received Date</Label><Input type="date" className="mt-1" value={poDetailDraft.receivedDate} onChange={(e) => setPoDetailDraft((p) => ({ ...p, receivedDate: e.target.value }))} /></div>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleSavePoDetail}>Save Changes</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -523,7 +661,7 @@ export default function Inventory() {
                 </thead>
                 <tbody>
                   {purchaseOrders.map((po) => (
-                    <tr key={po.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                    <tr key={po.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => openPoDetail(po)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{po.number}</td>
                       <td className="py-3 px-4 text-[#64748B]">{po.suppliers?.name ?? "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{po.item_count}</td>
@@ -585,10 +723,20 @@ export default function Inventory() {
                 <div className="space-y-4 pt-2">
                   <div>
                     <Label>Product</Label>
-                    <Select value={writeoffDraft.itemId} onValueChange={(v) => setWriteoffDraft((p) => ({ ...p, itemId: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select product" /></SelectTrigger>
-                      <SelectContent>{items.map((i) => <SelectItem key={i.id} value={i.id}>{i.sku} — {i.name}</SelectItem>)}</SelectContent>
-                    </Select>
+                    <div className="mt-1">
+                      <SearchableSelect
+                        value={writeoffDraft.itemId}
+                        onChange={(v) => setWriteoffDraft((p) => ({ ...p, itemId: v }))}
+                        placeholder="Select product"
+                        searchPlaceholder="Search name, SKU, or description..."
+                        emptyText="No matching items."
+                        options={items.map((i) => ({
+                          value: i.id,
+                          label: `${i.sku} — ${i.name}`,
+                          sublabel: [i.long_description, i.manufacturer].filter(Boolean).join(" · ") || undefined,
+                        }))}
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><Label>Quantity</Label><Input type="number" className="mt-1" value={writeoffDraft.quantity} onChange={(e) => setWriteoffDraft((p) => ({ ...p, quantity: e.target.value }))} /></div>
@@ -599,6 +747,7 @@ export default function Inventory() {
                         <SelectContent>
                           <SelectItem value="Store Use">Store Use</SelectItem>
                           <SelectItem value="Truck Use">Truck Use</SelectItem>
+                          <SelectItem value="Weekly Service Use">Weekly Service Use</SelectItem>
                           <SelectItem value="Shrinkage">Shrinkage</SelectItem>
                           <SelectItem value="Other">Other</SelectItem>
                         </SelectContent>

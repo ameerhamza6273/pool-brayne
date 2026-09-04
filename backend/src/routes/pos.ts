@@ -74,42 +74,67 @@ export default async function posRoutes(app: FastifyInstance) {
       subtotal: number;
       tax: number;
       total: number;
-      paymentMethod: string;
-      opaqueData?: { dataDescriptor: string; dataValue: string };
-      items: { id: string | null; name: string; qty: number; price: number; isService: boolean }[];
+      payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[];
+      items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null }[];
     };
   }>("/checkout", async (req, reply) => {
-    const { customerId, subtotal, tax, total, paymentMethod, opaqueData, items } = req.body;
+    const { customerId, subtotal, tax, total, payments, items } = req.body;
+
+    if (payments.length === 0) {
+      reply.code(400).send({ error: "At least one payment is required" });
+      return;
+    }
+    const paidTotal = payments.reduce((sum, p) => sum + p.amount, 0);
+    if (Math.abs(paidTotal - total) > 0.01) {
+      reply.code(400).send({ error: "Payment amounts don't add up to the total" });
+      return;
+    }
 
     // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
-    // charged BEFORE the order/stock changes are committed, so a declined card leaves nothing
-    // behind. Cash/ACH stay simulated (no real bank processor wired up for those).
-    let providerTransactionId: string | null = null;
-    if (paymentMethod === "Card") {
-      if (!opaqueData) {
-        reply.code(400).send({ error: "Card payment requires tokenized card data" });
-        return;
+    // every Card tender line is charged BEFORE the order/stock changes are committed, so a
+    // decline on any card leaves nothing behind. Cash/ACH/Check stay simulated (no real bank
+    // processor wired up for those). Client request 2026-09-03: "use more than one payment type
+    // or multiple credit cards" -- each tender line gets its own charge/transaction id.
+    const chargedPayments: { method: string; amount: number; providerTransactionId: string | null }[] = [];
+    for (const p of payments) {
+      if (p.method === "Card") {
+        if (!p.opaqueData) {
+          reply.code(400).send({ error: "Card payment requires tokenized card data" });
+          return;
+        }
+        const result = await chargeOpaqueData(p.amount, p.opaqueData);
+        if (!result.success) {
+          reply.code(400).send({ error: result.error });
+          return;
+        }
+        chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: result.transactionId });
+      } else {
+        chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: null });
       }
-      const result = await chargeOpaqueData(total, opaqueData);
-      if (!result.success) {
-        reply.code(400).send({ error: result.error });
-        return;
-      }
-      providerTransactionId = result.transactionId;
     }
+
+    const summaryMethod = chargedPayments.length > 1 ? "Split" : chargedPayments[0].method;
+    const summaryTransactionId = chargedPayments.length === 1 ? chargedPayments[0].providerTransactionId : null;
 
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [order] = await tx`
         insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id)
-        values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${paymentMethod}, ${providerTransactionId})
+        values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId})
         returning id
       `;
 
+      for (const p of chargedPayments) {
+        await tx`
+          insert into pos_order_payments (tenant_id, order_id, method, amount, provider_transaction_id)
+          values (${tenant.id}, ${order.id}, ${p.method}, ${p.amount}, ${p.providerTransactionId})
+        `;
+      }
+
       for (const item of items) {
         await tx`
-          insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount)
-          values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty})
+          insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount, serial_number)
+          values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty}, ${item.serialNumber ?? null})
         `;
         // Non-stock/custom items (id null) and services never touch inventory. Client request
         // 2026-09-02: stock is allowed to go negative (out-of-stock sales, returns as negative

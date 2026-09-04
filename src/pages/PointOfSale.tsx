@@ -29,6 +29,7 @@ type CartItem = {
   qty: number;
   taxable: boolean;
   unit: string;
+  serial?: string;
 };
 
 const categoryColors: Record<string, string> = {
@@ -56,7 +57,12 @@ export default function PointOfSale() {
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"Cash" | "Card" | "ACH" | null>(null);
+  // Client request 2026-09-03: "Allow us to use more than one payment type or multiple credit
+  // card" — a sale can be tendered across several lines (e.g. part cash, part card) instead of
+  // one single method.
+  const [tenderLines, setTenderLines] = useState<{ method: "Cash" | "Card" | "ACH" | "Check"; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[]>([]);
+  const [tenderMethod, setTenderMethod] = useState<"Cash" | "Card" | "ACH" | "Check">("Cash");
+  const [tenderAmount, setTenderAmount] = useState("");
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState<"percent" | "amount">("percent");
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -166,34 +172,52 @@ export default function PointOfSale() {
     setCustomerId(null);
   };
 
-  const completeSale = async (opaqueData?: { dataDescriptor: string; dataValue: string }) => {
-    if (!paymentMethod) return;
+  const remainingTender = total - tenderLines.reduce((s, t) => s + t.amount, 0);
+
+  const addCashTender = () => {
+    const amt = parseFloat(tenderAmount);
+    if (!amt || amt <= 0) return;
+    setTenderLines((prev) => [...prev, { method: tenderMethod, amount: amt }]);
+    setTenderAmount("");
+  };
+
+  const addCardTender = (amount: number, opaqueData: { dataDescriptor: string; dataValue: string }) => {
+    setTenderLines((prev) => [...prev, { method: "Card", amount, opaqueData }]);
+    setTenderAmount("");
+  };
+
+  const removeTender = (index: number) => setTenderLines((prev) => prev.filter((_, i) => i !== index));
+
+  const completeSale = async () => {
+    if (Math.abs(remainingTender) > 0.01) return;
     const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(transactions.length + 1).padStart(3, "0")}`;
+    const paymentLabel = tenderLines.length > 1 ? `Split (${tenderLines.map((t) => t.method).join(" + ")})` : tenderLines[0].method;
 
     await posApi.checkout({
       customerId,
       subtotal,
       tax,
       total,
-      paymentMethod,
-      opaqueData,
+      payments: tenderLines.map((t) => ({ method: t.method, amount: t.amount, opaqueData: t.opaqueData })),
       items: cart.map((item) => ({
         id: item.id,
         name: item.name,
         qty: item.qty,
         price: item.price,
         isService: products.find((p) => p.id === item.id)?.category === "Services",
+        serialNumber: item.serial || null,
       })),
     });
 
-    setCompletedSale({ number: num, total, payment: paymentMethod, items: cart.reduce((s, i) => s + i.qty, 0) });
+    setCompletedSale({ number: num, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0) });
     setPaymentOpen(false);
     setReceiptOpen(true);
     setCart([]);
     setDiscount(0);
     setCustomerName("Walk-in");
     setCustomerId(null);
-    setPaymentMethod(null);
+    setTenderLines([]);
+    setTenderAmount("");
     loadPos();
   };
 
@@ -389,6 +413,12 @@ export default function PointOfSale() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-[#0F172A] truncate">{item.name}{item.qty < 0 ? " (Return)" : ""}</p>
                       <p className="text-xs text-[#64748B]">${item.price.toFixed(2)} / {item.unit}</p>
+                      <input
+                        placeholder="Serial # (optional)"
+                        className="mt-1 h-6 w-full text-xs border-0 border-b border-dashed border-[#E2E8F0] bg-transparent px-0 focus:outline-none focus:border-[#0891B2]"
+                        value={item.serial ?? ""}
+                        onChange={(e) => setCart((prev) => prev.map((c, i) => (i === index ? { ...c, serial: e.target.value } : c)))}
+                      />
                     </div>
                     <div className="flex items-center gap-1">
                       <button onClick={() => updateQty(item.id, index, -1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
@@ -445,7 +475,7 @@ export default function PointOfSale() {
                 </Button>
                 <Button
                   className="h-12 gap-2 bg-[#0891B2] hover:bg-[#0E7490] text-white flex-[2]"
-                  onClick={() => setPaymentOpen(true)}
+                  onClick={() => { setTenderLines([]); setTenderAmount(""); setPaymentOpen(true); }}
                 >
                   <CreditCard className="w-5 h-5" />
                   Charge ${total.toFixed(2)}
@@ -632,48 +662,86 @@ export default function PointOfSale() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="bg-[#F8FAFC] rounded-xl p-4 text-center">
-              <p className="text-sm text-[#64748B] font-medium">Amount Due</p>
-              <p className="text-3xl font-bold text-[#0891B2] mt-1">${total.toFixed(2)}</p>
-              <p className="text-xs text-[#64748B] mt-1">{cart.reduce((s, i) => s + i.qty, 0)} items · {customerName}</p>
+              <p className="text-sm text-[#64748B] font-medium">{remainingTender > 0.01 ? "Remaining Due" : "Amount Due"}</p>
+              <p className="text-3xl font-bold text-[#0891B2] mt-1">${Math.max(remainingTender, 0).toFixed(2)}</p>
+              <p className="text-xs text-[#64748B] mt-1">{cart.reduce((s, i) => s + i.qty, 0)} items · {customerName} · Total ${total.toFixed(2)}</p>
             </div>
-            <div>
-              <Label className="mb-2 block">Payment Method</Label>
-              <div className="grid grid-cols-3 gap-2">
-                {([
-                  { key: "Cash", icon: Banknote, label: "Cash" },
-                  { key: "Card", icon: CreditCard, label: "Card" },
-                  { key: "ACH", icon: FileText, label: "ACH" },
-                ] as const).map((m) => {
-                  const Icon = m.icon;
-                  return (
-                    <button
-                      key={m.key}
-                      onClick={() => setPaymentMethod(m.key)}
-                      className={`flex flex-col items-center gap-1.5 py-4 rounded-xl border transition-all ${
-                        paymentMethod === m.key
-                          ? "border-[#0891B2] bg-[#0891B2]/10 text-[#0891B2]"
-                          : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"
-                      }`}
-                    >
-                      <Icon className="w-6 h-6" />
-                      <span className="text-sm font-medium">{m.label}</span>
-                    </button>
-                  );
-                })}
+
+            {/* Client request 2026-09-03: split tender — combine cash/card/ACH/check, or several
+                cards, on one sale. Each line commits (and charges, for Card) individually. */}
+            {tenderLines.length > 0 && (
+              <div className="space-y-1.5">
+                {tenderLines.map((t, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm">
+                    <span className="font-medium text-[#0F172A]">{t.method}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[#0F172A]">${t.amount.toFixed(2)}</span>
+                      <button onClick={() => removeTender(i)} className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1 rounded">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-            {paymentMethod === "Card" ? (
-              <CardPaymentForm amount={total} submitLabel={`Complete Sale · $${total.toFixed(2)}`} onCharge={(opaqueData) => completeSale(opaqueData)} />
-            ) : (
-              <Button
-                className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2"
-                disabled={!paymentMethod}
-                onClick={() => completeSale()}
-              >
-                <CheckCircle2 className="w-5 h-5" />
-                Complete Sale · ${total.toFixed(2)}
-              </Button>
             )}
+
+            {remainingTender > 0.01 && (
+              <div>
+                <Label className="mb-2 block">Add Payment</Label>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {([
+                    { key: "Cash", icon: Banknote, label: "Cash" },
+                    { key: "Card", icon: CreditCard, label: "Card" },
+                    { key: "ACH", icon: FileText, label: "ACH" },
+                    { key: "Check", icon: FileText, label: "Check" },
+                  ] as const).map((m) => {
+                    const Icon = m.icon;
+                    return (
+                      <button
+                        key={m.key}
+                        onClick={() => setTenderMethod(m.key)}
+                        className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border transition-all ${
+                          tenderMethod === m.key
+                            ? "border-[#0891B2] bg-[#0891B2]/10 text-[#0891B2]"
+                            : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"
+                        }`}
+                      >
+                        <Icon className="w-5 h-5" />
+                        <span className="text-xs font-medium">{m.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {tenderMethod === "Card" ? (
+                  <CardPaymentForm
+                    amount={remainingTender}
+                    submitLabel={`Add Card Tender · $${remainingTender.toFixed(2)}`}
+                    onCharge={async (opaqueData) => addCardTender(remainingTender, opaqueData)}
+                  />
+                ) : (
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      placeholder={`Up to $${remainingTender.toFixed(2)}`}
+                      className="flex-1"
+                      value={tenderAmount}
+                      onChange={(e) => setTenderAmount(e.target.value)}
+                    />
+                    <Button variant="outline" className="border-[#E2E8F0]" onClick={addCashTender}>Add</Button>
+                    <Button variant="outline" className="border-[#E2E8F0]" onClick={() => setTenderAmount(remainingTender.toFixed(2))}>Full</Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <Button
+              className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2"
+              disabled={tenderLines.length === 0 || Math.abs(remainingTender) > 0.01}
+              onClick={completeSale}
+            >
+              <CheckCircle2 className="w-5 h-5" />
+              Complete Sale · ${total.toFixed(2)}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
