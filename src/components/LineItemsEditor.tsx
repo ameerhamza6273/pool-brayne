@@ -58,11 +58,14 @@ export default function LineItemsEditor({
                     value=""
                     onChange={(v) => applyInventoryPick(idx, v)}
                     placeholder="Pick from inventory (optional)"
-                    searchPlaceholder="Search name, SKU, or description..."
+                    searchPlaceholder="Search item #, SKU, name, or description..."
                     emptyText="No matching items."
                     options={inventoryItems.map((inv) => ({
                       value: inv.id,
-                      label: `${inv.sku} — ${inv.name}`,
+                      // Client SMS 2026-09-04 (staff, "Michael"): "typing our item number,
+                      // nothing was populating" -- item_number wasn't in the searchable text at
+                      // all before, only SKU/name/description were.
+                      label: `${inv.item_number ?? inv.sku} · ${inv.sku} — ${inv.name}`,
                       sublabel: [inv.long_description, inv.manufacturer].filter(Boolean).join(" · ") || undefined,
                     }))}
                   />

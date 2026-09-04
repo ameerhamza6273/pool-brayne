@@ -801,11 +801,11 @@ export default function Inventory() {
                         value={writeoffDraft.itemId}
                         onChange={(v) => setWriteoffDraft((p) => ({ ...p, itemId: v }))}
                         placeholder="Select product"
-                        searchPlaceholder="Search name, SKU, or description..."
+                        searchPlaceholder="Search item #, SKU, name, or description..."
                         emptyText="No matching items."
                         options={items.map((i) => ({
                           value: i.id,
-                          label: `${i.sku} — ${i.name}`,
+                          label: `${i.item_number ?? i.sku} · ${i.sku} — ${i.name}`,
                           sublabel: [i.long_description, i.manufacturer].filter(Boolean).join(" · ") || undefined,
                         }))}
                       />
