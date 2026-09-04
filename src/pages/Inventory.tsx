@@ -19,7 +19,6 @@ type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null };
 type InventoryVariance = Database["public"]["Tables"]["inventory_variance"]["Row"] & { inventory_items: { name: string } | null };
 
-const categories = ["All", "Chemicals", "Parts", "Equipment", "Accessories", "Labor"];
 
 const statusColors: Record<string, string> = {
   "In Stock": "bg-[#16A34A]/10 text-[#16A34A]",
@@ -363,6 +362,13 @@ export default function Inventory() {
     return matchesSearch && matchesCategory;
   });
 
+  // Client bug report 2026-09-04: the filter dropdown (and the Add/Edit Product Category field,
+  // which used to be this same fixed list) only had 5 hardcoded values -- real imported items
+  // carry ~35 real categories (from the source ProductFamily field), so most items couldn't be
+  // filtered and the Edit dialog showed the Category field blank for them. Filter dropdown is now
+  // built from whatever categories actually exist; Add/Edit switched to free text (see below).
+  const dynamicCategories = ["All", ...Array.from(new Set(items.map((i) => i.category))).sort()];
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
@@ -410,6 +416,9 @@ export default function Inventory() {
 
   return (
     <div className="space-y-4">
+      <datalist id="inventory-categories">
+        {dynamicCategories.filter((c) => c !== "All").map((c) => <option key={c} value={c} />)}
+      </datalist>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-[#0F172A]">Inventory</h1>
         <div className="flex items-center gap-2">
@@ -425,12 +434,7 @@ export default function Inventory() {
                 <div><Label>Name</Label><Input className="mt-1" placeholder="Product name" value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} /></div>
                 <div><Label>SKU</Label><Input className="mt-1" placeholder="SKU-123" value={newProduct.sku} onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><Label>Category</Label>
-                    <Select value={newProduct.category} onValueChange={(v) => setNewProduct((p) => ({ ...p, category: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                      <SelectContent>{categories.filter(c => c !== "All").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </div>
+                  <div><Label>Category</Label><Input className="mt-1" placeholder="e.g. Chemicals" list="inventory-categories" value={newProduct.category} onChange={(e) => setNewProduct((p) => ({ ...p, category: e.target.value }))} /></div>
                   <div><Label>Cost (internal)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
                 </div>
                 <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.price} onChange={(e) => setNewProduct((p) => ({ ...p, price: e.target.value }))} /></div>
@@ -506,7 +510,7 @@ export default function Inventory() {
             <div className="flex gap-2">
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue placeholder="Category" /></SelectTrigger>
-                <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <SelectContent className="max-h-72">{dynamicCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintLabels}>
                 <Tag className="w-4 h-4" /> Print Labels{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
@@ -950,12 +954,7 @@ export default function Inventory() {
             <div><Label>Name</Label><Input className="mt-1" value={editProductDraft.name} onChange={(e) => setEditProductDraft((p) => ({ ...p, name: e.target.value }))} /></div>
             <div><Label>SKU</Label><Input className="mt-1" value={editProductDraft.sku} onChange={(e) => setEditProductDraft((p) => ({ ...p, sku: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Category</Label>
-                <Select value={editProductDraft.category} onValueChange={(v) => setEditProductDraft((p) => ({ ...p, category: v }))}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{categories.filter(c => c !== "All").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
+              <div><Label>Category</Label><Input className="mt-1" list="inventory-categories" value={editProductDraft.category} onChange={(e) => setEditProductDraft((p) => ({ ...p, category: e.target.value }))} /></div>
               <div><Label>Unit</Label><Input className="mt-1" placeholder="ea" value={editProductDraft.unit} onChange={(e) => setEditProductDraft((p) => ({ ...p, unit: e.target.value }))} /></div>
             </div>
             <div className="grid grid-cols-2 gap-4">
