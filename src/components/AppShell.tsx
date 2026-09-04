@@ -117,7 +117,11 @@ export default function AppShell() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
+      {/* Client bug report 2026-09-04: a wide table (e.g. Inventory's Catalog) could stretch this
+          flex item past the viewport, dragging the whole page (sidebar included) into a
+          horizontal scroll -- min-w-0 lets it shrink so page-internal tables scroll within their
+          own overflow-x-auto instead of blowing out the layout. */}
+      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen min-w-0">
         {/* Desktop Top Bar */}
         <header className="hidden lg:flex items-center gap-4 px-6 py-3 bg-white border-b border-[#E2E8F0] sticky top-0 z-30">
           <div className="flex-1 max-w-md relative">
@@ -206,7 +210,7 @@ export default function AppShell() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6">
+        <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0">
           <Outlet />
         </main>
 
