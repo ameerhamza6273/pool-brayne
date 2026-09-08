@@ -142,7 +142,7 @@ export default function AppShell() {
           </div>
         </div>
 
-        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto sidebar-scroll">
           {navSections.map((entry) => {
             if (!isGroup(entry)) {
               const Icon = entry.icon;
@@ -277,7 +277,7 @@ export default function AppShell() {
                     </div>
                   </div>
                 </div>
-                <nav className="py-4 px-3 space-y-1 overflow-y-auto max-h-[calc(100vh-6rem)]">
+                <nav className="py-4 px-3 space-y-1 overflow-y-auto max-h-[calc(100vh-6rem)] sidebar-scroll">
                   {flatNavLinks.map((item) => {
                     const Icon = item.icon;
                     const active = isActive(item.path);
