@@ -21,7 +21,7 @@ export default async function notificationsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, async (tx) => {
       const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      const [jobs, payments, lowStockItems, lowStockStock, smsMessages, geofenceAlerts] = await Promise.all([
+      const [jobs, payments, lowStockItems, lowStockStock, smsMessages, geofenceAlerts, approvedEstimates] = await Promise.all([
         tx`
           select j.id, j.completed_at, j.type, c.name as customer_name, p.name as tech_name
           from jobs j
@@ -53,6 +53,14 @@ export default async function notificationsRoutes(app: FastifyInstance) {
           join vehicles v on v.id = ga.vehicle_id
           where ga.occurred_at >= ${since}
           order by ga.occurred_at desc limit 8
+        `,
+        // No email round-trip is wired (public.ts) -- this is how staff actually finds out a
+        // customer approved an estimate via the "Approve Estimation" link.
+        tx`
+          select e.id, e.number, e.approved_at, c.name as customer_name
+          from estimates e left join customers c on c.id = e.customer_id
+          where e.status = 'Accepted' and e.approved_at is not null and e.approved_at >= ${since}
+          order by e.approved_at desc limit 8
         `,
       ]);
 
@@ -113,7 +121,16 @@ export default async function notificationsRoutes(app: FastifyInstance) {
         link: "/fleet",
       }));
 
-      const all = [...jobNotifications, ...paymentNotifications, ...lowStockNotifications, ...messageNotifications, ...fleetNotifications];
+      const estimateNotifications: Notification[] = (approvedEstimates as unknown as { id: string; number: string; approved_at: string; customer_name: string | null }[]).map((e) => ({
+        id: `estimate-${e.id}`,
+        type: "job",
+        title: "Estimate approved",
+        description: `${e.customer_name ?? "A customer"} approved ${e.number}`,
+        time: e.approved_at,
+        link: `/invoicing/estimates/${e.id}`,
+      }));
+
+      const all = [...jobNotifications, ...paymentNotifications, ...lowStockNotifications, ...messageNotifications, ...fleetNotifications, ...estimateNotifications];
       all.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
       return all.slice(0, 20);
     });

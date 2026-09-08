@@ -12,6 +12,7 @@ type LineItemInput = {
   quantity: number;
   cost?: number;
   rate: number;
+  notes?: string | null;
 };
 
 // Shared by /invoices and /invoices/estimates — both header tables gained the same
@@ -21,8 +22,8 @@ async function insertInvoiceLineItems(tx: postgres.TransactionSql, invoiceId: st
   for (const li of lineItems) {
     const amount = li.quantity * li.rate;
     await tx`
-      insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount)
-      values (${tenantId}, ${invoiceId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount})
+      insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes)
+      values (${tenantId}, ${invoiceId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null})
     `;
   }
 }
@@ -32,8 +33,8 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
   for (const li of lineItems) {
     const amount = li.quantity * li.rate;
     await tx`
-      insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount)
-      values (${tenantId}, ${estimateId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount})
+      insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes)
+      values (${tenantId}, ${estimateId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null})
     `;
   }
 }
@@ -262,6 +263,41 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     return result;
   });
 
+  // Client PDF 2026-09-05: "Need to be able to edit an estimate once created and saves" —
+  // estimates were view-and-convert only before. Full replace of header + line items, same
+  // pattern as the job/:id/line-items PATCH.
+  app.patch<{
+    Params: { id: string };
+    Body: {
+      customerId: string;
+      issueDate: string;
+      expiryDate: string | null;
+      downPayment?: number;
+      jobDescription?: string | null;
+      lineItems?: LineItemInput[];
+    };
+  }>("/estimates/:id", async (req) => {
+    const { id } = req.params;
+    const { customerId, issueDate, expiryDate, downPayment, jobDescription, lineItems } = req.body;
+    const amount = lineItems && lineItems.length > 0 ? lineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0) : undefined;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [row] = await tx`
+        update estimates set
+          customer_id = ${customerId}, issue_date = ${issueDate}, expiry_date = ${expiryDate},
+          down_payment = ${downPayment ?? 0}, job_description = ${jobDescription ?? null},
+          amount = coalesce(${amount ?? null}, amount)
+        where id = ${id}
+        returning *
+      `;
+      if (lineItems) {
+        await tx`delete from estimate_line_items where estimate_id = ${id}`;
+        await insertEstimateLineItems(tx, id, tenant.id, lineItems);
+      }
+      return row;
+    });
+  });
+
   // Client request 2026-09-03: "Need a Document section to send to customers on an estimate /
   // job" (sand-change form, automation checklist, weekly service form, or any upload).
   app.get<{ Params: { id: string } }>("/estimates/:id/attachments", async (req) => {
@@ -271,16 +307,16 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     `);
   });
 
-  app.post<{ Params: { id: string }; Body: { url: string; label?: string | null; filename?: string | null } }>(
+  app.post<{ Params: { id: string }; Body: { url: string; label?: string | null; filename?: string | null; type?: "document" | "photo" } }>(
     "/estimates/:id/attachments",
     async (req) => {
       const { id } = req.params;
-      const { url, label, filename } = req.body;
+      const { url, label, filename, type } = req.body;
       return withTenantContext(req.userId, async (tx) => {
         const [tenant] = await tx`select current_tenant_id() as id`;
         const [row] = await tx`
-          insert into estimate_attachments (tenant_id, estimate_id, url, label, filename)
-          values (${tenant.id}, ${id}, ${url}, ${label ?? null}, ${filename ?? null})
+          insert into estimate_attachments (tenant_id, estimate_id, url, label, filename, type)
+          values (${tenant.id}, ${id}, ${url}, ${label ?? null}, ${filename ?? null}, ${type ?? "document"})
           returning *
         `;
         return row;
@@ -330,6 +366,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         cost: number;
         rate: number;
         amount: number;
+        notes: string | null;
       }[];
 
       const [tenant] = await tx`select current_tenant_id() as id`;
@@ -341,8 +378,8 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       `;
       for (const li of estimateLineItems) {
         await tx`
-          insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount)
-          values (${tenant.id}, ${invoice.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount})
+          insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes)
+          values (${tenant.id}, ${invoice.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes})
         `;
       }
       await tx`update estimates set status = 'Converted', converted_invoice_id = ${invoice.id} where id = ${id}`;
@@ -368,6 +405,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         cost: number;
         rate: number;
         amount: number;
+        notes: string | null;
       }[];
       const [customer] = await tx`select address from customers where id = ${estimate.customer_id} limit 1`;
 
@@ -379,8 +417,8 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       `;
       for (const li of estimateLineItems) {
         await tx`
-          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount)
-          values (${tenant.id}, ${job.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount})
+          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes)
+          values (${tenant.id}, ${job.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes})
         `;
       }
       await tx`update estimates set status = 'Converted', converted_job_id = ${job.id} where id = ${id}`;
@@ -418,5 +456,42 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`
       update vendor_bills set status = 'Paid', paid_date = ${today} where id = ${id} returning *
     `);
+  });
+
+  // Client request 2026-09-06: "A way to Write off a job – (bad debt)". Modeled on the invoice
+  // (where AR/payment status actually lives) rather than the job itself.
+  app.patch<{ Params: { id: string }; Body: { reason: string } }>("/:id/write-off", async (req) => {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const today = new Date().toISOString().slice(0, 10);
+    return withTenantContext(req.userId, (tx) => tx`
+      update invoices set status = 'Written Off', write_off_reason = ${reason}, write_off_date = ${today}
+      where id = ${id} returning *
+    `);
+  });
+
+  // Client request 2026-09-06: "Estimate templates" (Heater replacement, Filter replacement,
+  // etc.) — a saved line-item preset a staffer can apply to a new estimate instead of typing
+  // the same job out from scratch every time.
+  app.get("/estimate-templates", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`select * from estimate_templates order by name`);
+  });
+
+  app.post<{ Body: { name: string; lineItems: LineItemInput[] } }>("/estimate-templates", async (req) => {
+    const { name, lineItems } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [row] = await tx`
+        insert into estimate_templates (tenant_id, name, line_items)
+        values (${tenant.id}, ${name}, ${tx.json(lineItems)})
+        returning *
+      `;
+      return row;
+    });
+  });
+
+  app.delete<{ Params: { id: string } }>("/estimate-templates/:id", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`delete from estimate_templates where id = ${id}`);
   });
 }

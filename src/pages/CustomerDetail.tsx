@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { customersApi, type CustomerAttachment, type CustomerDetailBundle, type PreviousSale } from "@/lib/api/customers";
+import { customersApi, type CustomerAttachment, type CustomerDetailBundle, type PreviousSale, type CustomerServiceForm } from "@/lib/api/customers";
 import { reportsApi, type CustomerReminder } from "@/lib/api/reports";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
@@ -80,6 +80,9 @@ export default function CustomerDetail() {
   const [reminderTypeOpen, setReminderTypeOpen] = useState(false);
   const [reminderTypeDraft, setReminderTypeDraft] = useState({ label: "", frequencyMonths: "", nextDue: "" });
 
+  // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs".
+  const [serviceForms, setServiceForms] = useState<CustomerServiceForm[]>([]);
+
   const load = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
@@ -121,6 +124,7 @@ export default function CustomerDetail() {
       });
       const attachments = await customersApi.getAttachments(id);
       setPhotos(attachments);
+      setServiceForms(await customersApi.getForms(id));
     } catch {
       setCustomer(null);
     }
@@ -491,6 +495,29 @@ export default function CustomerDetail() {
                   </div>
                 );
               })}
+            </CardContent>
+          </Card>
+
+          {/* Client PDF 2026-09-06: "add a button to view all forms from previous jobs or
+              maintenance jobs (water testing and check list for maintenance with notes)". */}
+          <Card className="border-[#E2E8F0] shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#0891B2]" /> Service Forms
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-0">
+              {serviceForms.length === 0 && <p className="text-xs text-[#64748B]">No forms submitted yet.</p>}
+              {serviceForms.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => navigate(`/jobs/${f.job_id}`)}
+                  className="w-full text-left rounded-lg border border-[#F1F5F9] px-3 py-2 hover:bg-[#F8FAFC]"
+                >
+                  <p className="text-sm font-medium text-[#0F172A]">{f.template_name ?? f.type}</p>
+                  <p className="text-xs text-[#64748B]">{f.job_type ?? "Job"} · {new Date(f.submitted_at).toLocaleDateString()}</p>
+                </button>
+              ))}
             </CardContent>
           </Card>
 

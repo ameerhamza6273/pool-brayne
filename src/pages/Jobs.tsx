@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Plus, Calendar, LayoutDashboard, Truck, User, MapPin, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon, Navigation,
+  Plus, Calendar, LayoutDashboard, Truck, User, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon, Navigation,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { jobsApi } from "@/lib/api/jobs";
 import { profilesApi } from "@/lib/api/profiles";
 import { customersApi } from "@/lib/api/customers";
-import { recurringRoutesApi } from "@/lib/api/recurringRoutes";
+import { recurringJobsApi, type RecurringJob } from "@/lib/api/recurringJobs";
 import { geocodeAddress } from "@/lib/geocode";
 import type { Database } from "@/lib/database.types";
 import L from "leaflet";
@@ -28,9 +28,6 @@ type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type Job = Database["public"]["Tables"]["jobs"]["Row"] & {
   customers: { name: string; address: string | null; lat?: number | null; lng?: number | null } | null;
   profiles: { name: string; avatar: string | null } | null;
-};
-type RecurringRoute = Database["public"]["Tables"]["recurring_routes"]["Row"] & {
-  profiles: { name: string } | null;
 };
 
 const stages = [
@@ -73,13 +70,22 @@ export default function Jobs() {
   );
 
   useEffect(() => {
-    if (searchParams.get("tab") === "schedule") setActiveTab("schedule");
+    const tab = searchParams.get("tab");
+    if (tab === "pipeline" || tab === "dispatch" || tab === "schedule" || tab === "map") setActiveTab(tab);
   }, [searchParams]);
   const [search, setSearch] = useState("");
   const [newJobOpen, setNewJobOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [technicians, setTechnicians] = useState<Profile[]>([]);
-  const [recurringRoutes, setRecurringRoutes] = useState<RecurringRoute[]>([]);
+  // Client PDF 2026-09-05: "+New Recurring" next to "+New Job" -- real recurring-job schedule
+  // replacing the old read-only, never-linked-to-real-jobs recurring_routes display.
+  const [recurringJobs, setRecurringJobs] = useState<RecurringJob[]>([]);
+  const [newRecurringOpen, setNewRecurringOpen] = useState(false);
+  const [newRecurring, setNewRecurring] = useState({
+    customerId: "", techId: "", jobType: "", description: "", techNotes: "", amount: "",
+    frequency: "weekly" as "weekly" | "biweekly" | "monthly", dayOfWeek: "1", dayOfMonth: "1",
+    startDate: new Date().toISOString().slice(0, 10), endDate: "",
+  });
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
   // Client bug report 2026-09-04: "dynamic search or autofill for SKUs... ability to add
@@ -102,7 +108,7 @@ export default function Jobs() {
     loadJobs();
     profilesApi.list().then((data) => setTechnicians(data ?? []));
     customersApi.list().then((data) => setCustomers(data ?? []));
-    recurringRoutesApi.list().then((data) => setRecurringRoutes(data ?? []));
+    recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
     inventoryApi.summary().then((data) => setInventoryItems(data.items));
   }, [loadJobs]);
 
@@ -127,6 +133,35 @@ export default function Jobs() {
     setNewJobOpen(false);
     loadJobs();
   };
+
+  const handleCreateRecurring = async () => {
+    if (!newRecurring.customerId || !newRecurring.jobType) return;
+    await recurringJobsApi.create({
+      customerId: newRecurring.customerId,
+      techId: newRecurring.techId || null,
+      jobType: newRecurring.jobType,
+      description: newRecurring.description || null,
+      techNotes: newRecurring.techNotes || null,
+      address: customers.find((c) => c.id === newRecurring.customerId)?.address ?? null,
+      amount: parseFloat(newRecurring.amount) || 0,
+      frequency: newRecurring.frequency,
+      dayOfWeek: newRecurring.frequency !== "monthly" ? parseInt(newRecurring.dayOfWeek, 10) : null,
+      dayOfMonth: newRecurring.frequency === "monthly" ? parseInt(newRecurring.dayOfMonth, 10) : null,
+      startDate: newRecurring.startDate,
+      endDate: newRecurring.endDate || null,
+    });
+    setNewRecurring({
+      customerId: "", techId: "", jobType: "", description: "", techNotes: "", amount: "",
+      frequency: "weekly", dayOfWeek: "1", dayOfMonth: "1", startDate: new Date().toISOString().slice(0, 10), endDate: "",
+    });
+    setNewRecurringOpen(false);
+    loadJobs();
+    recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
+  };
+
+  // Client SMS 2026-09-08: "Jobs and dispatch... should be able to drag and drop. It should
+  // work. But it's not active" -- native HTML5 drag/drop, no library needed.
+  const [dragOverTechId, setDragOverTechId] = useState<string | null>(null);
 
   const assignTech = async (jobId: string, techId: string) => {
     await jobsApi.update(jobId, { tech_id: techId, status: "Dispatched", stage: "dispatched" });
@@ -336,6 +371,104 @@ export default function Jobs() {
               </div>
             </DialogContent>
           </Dialog>
+
+          <Dialog open={newRecurringOpen} onOpenChange={setNewRecurringOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+                <Calendar className="w-4 h-4" /> New Recurring
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>Create Recurring Job</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div>
+                  <Label>Customer</Label>
+                  <div className="mt-1">
+                    <SearchableSelect
+                      value={newRecurring.customerId}
+                      onChange={(v) => setNewRecurring((p) => ({ ...p, customerId: v }))}
+                      placeholder="Select customer"
+                      searchPlaceholder="Search customers..."
+                      options={customers.map((c) => ({ value: c.id, label: c.name }))}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Job Type</Label>
+                    <Select value={newRecurring.jobType} onValueChange={(v) => setNewRecurring((p) => ({ ...p, jobType: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select type" /></SelectTrigger>
+                      <SelectContent>{jobTypes.map((t) => <SelectItem key={t.id} value={t.label}>{t.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label>Tech</Label>
+                    <Select value={newRecurring.techId} onValueChange={(v) => setNewRecurring((p) => ({ ...p, techId: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select tech" /></SelectTrigger>
+                      <SelectContent>{technicians.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label>Description (customer-facing)</Label>
+                  <Input className="mt-1" value={newRecurring.description} onChange={(e) => setNewRecurring((p) => ({ ...p, description: e.target.value }))} />
+                </div>
+                <div>
+                  {/* Client PDF 2026-09-05: "Able to show notes for all recurring jobs moving
+                      forward" -- carried onto every generated occurrence, tech-only. */}
+                  <Label>Tech-Only Notes (carries to every occurrence)</Label>
+                  <Input className="mt-1" value={newRecurring.techNotes} onChange={(e) => setNewRecurring((p) => ({ ...p, techNotes: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Amount</Label>
+                    <Input type="number" className="mt-1" value={newRecurring.amount} onChange={(e) => setNewRecurring((p) => ({ ...p, amount: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>Frequency</Label>
+                    <Select value={newRecurring.frequency} onValueChange={(v) => setNewRecurring((p) => ({ ...p, frequency: v as "weekly" | "biweekly" | "monthly" }))}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                        <SelectItem value="biweekly">Bi-weekly</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {newRecurring.frequency !== "monthly" ? (
+                  <div>
+                    <Label>Day of Week</Label>
+                    <Select value={newRecurring.dayOfWeek} onValueChange={(v) => setNewRecurring((p) => ({ ...p, dayOfWeek: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div>
+                    <Label>Day of Month</Label>
+                    <Input type="number" min={1} max={31} className="mt-1" value={newRecurring.dayOfMonth} onChange={(e) => setNewRecurring((p) => ({ ...p, dayOfMonth: e.target.value }))} />
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Start Date</Label>
+                    <Input type="date" className="mt-1" value={newRecurring.startDate} onChange={(e) => setNewRecurring((p) => ({ ...p, startDate: e.target.value }))} />
+                  </div>
+                  <div>
+                    {/* Client PDF 2026-09-05: "Have an option for an end date or no end date". */}
+                    <Label>End Date (optional)</Label>
+                    <Input type="date" className="mt-1" value={newRecurring.endDate} onChange={(e) => setNewRecurring((p) => ({ ...p, endDate: e.target.value }))} />
+                  </div>
+                </div>
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateRecurring}>
+                  Create Recurring Job
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -429,9 +562,15 @@ export default function Jobs() {
           {/* Unassigned Jobs */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
             <h3 className="font-semibold text-[#0F172A] mb-3">Unassigned & Today's Jobs</h3>
+            <p className="text-xs text-[#94A3B8] -mt-2 mb-3">Drag a job onto a technician to assign it.</p>
             <div className="space-y-2">
               {filteredJobs.filter((j) => j.stage === "booked" || j.stage === "lead").map((job) => (
-                <div key={job.id} className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-3">
+                <div
+                  key={job.id}
+                  draggable
+                  onDragStart={(e) => { e.dataTransfer.setData("text/job-id", job.id); e.dataTransfer.effectAllowed = "move"; }}
+                  className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-3 cursor-grab active:cursor-grabbing"
+                >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type)}>{job.type}</Badge>
@@ -475,7 +614,18 @@ export default function Jobs() {
                   "Off": "bg-[#E2E8F0] text-[#64748B]",
                 };
                 return (
-                  <div key={tech.id} className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] flex items-center gap-3">
+                  <div
+                    key={tech.id}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverTechId(tech.id); }}
+                    onDragLeave={() => setDragOverTechId((cur) => (cur === tech.id ? null : cur))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const jobId = e.dataTransfer.getData("text/job-id");
+                      if (jobId) assignTech(jobId, tech.id);
+                      setDragOverTechId(null);
+                    }}
+                    className={`p-3 rounded-lg border flex items-center gap-3 transition-colors ${dragOverTechId === tech.id ? "bg-[#0891B2]/10 border-[#0891B2] border-dashed" : "bg-[#F8FAFC] border-[#E2E8F0]"}`}
+                  >
                     <Avatar className="w-10 h-10">
                       <AvatarFallback className="bg-[#0891B2] text-white text-sm">{tech.avatar}</AvatarFallback>
                     </Avatar>
@@ -554,24 +704,28 @@ export default function Jobs() {
             </div>
           </div>
 
-          {/* Recurring Routes */}
+          {/* Recurring Jobs -- client PDF 2026-09-05: real schedule, not the old read-only
+              "Recurring Routes" (never linked to actual jobs). Each generates a real job
+              occurrence and rolls forward automatically as the current one completes. */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
-            <h3 className="font-semibold text-[#0F172A] mb-3">Recurring Maintenance Routes</h3>
+            <h3 className="font-semibold text-[#0F172A] mb-3">Recurring Jobs</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {recurringRoutes.map((route) => (
-                <div key={route.id} className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+              {recurringJobs.map((rj) => (
+                <div key={rj.id} className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium text-[#0F172A]">{route.name}</h4>
-                    <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{route.frequency}</Badge>
+                    <h4 className="font-medium text-[#0F172A]">{rj.customers?.name ?? "—"}</h4>
+                    <Badge className={`text-[10px] px-1.5 py-0 ${rj.active ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                      {rj.active ? rj.frequency : "Paused"}
+                    </Badge>
                   </div>
                   <div className="space-y-1 text-sm text-[#64748B]">
-                    <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {route.day}s</p>
-                    <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {route.profiles?.name}</p>
-                    <p className="flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> {route.customer_count} customers</p>
-                    <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {route.avg_time}</p>
+                    <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {rj.job_type}</p>
+                    <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {rj.profiles?.name ?? "Unassigned"}</p>
+                    <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Since {rj.start_date}{rj.end_date ? ` · ends ${rj.end_date}` : " · no end date"}</p>
                   </div>
                 </div>
               ))}
+              {recurringJobs.length === 0 && <p className="text-sm text-[#64748B] col-span-full py-2">No recurring jobs set up yet.</p>}
             </div>
           </div>
         </div>

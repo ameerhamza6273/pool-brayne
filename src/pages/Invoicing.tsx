@@ -8,12 +8,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { invoicingApi, type Estimate, type VendorBill } from "@/lib/api/invoicing";
+import { invoicingApi, type Estimate, type VendorBill, type EstimateTemplate } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { settingsApi } from "@/lib/api/settings";
 import { jobsApi } from "@/lib/api/jobs";
 import { tasksApi, type FreeformTask } from "@/lib/api/tasks";
+import { reportsApi, type VendorBillDueRow } from "@/lib/api/reports";
 import { profilesApi } from "@/lib/api/profiles";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase";
@@ -35,6 +36,9 @@ const statusColors: Record<string, string> = {
   Sent: "bg-[#0891B2]/10 text-[#0891B2]",
   Paid: "bg-[#16A34A]/10 text-[#16A34A]",
   Overdue: "bg-[#DC2626]/10 text-[#DC2626]",
+  Accepted: "bg-[#16A34A]/10 text-[#16A34A]",
+  Declined: "bg-[#DC2626]/10 text-[#DC2626]",
+  "Written Off": "bg-[#64748B]/10 text-[#64748B]",
 };
 
 const paymentMethods: Record<string, { icon: typeof CreditCard; label: string }> = {
@@ -54,18 +58,28 @@ export default function Invoicing() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newInvoice, setNewInvoice] = useState({ customerId: "", issueDate: "", dueDate: "", amount: "", downPayment: "", jobDescription: "" });
   const [newInvoiceLines, setNewInvoiceLines] = useState<DraftLineItem[]>([]);
+  // Client PDF 2026-09-06: "down payment section: put '%' or '$' symbol, make 50% the default".
+  const [newInvoiceDownPaymentMode, setNewInvoiceDownPaymentMode] = useState<"percent" | "fixed">("percent");
+  const [newEstimateDownPaymentMode, setNewEstimateDownPaymentMode] = useState<"percent" | "fixed">("percent");
   const [qboConnected, setQboConnected] = useState(false);
   const [estimates, setEstimates] = useState<Estimate[]>([]);
   const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [newEstimateOpen, setNewEstimateOpen] = useState(false);
-  const [newEstimate, setNewEstimate] = useState({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "", jobDescription: "" });
+  const [newEstimate, setNewEstimate] = useState({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "50", jobDescription: "" });
   const [newEstimateLines, setNewEstimateLines] = useState<DraftLineItem[]>([]);
+  const [estimateTemplates, setEstimateTemplates] = useState<EstimateTemplate[]>([]);
+  // Client PDF 2026-09-05: "Vendor bills due" under Purchase Orders / Vendor Information.
+  const [vendorBillsDue, setVendorBillsDue] = useState<VendorBillDueRow[]>([]);
   const [newBillOpen, setNewBillOpen] = useState(false);
   const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "estimates" ? "estimates" : "all"));
+  const validTabs = ["all", "estimates", "tasks", "vendor-bills", "recurring", "payments"];
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get("tab");
+    return tab && validTabs.includes(tab) ? tab : "all";
+  });
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkForm, setBulkForm] = useState({ customerId: "", start: "", end: "" });
   const [bulkJobs, setBulkJobs] = useState<UninvoicedJob[]>([]);
@@ -93,12 +107,14 @@ export default function Invoicing() {
   const [taskPhotoUploading, setTaskPhotoUploading] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("tab") === "estimates") setActiveTab("estimates");
+    const tab = searchParams.get("tab");
+    if (tab && validTabs.includes(tab)) setActiveTab(tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const loadInvoicing = useCallback(async () => {
     setIsLoading(true);
-    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData, inventoryData, tasksData, techsData] = await Promise.all([
+    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData, inventoryData, tasksData, techsData, templatesData, vendorBillsDueData] = await Promise.all([
       invoicingApi.list(),
       invoicingApi.recurringBilling(),
       invoicingApi.payments(),
@@ -110,6 +126,8 @@ export default function Invoicing() {
       inventoryApi.summary(),
       tasksApi.list(),
       profilesApi.list(),
+      invoicingApi.estimateTemplates(),
+      reportsApi.vendorBillsDue(),
     ]);
     setInvoices((invoicesData ?? []) as Invoice[]);
     setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
@@ -122,12 +140,21 @@ export default function Invoicing() {
     setInventoryItems(inventoryData?.items ?? []);
     setTasks(tasksData ?? []);
     setTechs((techsData ?? []).map((t) => ({ id: t.id, name: t.name })));
+    setEstimateTemplates(templatesData ?? []);
+    setVendorBillsDue(vendorBillsDueData ?? []);
     setIsLoading(false);
   }, []);
 
   useEffect(() => {
     loadInvoicing();
   }, [loadInvoicing]);
+
+  const newInvoiceSubtotal = newInvoiceLines.length > 0 ? newInvoiceLines.reduce((s, li) => s + li.quantity * li.rate, 0) : parseFloat(newInvoice.amount) || 0;
+  const newEstimateSubtotal = newEstimateLines.length > 0 ? newEstimateLines.reduce((s, li) => s + li.quantity * li.rate, 0) : parseFloat(newEstimate.amount) || 0;
+  const resolveDownPayment = (raw: string, mode: "percent" | "fixed", subtotal: number) => {
+    const n = parseFloat(raw) || 0;
+    return mode === "percent" ? (subtotal * n) / 100 : n;
+  };
 
   const handleCreateInvoice = async () => {
     if (!newInvoice.customerId || !newInvoice.issueDate) return;
@@ -139,7 +166,7 @@ export default function Invoicing() {
       dueDate: newInvoice.dueDate || null,
       amount: parseFloat(newInvoice.amount) || 0,
       status: "Draft",
-      downPayment: parseFloat(newInvoice.downPayment) || 0,
+      downPayment: resolveDownPayment(newInvoice.downPayment, newInvoiceDownPaymentMode, newInvoiceSubtotal),
       jobDescription: newInvoice.jobDescription || null,
       lineItems: newInvoiceLines.filter((li) => li.description.trim()),
     });
@@ -147,6 +174,36 @@ export default function Invoicing() {
     setNewInvoiceLines([]);
     setNewInvoiceOpen(false);
     loadInvoicing();
+  };
+
+  // Client PDF 2026-09-06: when creating an estimate, default the issue date to today and
+  // expiry to 30 days out (still editable) instead of leaving both blank.
+  const openNewEstimateDialog = () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const expiry = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+    setNewEstimate({ customerId: "", issueDate: today, expiryDate: expiry, amount: "", downPayment: "50", jobDescription: "" });
+    setNewEstimateLines([]);
+    setNewEstimateDownPaymentMode("percent");
+    setNewEstimateOpen(true);
+  };
+
+  const applyEstimateTemplate = (templateId: string) => {
+    const tpl = estimateTemplates.find((t) => t.id === templateId);
+    if (!tpl) return;
+    setNewEstimateLines(tpl.line_items.map((li) => ({ ...li, sku: li.sku ?? "", notes: li.notes ?? "" })));
+  };
+
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const handleSaveAsTemplate = async () => {
+    const name = window.prompt("Template name (e.g. \"Heater Replacement\")");
+    if (!name) return;
+    const lineItems = newEstimateLines.filter((li) => li.description.trim());
+    if (lineItems.length === 0) return;
+    setSavingTemplate(true);
+    await invoicingApi.createEstimateTemplate({ name, lineItems });
+    const templates = await invoicingApi.estimateTemplates();
+    setEstimateTemplates(templates ?? []);
+    setSavingTemplate(false);
   };
 
   const handleCreateEstimate = async () => {
@@ -158,11 +215,11 @@ export default function Invoicing() {
       issueDate: newEstimate.issueDate,
       expiryDate: newEstimate.expiryDate || null,
       amount: parseFloat(newEstimate.amount) || 0,
-      downPayment: parseFloat(newEstimate.downPayment) || 0,
+      downPayment: resolveDownPayment(newEstimate.downPayment, newEstimateDownPaymentMode, newEstimateSubtotal),
       jobDescription: newEstimate.jobDescription || null,
       lineItems: newEstimateLines.filter((li) => li.description.trim()),
     });
-    setNewEstimate({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "", jobDescription: "" });
+    setNewEstimate({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "50", jobDescription: "" });
     setNewEstimateLines([]);
     setNewEstimateOpen(false);
     loadInvoicing();
@@ -372,13 +429,23 @@ export default function Invoicing() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-[#0F172A]">Invoicing</h1>
         <div className="flex items-center gap-2">
+          {/* Client PDF 2026-09-05: top-right button order "New Estimate - New Task - New
+              Invoice" -- achieved with CSS order rather than physically relocating each dialog's
+              JSX (New Task's full dialog lives in the Tasks tab below; this button just switches
+              to that tab and opens it). */}
+          <Button
+            className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10 order-2"
+            onClick={() => { setActiveTab("tasks"); setNewTaskOpen(true); }}
+          >
+            <Plus className="w-4 h-4" /> New Task
+          </Button>
           <Dialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
+              <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10 order-3">
                 <Plus className="w-4 h-4" /> New Invoice
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-2xl lg:max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Create New Invoice</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
@@ -419,14 +486,21 @@ export default function Invoicing() {
                       type="number"
                       className="mt-1"
                       placeholder="0.00"
-                      value={newInvoiceLines.length > 0 ? newInvoiceLines.reduce((s, li) => s + li.quantity * li.rate, 0).toFixed(2) : newInvoice.amount}
+                      value={newInvoiceLines.length > 0 ? newInvoiceSubtotal.toFixed(2) : newInvoice.amount}
                       disabled={newInvoiceLines.length > 0}
                       onChange={(e) => setNewInvoice((p) => ({ ...p, amount: e.target.value }))}
                     />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">Down Payment</label>
-                    <Input type="number" className="mt-1" placeholder="0.00" value={newInvoice.downPayment} onChange={(e) => setNewInvoice((p) => ({ ...p, downPayment: e.target.value }))} />
+                    <div className="mt-1 flex gap-2">
+                      <Input type="number" placeholder="0" value={newInvoice.downPayment} onChange={(e) => setNewInvoice((p) => ({ ...p, downPayment: e.target.value }))} />
+                      <div className="flex rounded-lg border border-[#E2E8F0] overflow-hidden shrink-0">
+                        <button type="button" onClick={() => setNewInvoiceDownPaymentMode("percent")} className={`px-2.5 text-sm font-medium ${newInvoiceDownPaymentMode === "percent" ? "bg-[#0891B2] text-white" : "bg-white text-[#64748B]"}`}>%</button>
+                        <button type="button" onClick={() => setNewInvoiceDownPaymentMode("fixed")} className={`px-2.5 text-sm font-medium ${newInvoiceDownPaymentMode === "fixed" ? "bg-[#0891B2] text-white" : "bg-white text-[#64748B]"}`}>$</button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-[#64748B] mt-1">= ${resolveDownPayment(newInvoice.downPayment, newInvoiceDownPaymentMode, newInvoiceSubtotal).toFixed(2)}</p>
                   </div>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateInvoice}>
@@ -437,11 +511,11 @@ export default function Invoicing() {
           </Dialog>
           <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white order-4">
                 <Layers className="w-4 h-4" /> Bulk Invoice
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-lg lg:max-w-3xl w-[90vw] max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Bulk Invoice</DialogTitle></DialogHeader>
               <div className="flex gap-2 -mt-2">
                 <button
@@ -571,15 +645,26 @@ export default function Invoicing() {
               )}
             </DialogContent>
           </Dialog>
-          <Dialog open={newEstimateOpen} onOpenChange={setNewEstimateOpen}>
+          <Dialog open={newEstimateOpen} onOpenChange={(open) => (open ? openNewEstimateDialog() : setNewEstimateOpen(false))}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white order-1">
                 <Copy className="w-4 h-4" /> New Estimate
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-2xl lg:max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Create New Estimate</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
+                {estimateTemplates.length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-[#0F172A]">Apply Template</label>
+                    <Select onValueChange={applyEstimateTemplate}>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder="Start from a saved template (optional)" /></SelectTrigger>
+                      <SelectContent>
+                        {estimateTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">Customer</label>
                   <div className="mt-1">
@@ -606,7 +691,14 @@ export default function Invoicing() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Line Items</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-[#0F172A]">Line Items</label>
+                    {newEstimateLines.some((li) => li.description.trim()) && (
+                      <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-[#0891B2]" onClick={handleSaveAsTemplate} disabled={savingTemplate}>
+                        {savingTemplate ? "Saving..." : "Save as Template"}
+                      </Button>
+                    )}
+                  </div>
                   <div className="mt-1">
                     <LineItemsEditor items={newEstimateLines} onChange={setNewEstimateLines} inventoryItems={inventoryItems} />
                   </div>
@@ -618,14 +710,21 @@ export default function Invoicing() {
                       type="number"
                       className="mt-1"
                       placeholder="0.00"
-                      value={newEstimateLines.length > 0 ? newEstimateLines.reduce((s, li) => s + li.quantity * li.rate, 0).toFixed(2) : newEstimate.amount}
+                      value={newEstimateLines.length > 0 ? newEstimateSubtotal.toFixed(2) : newEstimate.amount}
                       disabled={newEstimateLines.length > 0}
                       onChange={(e) => setNewEstimate((p) => ({ ...p, amount: e.target.value }))}
                     />
                   </div>
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">Down Payment</label>
-                    <Input type="number" className="mt-1" placeholder="0.00" value={newEstimate.downPayment} onChange={(e) => setNewEstimate((p) => ({ ...p, downPayment: e.target.value }))} />
+                    <div className="mt-1 flex gap-2">
+                      <Input type="number" placeholder="50" value={newEstimate.downPayment} onChange={(e) => setNewEstimate((p) => ({ ...p, downPayment: e.target.value }))} />
+                      <div className="flex rounded-lg border border-[#E2E8F0] overflow-hidden shrink-0">
+                        <button type="button" onClick={() => setNewEstimateDownPaymentMode("percent")} className={`px-2.5 text-sm font-medium ${newEstimateDownPaymentMode === "percent" ? "bg-[#0891B2] text-white" : "bg-white text-[#64748B]"}`}>%</button>
+                        <button type="button" onClick={() => setNewEstimateDownPaymentMode("fixed")} className={`px-2.5 text-sm font-medium ${newEstimateDownPaymentMode === "fixed" ? "bg-[#0891B2] text-white" : "bg-white text-[#64748B]"}`}>$</button>
+                      </div>
+                    </div>
+                    <p className="text-xs text-[#64748B] mt-1">= ${resolveDownPayment(newEstimate.downPayment, newEstimateDownPaymentMode, newEstimateSubtotal).toFixed(2)}</p>
                   </div>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateEstimate}>
@@ -636,11 +735,11 @@ export default function Invoicing() {
           </Dialog>
           <Dialog open={newBillOpen} onOpenChange={setNewBillOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
+              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white order-5">
                 <Plus className="w-4 h-4" /> New Vendor Bill
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogContent className="sm:max-w-lg lg:max-w-3xl w-[90vw] max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Create New Vendor Bill</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
@@ -745,24 +844,26 @@ export default function Invoicing() {
 
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
-          <TabsTrigger value="all" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <FileText className="w-4 h-4" /> Customer Invoices
-          </TabsTrigger>
-          <TabsTrigger value="estimates" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+        {/* Client PDF 2026-09-05: tab order "Estimates - Tasks - Recurring - Customer Invoices -
+            Payments" (Vendor Bills wasn't in their list -- kept, placed last). */}
+        <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
+          <TabsTrigger value="estimates" className="order-1 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Copy className="w-4 h-4" /> Estimates
           </TabsTrigger>
-          <TabsTrigger value="tasks" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+          <TabsTrigger value="tasks" className="order-2 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <ClipboardList className="w-4 h-4" /> Tasks
           </TabsTrigger>
-          <TabsTrigger value="vendor-bills" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Truck className="w-4 h-4" /> Vendor Bills
-          </TabsTrigger>
-          <TabsTrigger value="recurring" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+          <TabsTrigger value="recurring" className="order-3 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Repeat className="w-4 h-4" /> Recurring
           </TabsTrigger>
-          <TabsTrigger value="payments" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+          <TabsTrigger value="all" className="order-4 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+            <FileText className="w-4 h-4" /> Customer Invoices
+          </TabsTrigger>
+          <TabsTrigger value="payments" className="order-5 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <CreditCard className="w-4 h-4" /> Payments
+          </TabsTrigger>
+          <TabsTrigger value="vendor-bills" className="order-6 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+            <Truck className="w-4 h-4" /> Vendor Bills
           </TabsTrigger>
         </TabsList>
 
@@ -1028,7 +1129,21 @@ export default function Invoicing() {
           </div>
         </TabsContent>
 
-        <TabsContent value="vendor-bills" className="mt-4">
+        <TabsContent value="vendor-bills" className="mt-4 space-y-3">
+          {vendorBillsDue.length > 0 && (
+            <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-3">Vendor Bills Due</p>
+              <div className="flex flex-wrap gap-3">
+                {vendorBillsDue.map((v) => (
+                  <div key={v.supplier_id} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2">
+                    <span className="text-sm font-medium text-[#0F172A]">{v.supplier_name}</span>
+                    <span className="text-sm font-bold text-[#DC2626]">${v.total_due.toLocaleString()}</span>
+                    <span className="text-xs text-[#64748B]">({v.bill_count} bill{v.bill_count === 1 ? "" : "s"})</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

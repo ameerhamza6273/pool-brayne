@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
+import { nextOccurrenceDate, generateOccurrence, type RecurringJob } from "./recurringJobs.js";
 
 export default async function jobsRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -83,10 +84,11 @@ export default async function jobsRoutes(app: FastifyInstance) {
       customerId: string; jobType: string; techId: string | null;
       date: string | null; time: string | null; description: string | null; address: string | null; amount: number;
       itemSku?: string | null; laborSku?: string | null;
-      lineItems?: { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number }[];
+      lineItems?: { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number; notes?: string | null }[];
+      crewIds?: string[];
     };
   }>("/", async (req) => {
-    const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku, lineItems } = req.body;
+    const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku, lineItems, crewIds } = req.body;
     const status = techId ? "Booked" : "Lead";
     const stage = techId ? "booked" : "lead";
     // Client bug report 2026-09-04: "when creating a job... dynamic search or autofill for
@@ -107,20 +109,124 @@ export default async function jobsRoutes(app: FastifyInstance) {
         for (const li of lineItems) {
           const lineAmount = li.quantity * li.rate;
           await tx`
-            insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount)
-            values (${tenant.id}, ${row.id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount})
+            insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes)
+            values (${tenant.id}, ${row.id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount}, ${li.notes ?? null})
           `;
+        }
+      }
+      // Client request 2026-09-06: "Allow us to set up more than one tech on a job (crews)".
+      if (crewIds && crewIds.length > 0) {
+        for (const profileId of crewIds) {
+          await tx`insert into job_crew_members (tenant_id, job_id, profile_id) values (${tenant.id}, ${row.id}, ${profileId}) on conflict do nothing`;
         }
       }
       return row;
     });
   });
 
+  // Crew = additional techs beyond the primary `tech_id` (lead tech, dispatch/on-time logic
+  // stays keyed off tech_id unchanged).
+  app.get<{ Params: { id: string } }>("/:id/crew", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`
+      select jc.id, jc.profile_id, p.name, p.avatar
+      from job_crew_members jc join profiles p on p.id = jc.profile_id
+      where jc.job_id = ${id}
+      order by p.name
+    `);
+  });
+
+  app.post<{ Params: { id: string }; Body: { profileId: string } }>("/:id/crew", async (req) => {
+    const { id } = req.params;
+    const { profileId } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const [row] = await tx`
+        insert into job_crew_members (tenant_id, job_id, profile_id) values (${tenant.id}, ${id}, ${profileId})
+        on conflict (job_id, profile_id) do nothing
+        returning *
+      `;
+      return row ?? null;
+    });
+  });
+
+  app.delete<{ Params: { id: string; profileId: string } }>("/:id/crew/:profileId", async (req) => {
+    const { id, profileId } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`
+      delete from job_crew_members where job_id = ${id} and profile_id = ${profileId}
+    `);
+  });
+
+  // Sidebar restructure (client PDF 2026-09-06, "Employee section > Forms") — every submitted
+  // service form across the whole tenant, not scoped to one job/customer.
+  app.get("/forms/all", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`
+      select f.*, j.type as job_type, c.name as customer_name, p.name as submitted_by_name, ft.name as template_name
+      from job_forms f
+      left join jobs j on j.id = f.job_id
+      left join customers c on c.id = f.customer_id
+      left join profiles p on p.id = f.submitted_by
+      left join form_templates ft on ft.id = f.template_id
+      order by f.submitted_at desc
+      limit 200
+    `);
+  });
+
+  // Client PDF 2026-09-06: "add a button to view all forms from previous jobs or maintenance
+  // jobs (water testing and check list for maintenance with notes)" — WaterTestingForm /
+  // MaintenanceChecklist / OneOffJobChecklist (src/components/forms) never saved anything before.
+  app.get<{ Params: { id: string } }>("/:id/forms", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`
+      select f.*, p.name as submitted_by_name, ft.name as template_name
+      from job_forms f
+      left join profiles p on p.id = f.submitted_by
+      left join form_templates ft on ft.id = f.template_id
+      where f.job_id = ${id}
+      order by f.submitted_at desc
+    `);
+  });
+
+  // `templateId` drives the new custom Form Builder; `type` is kept for the 3 legacy built-in
+  // forms (now also real form_templates rows -- callers can pass both, template_id wins for
+  // display).
+  app.post<{ Params: { id: string }; Body: { templateId?: string | null; type: string; data: Record<string, unknown>; notes?: string | null } }>(
+    "/:id/forms",
+    async (req) => {
+      const { id } = req.params;
+      const { templateId, type, data, notes } = req.body;
+      return withTenantContext(req.userId, async (tx) => {
+        const [tenant] = await tx`select current_tenant_id() as id`;
+        const [job] = await tx`select customer_id from jobs where id = ${id} limit 1`;
+        const [row] = await tx`
+          insert into job_forms (tenant_id, job_id, customer_id, template_id, type, data, notes, submitted_by)
+          values (${tenant.id}, ${id}, ${job.customer_id}, ${templateId ?? null}, ${type}, ${tx.json(JSON.parse(JSON.stringify(data)))}, ${notes ?? null}, ${req.userId})
+          returning *
+        `;
+        return row;
+      });
+    },
+  );
+
   app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>("/:id", async (req) => {
     const { id } = req.params;
     const fields = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`update jobs set ${tx(fields)} where id = ${id} returning *`;
+      // Recurring jobs (recurringJobs.ts) roll forward one occurrence at a time -- when a
+      // generated occurrence is marked Completed, generate the next one (if the template is
+      // still active and not past its end date). No cron runs in this environment, so this is
+      // the only place a next occurrence gets created.
+      if (fields.stage === "completed" && row.recurring_job_id) {
+        const [rjRow] = await tx`select * from recurring_jobs where id = ${row.recurring_job_id} limit 1`;
+        const rj = rjRow as unknown as RecurringJob | undefined;
+        if (rj && rj.active) {
+          const next = nextOccurrenceDate(row.scheduled_date ?? rj.start_date, rj);
+          if (!rj.end_date || next <= rj.end_date) {
+            await generateOccurrence(tx, rj.tenant_id, rj, next);
+          }
+        }
+      }
       return row;
     });
   });
@@ -132,7 +238,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`select * from job_line_items where job_id = ${id}`);
   });
 
-  type LineItemInput = { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number };
+  type LineItemInput = { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number; notes?: string | null };
 
   // Replaces the full set of line items for a job and recomputes job.amount from their total —
   // simplest correct model (matches how Estimate/Invoice line items are edited as a full set).
@@ -147,8 +253,8 @@ export default async function jobsRoutes(app: FastifyInstance) {
         const lineAmount = li.quantity * li.rate;
         amount += lineAmount;
         await tx`
-          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount)
-          values (${tenant.id}, ${id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount})
+          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes)
+          values (${tenant.id}, ${id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount}, ${li.notes ?? null})
         `;
       }
       const [row] = await tx`update jobs set amount = ${amount} where id = ${id} returning *`;
@@ -174,6 +280,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
         cost: number;
         rate: number;
         amount: number;
+        notes: string | null;
       }[];
 
       const [tenant] = await tx`select current_tenant_id() as id`;
@@ -185,8 +292,8 @@ export default async function jobsRoutes(app: FastifyInstance) {
       `;
       for (const li of jobLineItems) {
         await tx`
-          insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount)
-          values (${tenant.id}, ${estimate.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount})
+          insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes)
+          values (${tenant.id}, ${estimate.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes})
         `;
       }
       await tx`update jobs set converted_to_estimate_id = ${estimate.id} where id = ${id}`;

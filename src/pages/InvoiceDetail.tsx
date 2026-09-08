@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, Mail, MessageSquare, CreditCard, FileText, BadgeCheck } from "lucide-react";
+import { ArrowLeft, Download, Mail, MessageSquare, CreditCard, FileText, BadgeCheck, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { invoicingApi } from "@/lib/api/invoicing";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import type { Database } from "@/lib/database.types";
@@ -21,6 +22,7 @@ const statusColors: Record<string, string> = {
   Sent: "bg-[#0891B2]/10 text-[#0891B2]",
   Paid: "bg-[#16A34A]/10 text-[#16A34A]",
   Overdue: "bg-[#DC2626]/10 text-[#DC2626]",
+  "Written Off": "bg-[#64748B]/10 text-[#64748B]",
 };
 
 export default function InvoiceDetail() {
@@ -33,6 +35,9 @@ export default function InvoiceDetail() {
   const [payOpen, setPayOpen] = useState(false);
   const [qboSyncing, setQboSyncing] = useState(false);
   const [qboError, setQboError] = useState<string | null>(null);
+  const [writeOffOpen, setWriteOffOpen] = useState(false);
+  const [writeOffReason, setWriteOffReason] = useState("");
+  const [writingOff, setWritingOff] = useState(false);
 
   const loadInvoice = useCallback(async () => {
     if (!id) return;
@@ -65,11 +70,14 @@ export default function InvoiceDetail() {
     );
   }
 
-  const items: { description: string; sku?: string | null; item_type?: string; quantity: number; rate: number; cost?: number; amount: number }[] =
+  const items: { description: string; sku?: string | null; item_type?: string; notes?: string | null; quantity: number; rate: number; cost?: number; amount: number }[] =
     lineItems.length > 0
       ? lineItems
       : [{ description: `${invoice.status === "Draft" ? "Service" : "Weekly Maintenance"} - ${invoice.customers?.name ?? ""}`, quantity: 1, rate: invoice.amount, amount: invoice.amount }];
   const subtotal = items.reduce((sum, li) => sum + li.amount, 0);
+  // Client sample estimate PDF (2026-09-06): Parts & Materials / Labor as separate subtotal lines.
+  const materialsSubtotal = items.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
+  const laborSubtotal = items.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
   const tax = subtotal * 0.0825;
   const total = subtotal + tax;
   const downPayment = invoice.down_payment ?? 0;
@@ -80,6 +88,17 @@ export default function InvoiceDetail() {
     if (!id) return;
     await invoicingApi.collectPayment(id, method, opaqueData);
     setPayOpen(false);
+    loadInvoice();
+  };
+
+  // Client PDF 2026-09-06: "A way to Write off a job – (bad debt)".
+  const handleWriteOff = async () => {
+    if (!id || !writeOffReason.trim()) return;
+    setWritingOff(true);
+    await invoicingApi.writeOffInvoice(id, writeOffReason.trim());
+    setWritingOff(false);
+    setWriteOffOpen(false);
+    setWriteOffReason("");
     loadInvoice();
   };
 
@@ -109,7 +128,26 @@ export default function InvoiceDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {invoice.status !== "Paid" && (
+          {invoice.status !== "Paid" && invoice.status !== "Written Off" && (
+            <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#64748B]">
+                  <Ban className="w-4 h-4" /> Write Off
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader><DialogTitle>Write Off Invoice (Bad Debt)</DialogTitle></DialogHeader>
+                <div className="space-y-3 pt-2">
+                  <p className="text-sm text-[#64748B]">This marks the ${total.toFixed(2)} balance as uncollectible bad debt. This can't be undone from here.</p>
+                  <Textarea placeholder="Reason (e.g. customer unreachable, bankruptcy, disputed...)" value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} rows={3} />
+                  <Button className="w-full bg-[#DC2626] hover:bg-[#B91C1C] text-white" onClick={handleWriteOff} disabled={writingOff || !writeOffReason.trim()}>
+                    {writingOff ? "Writing off..." : "Confirm Write-Off"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+          {invoice.status !== "Paid" && invoice.status !== "Written Off" && (
           <Dialog open={payOpen} onOpenChange={setPayOpen}>
             <DialogTrigger asChild>
               <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9">
@@ -220,6 +258,13 @@ export default function InvoiceDetail() {
             </div>
           )}
 
+          {invoice.status === "Written Off" && invoice.write_off_reason && (
+            <div className="mb-6 border border-[#E2E8F0] rounded-lg p-4 bg-[#64748B]/5 print:hidden">
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1 flex items-center gap-1.5"><Ban className="w-3.5 h-3.5" /> Written Off (Bad Debt) — {invoice.write_off_date}</p>
+              <p className="text-sm text-[#0F172A]">{invoice.write_off_reason}</p>
+            </div>
+          )}
+
           {/* Line Items */}
           <div className="mb-6">
             <table className="w-full text-sm">
@@ -238,6 +283,7 @@ export default function InvoiceDetail() {
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
                       {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Labor</Badge>}
+                      {li.notes && <p className="text-xs text-[#94A3B8]">{li.notes}</p>}
                     </td>
                     <td className="text-right py-3 text-[#64748B]">{li.quantity}</td>
                     <td className="text-right py-3 text-[#64748B]">${li.rate.toFixed(2)}</td>
@@ -259,8 +305,12 @@ export default function InvoiceDetail() {
           <div className="flex justify-end">
             <div className="w-full sm:w-64 space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Subtotal</span>
-                <span className="text-[#0F172A]">${subtotal.toFixed(2)}</span>
+                <span className="text-[#64748B]">Parts &amp; Materials</span>
+                <span className="text-[#0F172A]">${materialsSubtotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-[#64748B]">Labor</span>
+                <span className="text-[#0F172A]">${laborSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#64748B]">Tax (8.25%)</span>

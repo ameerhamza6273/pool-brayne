@@ -11,12 +11,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import CategoryPicker from "@/components/CategoryPicker";
 import { inventoryApi } from "@/lib/api/inventory";
 import type { Database } from "@/lib/database.types";
-import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff } from "@/lib/api/inventory";
+import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff, SupplierLocation, CategoryTaxonomyRow } from "@/lib/api/inventory";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
-type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null };
+type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
 type InventoryVariance = Database["public"]["Tables"]["inventory_variance"]["Row"] & { inventory_items: { name: string } | null };
 
 
@@ -120,7 +121,7 @@ const printZebraLabels = (
 
 export default function Inventory() {
   const [searchParams] = useSearchParams();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
   const [poOpen, setPoOpen] = useState(false);
@@ -132,15 +133,22 @@ export default function Inventory() {
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
     barcode: "", defaultDistributor: "", unit: "", taxable: true, reorderThreshold: "", storeQuantity: "",
+    subcategory: "", subSubcategory: "", subSubSubcategory: "",
   });
+  const [categoryTaxonomy, setCategoryTaxonomy] = useState<CategoryTaxonomyRow[]>([]);
   // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
   // inventory (2,600+ items) was imported.
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
-  const [activeTab, setActiveTab] = useState(() => (searchParams.get("tab") === "purchase" ? "purchase" : "catalog"));
+  const inventoryTabs = ["catalog", "suppliers", "purchase", "variance", "writeoffs"];
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get("tab");
+    return tab && inventoryTabs.includes(tab) ? tab : "catalog";
+  });
 
   useEffect(() => {
-    if (searchParams.get("tab") === "purchase") setActiveTab("purchase");
+    const tab = searchParams.get("tab");
+    if (tab && inventoryTabs.includes(tab)) setActiveTab(tab);
   }, [searchParams]);
 
   const [items, setItems] = useState<ItemWithStock[]>([]);
@@ -156,13 +164,20 @@ export default function Inventory() {
   const [newProduct, setNewProduct] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "",
+    subcategory: "", subSubcategory: "", subSubSubcategory: "",
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
-  const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001` });
+  const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001`, locationId: "" });
   const [poError, setPoError] = useState("");
-  const [newSupplier, setNewSupplier] = useState({ name: "", contact: "", phone: "", leadTime: "" });
+  const [newPoLocations, setNewPoLocations] = useState<SupplierLocation[]>([]);
+  const [newSupplier, setNewSupplier] = useState({ name: "", contact: "", phone: "", leadTime: "", address: "" });
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
+
+  // Client PDF 2026-09-05: "some vendors have multiple locations we put from".
+  const [locationsSupplier, setLocationsSupplier] = useState<Supplier | null>(null);
+  const [supplierLocations, setSupplierLocations] = useState<SupplierLocation[]>([]);
+  const [newLocation, setNewLocation] = useState({ label: "", address: "", contactName: "", phone: "" });
 
   // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage etc.
   const [writeoffs, setWriteoffs] = useState<(InventoryWriteoff & { inventory_items: { name: string; sku: string } | null })[]>([]);
@@ -171,12 +186,13 @@ export default function Inventory() {
 
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
-    const [data, writeoffData] = await Promise.all([inventoryApi.summary(), inventoryApi.writeoffs()]);
+    const [data, writeoffData, taxonomyData] = await Promise.all([inventoryApi.summary(), inventoryApi.writeoffs(), inventoryApi.categoryTaxonomy()]);
     setItems(data.items);
     setSuppliers(data.suppliers);
     setPurchaseOrders(data.purchaseOrders);
     setVarianceData(data.varianceData);
     setWriteoffs(writeoffData);
+    setCategoryTaxonomy(taxonomyData ?? []);
     setIsLoading(false);
   }, []);
 
@@ -198,8 +214,11 @@ export default function Inventory() {
       subDepartment: newProduct.subDepartment || null,
       manufacturer: newProduct.manufacturer || null,
       reorderThreshold: parseInt(newProduct.reorderThreshold, 10) || 0,
+      subcategory: newProduct.subcategory || null,
+      subSubcategory: newProduct.subSubcategory || null,
+      subSubSubcategory: newProduct.subSubSubcategory || null,
     });
-    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "" });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "" });
     setAddOpen(false);
     loadInventory();
   };
@@ -225,6 +244,9 @@ export default function Inventory() {
       taxable: item.taxable,
       reorderThreshold: String(item.reorder_threshold),
       storeQuantity: String(item.storeQty),
+      subcategory: item.subcategory ?? "",
+      subSubcategory: item.sub_subcategory ?? "",
+      subSubSubcategory: item.sub_sub_subcategory ?? "",
     });
   };
 
@@ -247,6 +269,9 @@ export default function Inventory() {
       taxable: editProductDraft.taxable,
       reorderThreshold: parseInt(editProductDraft.reorderThreshold, 10) || 0,
       storeQuantity: editProductDraft.storeQuantity === "" ? null : parseInt(editProductDraft.storeQuantity, 10) || 0,
+      subcategory: editProductDraft.subcategory || null,
+      subSubcategory: editProductDraft.subSubcategory || null,
+      subSubSubcategory: editProductDraft.subSubSubcategory || null,
     });
     setEditProductItem(null);
     loadInventory();
@@ -262,22 +287,28 @@ export default function Inventory() {
       return;
     }
     setPoError("");
-    await inventoryApi.createPurchaseOrder({ supplierId: newPo.supplierId, number: newPo.number });
-    setNewPo({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(purchaseOrders.length + 2).padStart(3, "0")}` });
+    await inventoryApi.createPurchaseOrder({ supplierId: newPo.supplierId, number: newPo.number, locationId: newPo.locationId || null });
+    setNewPo({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(purchaseOrders.length + 2).padStart(3, "0")}`, locationId: "" });
+    setNewPoLocations([]);
     setPoOpen(false);
     loadInventory();
+  };
+
+  const handlePoSupplierChange = async (supplierId: string) => {
+    setNewPo((p) => ({ ...p, supplierId, locationId: "" }));
+    setNewPoLocations(supplierId ? await inventoryApi.getSupplierLocations(supplierId) : []);
   };
 
   // Client request 2026-09-03: "Cannot add or edit -- suppliers / vendors".
   const openAddSupplier = () => {
     setEditSupplier(null);
-    setNewSupplier({ name: "", contact: "", phone: "", leadTime: "" });
+    setNewSupplier({ name: "", contact: "", phone: "", leadTime: "", address: "" });
     setSupplierOpen(true);
   };
 
   const openEditSupplier = (s: Supplier) => {
     setEditSupplier(s);
-    setNewSupplier({ name: s.name, contact: s.contact ?? "", phone: s.phone ?? "", leadTime: s.lead_time ?? "" });
+    setNewSupplier({ name: s.name, contact: s.contact ?? "", phone: s.phone ?? "", leadTime: s.lead_time ?? "", address: (s as Supplier & { address: string | null }).address ?? "" });
     setSupplierOpen(true);
   };
 
@@ -288,6 +319,7 @@ export default function Inventory() {
       contact: newSupplier.contact || null,
       phone: newSupplier.phone || null,
       leadTime: newSupplier.leadTime || null,
+      address: newSupplier.address || null,
     };
     if (editSupplier) {
       await inventoryApi.updateSupplier(editSupplier.id, data);
@@ -296,6 +328,29 @@ export default function Inventory() {
     }
     setSupplierOpen(false);
     loadInventory();
+  };
+
+  const openSupplierLocations = async (s: Supplier) => {
+    setLocationsSupplier(s);
+    setSupplierLocations(await inventoryApi.getSupplierLocations(s.id));
+  };
+
+  const handleAddLocation = async () => {
+    if (!locationsSupplier || !newLocation.label.trim()) return;
+    await inventoryApi.addSupplierLocation(locationsSupplier.id, {
+      label: newLocation.label,
+      address: newLocation.address || null,
+      contactName: newLocation.contactName || null,
+      phone: newLocation.phone || null,
+    });
+    setNewLocation({ label: "", address: "", contactName: "", phone: "" });
+    setSupplierLocations(await inventoryApi.getSupplierLocations(locationsSupplier.id));
+  };
+
+  const handleRemoveLocation = async (locationId: string) => {
+    if (!locationsSupplier) return;
+    await inventoryApi.removeSupplierLocation(locationId);
+    setSupplierLocations(await inventoryApi.getSupplierLocations(locationsSupplier.id));
   };
 
   // Client request 2026-09-03: PO list needed a view/edit option.
@@ -433,11 +488,22 @@ export default function Inventory() {
               <div className="space-y-4 pt-2">
                 <div><Label>Name</Label><Input className="mt-1" placeholder="Product name" value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} /></div>
                 <div><Label>SKU</Label><Input className="mt-1" placeholder="SKU-123" value={newProduct.sku} onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))} /></div>
-                <div className="grid grid-cols-2 gap-4">
+                {categoryTaxonomy.length > 0 ? (
+                  <CategoryPicker
+                    taxonomy={categoryTaxonomy}
+                    category={newProduct.category}
+                    subcategory={newProduct.subcategory}
+                    subSubcategory={newProduct.subSubcategory}
+                    subSubSubcategory={newProduct.subSubSubcategory}
+                    onChange={(next) => setNewProduct((p) => ({ ...p, ...next }))}
+                  />
+                ) : (
                   <div><Label>Category</Label><Input className="mt-1" placeholder="e.g. Chemicals" list="inventory-categories" value={newProduct.category} onChange={(e) => setNewProduct((p) => ({ ...p, category: e.target.value }))} /></div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
                   <div><Label>Cost (internal)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
+                  <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.price} onChange={(e) => setNewProduct((p) => ({ ...p, price: e.target.value }))} /></div>
                 </div>
-                <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.price} onChange={(e) => setNewProduct((p) => ({ ...p, price: e.target.value }))} /></div>
                 <div><Label>Short Description</Label><Input className="mt-1" placeholder="One-line summary" value={newProduct.shortDescription} onChange={(e) => setNewProduct((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
                 <div><Label>Long Description</Label><Input className="mt-1" placeholder="Full details" value={newProduct.longDescription} onChange={(e) => setNewProduct((p) => ({ ...p, longDescription: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -633,6 +699,7 @@ export default function Inventory() {
                   <div><Label>Name</Label><Input className="mt-1" value={newSupplier.name} onChange={(e) => setNewSupplier((p) => ({ ...p, name: e.target.value }))} /></div>
                   <div><Label>Contact</Label><Input className="mt-1" value={newSupplier.contact} onChange={(e) => setNewSupplier((p) => ({ ...p, contact: e.target.value }))} /></div>
                   <div><Label>Phone</Label><Input className="mt-1" value={newSupplier.phone} onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))} /></div>
+                  <div><Label>Address</Label><Input className="mt-1" value={newSupplier.address} onChange={(e) => setNewSupplier((p) => ({ ...p, address: e.target.value }))} /></div>
                   <div><Label>Lead Time</Label><Input className="mt-1" placeholder="3-5 days" value={newSupplier.leadTime} onChange={(e) => setNewSupplier((p) => ({ ...p, leadTime: e.target.value }))} /></div>
                   <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveSupplier}>{editSupplier ? "Save Changes" : "Add Supplier"}</Button>
                 </div>
@@ -645,6 +712,7 @@ export default function Inventory() {
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Supplier</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Address</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Contact</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Phone</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Lead Time</th>
@@ -653,18 +721,52 @@ export default function Inventory() {
                 </thead>
                 <tbody>
                   {suppliers.map((s) => (
-                    <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => openEditSupplier(s)}>
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{s.name}</td>
+                    <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A] cursor-pointer" onClick={() => openEditSupplier(s)}>{s.name}</td>
+                      <td className="py-3 px-4 text-[#64748B] text-sm">{(s as Supplier & { address: string | null }).address}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.contact}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.phone}</td>
                       <td className="text-right py-3 px-4"><Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{s.lead_time}</Badge></td>
-                      <td className="text-right py-3 px-4"><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></td>
+                      <td className="text-right py-3 px-4">
+                        <button className="text-xs text-[#0891B2] font-medium hover:underline mr-3" onClick={() => openSupplierLocations(s)}>Locations</button>
+                        <button onClick={() => openEditSupplier(s)}><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
+
+          {/* Client PDF 2026-09-05: "some vendors have multiple locations we put from". */}
+          <Dialog open={!!locationsSupplier} onOpenChange={(open) => !open && setLocationsSupplier(null)}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>{locationsSupplier?.name} — Locations</DialogTitle></DialogHeader>
+              <div className="space-y-3 pt-2">
+                {supplierLocations.map((loc) => (
+                  <div key={loc.id} className="flex items-start justify-between p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <div className="text-sm">
+                      <p className="font-medium text-[#0F172A]">{loc.label}</p>
+                      {loc.address && <p className="text-[#64748B]">{loc.address}</p>}
+                      {(loc.contact_name || loc.phone) && <p className="text-[#64748B]">{[loc.contact_name, loc.phone].filter(Boolean).join(" · ")}</p>}
+                    </div>
+                    <button onClick={() => handleRemoveLocation(loc.id)} className="text-[#DC2626] text-xs">Remove</button>
+                  </div>
+                ))}
+                {supplierLocations.length === 0 && <p className="text-sm text-[#64748B]">No additional locations yet.</p>}
+                <div className="border-t border-[#E2E8F0] pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-[#64748B] uppercase">Add Location</p>
+                  <Input placeholder="Label (e.g. Warehouse B)" value={newLocation.label} onChange={(e) => setNewLocation((p) => ({ ...p, label: e.target.value }))} />
+                  <Input placeholder="Address" value={newLocation.address} onChange={(e) => setNewLocation((p) => ({ ...p, address: e.target.value }))} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input placeholder="Contact Name" value={newLocation.contactName} onChange={(e) => setNewLocation((p) => ({ ...p, contactName: e.target.value }))} />
+                    <Input placeholder="Phone" value={newLocation.phone} onChange={(e) => setNewLocation((p) => ({ ...p, phone: e.target.value }))} />
+                  </div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddLocation}>Add Location</Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </TabsContent>
 
         <TabsContent value="purchase" className="mt-4 space-y-3">
@@ -677,11 +779,19 @@ export default function Inventory() {
                 <div className="space-y-4 pt-2">
                   <div><Label>PO Number</Label><Input className="mt-1" placeholder="PO-2026-001" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} /></div>
                   <div><Label>Supplier</Label>
-                    <Select value={newPo.supplierId} onValueChange={(v) => setNewPo((p) => ({ ...p, supplierId: v }))}>
+                    <Select value={newPo.supplierId} onValueChange={handlePoSupplierChange}>
                       <SelectTrigger className="mt-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
                       <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
+                  {newPoLocations.length > 0 && (
+                    <div><Label>Order From (Location)</Label>
+                      <Select value={newPo.locationId} onValueChange={(v) => setNewPo((p) => ({ ...p, locationId: v }))}>
+                        <SelectTrigger className="mt-1"><SelectValue placeholder="Default / main location" /></SelectTrigger>
+                        <SelectContent>{newPoLocations.map(l => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}</SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   {poError && <p className="text-sm text-[#DC2626]">{poError}</p>}
                   <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreatePo}>Create PO</Button>
                 </div>
@@ -736,7 +846,7 @@ export default function Inventory() {
                   {purchaseOrders.map((po) => (
                     <tr key={po.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => openPoDetail(po)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{po.number}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{po.suppliers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{po.suppliers?.name ?? "—"}{po.locations?.label ? <span className="text-xs text-[#94A3B8]"> · {po.locations.label}</span> : null}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{po.item_count}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${po.total.toLocaleString()}</td>
                       <td className="py-3 px-4 text-[#64748B]">{po.order_date}</td>
@@ -953,10 +1063,19 @@ export default function Inventory() {
             })()}
             <div><Label>Name</Label><Input className="mt-1" value={editProductDraft.name} onChange={(e) => setEditProductDraft((p) => ({ ...p, name: e.target.value }))} /></div>
             <div><Label>SKU</Label><Input className="mt-1" value={editProductDraft.sku} onChange={(e) => setEditProductDraft((p) => ({ ...p, sku: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-4">
+            {categoryTaxonomy.length > 0 ? (
+              <CategoryPicker
+                taxonomy={categoryTaxonomy}
+                category={editProductDraft.category}
+                subcategory={editProductDraft.subcategory}
+                subSubcategory={editProductDraft.subSubcategory}
+                subSubSubcategory={editProductDraft.subSubSubcategory}
+                onChange={(next) => setEditProductDraft((p) => ({ ...p, ...next }))}
+              />
+            ) : (
               <div><Label>Category</Label><Input className="mt-1" list="inventory-categories" value={editProductDraft.category} onChange={(e) => setEditProductDraft((p) => ({ ...p, category: e.target.value }))} /></div>
-              <div><Label>Unit</Label><Input className="mt-1" placeholder="ea" value={editProductDraft.unit} onChange={(e) => setEditProductDraft((p) => ({ ...p, unit: e.target.value }))} /></div>
-            </div>
+            )}
+            <div><Label>Unit</Label><Input className="mt-1" placeholder="ea" value={editProductDraft.unit} onChange={(e) => setEditProductDraft((p) => ({ ...p, unit: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Cost (internal)</Label><Input className="mt-1" type="number" value={editProductDraft.unitCost} onChange={(e) => setEditProductDraft((p) => ({ ...p, unitCost: e.target.value }))} /></div>
               <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" value={editProductDraft.price} onChange={(e) => setEditProductDraft((p) => ({ ...p, price: e.target.value }))} /></div>

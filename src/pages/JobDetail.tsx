@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -24,12 +25,14 @@ import {
 import { useTranslator } from "@/hooks/use-translator";
 import { useLanguage } from "@/lib/language-context";
 import { Loader2, RefreshCw, Pencil } from "lucide-react";
-import WaterTestingForm from "@/components/forms/WaterTestingForm";
-import MaintenanceChecklist from "@/components/forms/MaintenanceChecklist";
-import OneOffJobChecklist from "@/components/forms/OneOffJobChecklist";
-import { jobsApi, type JobPartUsed, type JobLineItem, type JobAttachment } from "@/lib/api/jobs";
+import DynamicForm from "@/components/DynamicForm";
+import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
+import { recurringJobsApi } from "@/lib/api/recurringJobs";
+import { jobsApi, type JobPartUsed, type JobLineItem, type JobAttachment, type JobCrewMember, type JobForm } from "@/lib/api/jobs";
 import { invoicingApi } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
+import { profilesApi } from "@/lib/api/profiles";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import LineItemsEditor, { newDraftLineItem, type DraftLineItem } from "@/components/LineItemsEditor";
 import DocumentsSection from "@/components/DocumentsSection";
@@ -113,12 +116,15 @@ export default function JobDetail() {
   const [job, setJob] = useState<JobRow | null>(null);
   const [descEditing, setDescEditing] = useState(false);
   const [descDraft, setDescDraft] = useState("");
+  const [techNotesEditing, setTechNotesEditing] = useState(false);
+  const [techNotesDraft, setTechNotesDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("trip_details");
   const [noteText, setNoteText] = useState("");
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleAt, setRescheduleAt] = useState("");
   const [rescheduleReason, setRescheduleReason] = useState("");
+  const [rescheduleScope, setRescheduleScope] = useState<"temporary" | "permanent">("temporary");
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
@@ -134,7 +140,34 @@ export default function JobDetail() {
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [documents, setDocuments] = useState<JobAttachment[]>([]);
   const [docsUploading, setDocsUploading] = useState(false);
+  // Pre-existing bug fixed 2026-09-08: this was declared after the `if (isLoading)`/`if (!job)`
+  // early returns below, which only runs the hook on some renders and not others -- a real Rules
+  // of Hooks violation ("Rendered more hooks than during the previous render", a real crash,
+  // reproduced navigating straight to a JobDetail page). Hooks must never sit after a conditional
+  // return.
+  const [convertingToEstimate, setConvertingToEstimate] = useState(false);
   const { tenantId } = useAuth();
+
+  // Client PDF 2026-09-06: "Allow us to set up more than one tech on a job (setting up crews)".
+  const [crew, setCrew] = useState<JobCrewMember[]>([]);
+  const [allTechs, setAllTechs] = useState<{ id: string; name: string }[]>([]);
+  const [addingCrew, setAddingCrew] = useState(false);
+
+  // Client PDF 2026-09-06: WaterTestingForm/MaintenanceChecklist/OneOffJobChecklist previously
+  // had no save at all — this loads what's already been submitted for this job.
+  const [pastForms, setPastForms] = useState<JobForm[]>([]);
+
+  // Client SMS 2026-09-06: custom Form Builder -- the 3 legacy checklists are now real, editable
+  // form_templates rows rendered through DynamicForm (so editing "Water Testing Form" in the
+  // Form Builder actually changes what a tech sees here), plus any other template can be tagged
+  // to this job on demand ("need to be able to... tag to a job").
+  const [allTemplates, setAllTemplates] = useState<FormTemplate[]>([]);
+  const [extraTemplateIds, setExtraTemplateIds] = useState<string[]>([]);
+  const [addFormPickerOpen, setAddFormPickerOpen] = useState(false);
+
+  useEffect(() => {
+    formTemplatesApi.list().then(setAllTemplates);
+  }, []);
 
   const loadJob = () => {
     if (!id) return;
@@ -147,6 +180,44 @@ export default function JobDetail() {
     jobsApi.getParts(id).then(setPartsUsed);
     jobsApi.getLineItems(id).then(setJobLineItems);
     jobsApi.getAttachments(id).then((data) => setDocuments(data.filter((a) => a.type === "document")));
+    jobsApi.getCrew(id).then(setCrew);
+    jobsApi.getForms(id).then(setPastForms);
+  };
+
+  useEffect(() => {
+    profilesApi.list().then((profiles) => setAllTechs(profiles.map((p) => ({ id: p.id, name: p.name }))));
+  }, []);
+
+  const handleAddCrew = async (profileId: string) => {
+    if (!id || !profileId) return;
+    await jobsApi.addCrewMember(id, profileId);
+    setAddingCrew(false);
+    jobsApi.getCrew(id).then(setCrew);
+  };
+
+  const handleRemoveCrew = async (profileId: string) => {
+    if (!id) return;
+    await jobsApi.removeCrewMember(id, profileId);
+    jobsApi.getCrew(id).then(setCrew);
+  };
+
+  const handleSaveForm = async (template: FormTemplate, data: Record<string, unknown>) => {
+    if (!id) return;
+    const notesField = template.fields.find((f) => /notes/i.test(f.id) || /notes/i.test(f.label));
+    const notes = notesField ? (data[notesField.id] as string | undefined) ?? null : null;
+    await jobsApi.saveForm(id, template.name, data, notes, template.id);
+    jobsApi.getForms(id).then(setPastForms);
+  };
+
+  // DynamicForm's photo fields upload here -- same job-attachments bucket/path convention as
+  // documents/signature, just a "forms/" sub-path so they don't collide.
+  const handleFormPhotoUpload = async (file: File): Promise<string> => {
+    if (!id || !tenantId) throw new Error("Not ready");
+    const path = `${tenantId}/${id}/forms/${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+    if (error) throw error;
+    const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+    return data.publicUrl;
   };
 
   // Client request 2026-09-03: Documents section on a job (same storage bucket/path convention
@@ -174,7 +245,7 @@ export default function JobDetail() {
   const openLineItemsEditor = () => {
     setLineItemsDraft(
       jobLineItems.length > 0
-        ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate }))
+        ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes }))
         : [newDraftLineItem()],
     );
     setLineItemsEditing(true);
@@ -184,7 +255,7 @@ export default function JobDetail() {
     if (!id) return;
     await jobsApi.saveLineItems(
       id,
-      lineItemsDraft.map((li) => ({ description: li.description, sku: li.sku ?? null, itemType: li.itemType ?? "material", quantity: li.quantity, cost: li.cost ?? 0, rate: li.rate })),
+      lineItemsDraft.map((li) => ({ description: li.description, sku: li.sku ?? null, itemType: li.itemType ?? "material", quantity: li.quantity, cost: li.cost ?? 0, rate: li.rate, notes: li.notes ?? null })),
     );
     setLineItemsEditing(false);
     loadJob();
@@ -244,7 +315,6 @@ export default function JobDetail() {
 
   // Client question 2026-09-03: "How to reverse a Job back to an estimate" — spins off a new
   // Estimate from this job's current data/line items rather than mutating the job itself.
-  const [convertingToEstimate, setConvertingToEstimate] = useState(false);
   const handleConvertToEstimate = async () => {
     if (!job) return;
     setConvertingToEstimate(true);
@@ -261,13 +331,27 @@ export default function JobDetail() {
     loadJob();
   };
 
+  const handleSaveTechNotes = async () => {
+    if (!job) return;
+    await jobsApi.update(job.id, { tech_notes: techNotesDraft });
+    setTechNotesEditing(false);
+    loadJob();
+  };
+
   const handleReschedule = async () => {
     if (!job || !rescheduleAt) return;
     const [date, time] = rescheduleAt.split("T");
     await jobsApi.update(job.id, { scheduled_date: date, scheduled_time: time });
+    // Client PDF 2026-09-05: a "permanent" move also updates the recurring template so future
+    // occurrences generate on the new day; "temporary" only touches this one job (above).
+    if (job.recurring_job_id && rescheduleScope === "permanent") {
+      const newDay = new Date(`${date}T00:00:00`).getDay();
+      await recurringJobsApi.update(job.recurring_job_id, { dayOfWeek: newDay, dayOfMonth: new Date(`${date}T00:00:00`).getDate() });
+    }
     setRescheduleOpen(false);
     setRescheduleAt("");
     setRescheduleReason("");
+    setRescheduleScope("temporary");
     loadJob();
   };
 
@@ -407,6 +491,28 @@ export default function JobDetail() {
               </div>
             </div>
             <Textarea placeholder="Reschedule notes..." className="text-sm" rows={2} />
+            {/* Client PDF 2026-09-05: "When moving a recurring job make it ask us: is this a
+                temporary change or a permanent change?" */}
+            {job.recurring_job_id && (
+              <div>
+                <Label className="text-xs">This job repeats — is this move...</Label>
+                <div className="flex gap-2 mt-1">
+                  {(["temporary", "permanent"] as const).map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setRescheduleScope(opt)}
+                      className={`h-9 px-4 rounded-lg border text-sm font-medium capitalize ${rescheduleScope === opt ? "bg-[#F59E0B] text-white border-[#F59E0B]" : "border-[#E2E8F0] text-[#64748B]"}`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  {rescheduleScope === "temporary" ? "Only this occurrence moves — future ones stay on the original schedule." : "Future occurrences will also generate on this new day."}
+                </p>
+              </div>
+            )}
             <div className="flex gap-2">
               <Button size="sm" className="bg-[#F59E0B] hover:bg-[#D97706] text-white" disabled={!rescheduleAt} onClick={handleReschedule}>Confirm Reschedule</Button>
               <Button size="sm" variant="outline" onClick={() => setRescheduleOpen(false)}>Cancel</Button>
@@ -493,6 +599,70 @@ export default function JobDetail() {
                   <p className="text-sm text-[#64748B]">{job.description || "No description yet."}</p>
                 )}
               </div>
+              {/* Client PDF 2026-09-05: "Able to show notes this job only for the tech to read". */}
+              <div className="p-3 rounded-lg bg-[#FEF3E2] border border-[#F3D9AE]">
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-sm font-medium text-[#0F172A] flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Tech-Only Notes</p>
+                  {!techNotesEditing && (
+                    <button className="text-[#64748B] hover:text-[#0891B2]" onClick={() => { setTechNotesDraft(job.tech_notes ?? ""); setTechNotesEditing(true); }}>
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+                {techNotesEditing ? (
+                  <div className="space-y-2">
+                    <Textarea value={techNotesDraft} onChange={(e) => setTechNotesDraft(e.target.value)} className="text-sm" rows={2} />
+                    <div className="flex gap-2">
+                      <Button size="sm" className="bg-[#0891B2] text-white h-7 text-xs" onClick={handleSaveTechNotes}>Save</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-[#E2E8F0]" onClick={() => setTechNotesEditing(false)}>Cancel</Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-[#64748B]">{job.tech_notes || "No tech-only notes."}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Crew — client PDF 2026-09-06: "set up more than one tech on a job". job.tech_id
+              stays the lead tech (dispatch/on-time logic); these are additional crew members. */}
+          <Card className="border-[#E2E8F0] shadow-sm">
+            <CardHeader className="pb-3 flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">Crew</CardTitle>
+              {!addingCrew && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1 text-[#0891B2]" onClick={() => setAddingCrew(true)}>
+                  <Plus className="w-3.5 h-3.5" /> Add Tech
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="pt-0 space-y-2">
+              {addingCrew && (
+                <div className="flex gap-2 mb-2">
+                  <div className="flex-1">
+                    <SearchableSelect
+                      value=""
+                      onChange={handleAddCrew}
+                      placeholder="Select a technician"
+                      searchPlaceholder="Search techs..."
+                      options={allTechs.filter((t) => t.id !== job.tech_id && !crew.some((c) => c.profile_id === t.id)).map((t) => ({ value: t.id, label: t.name }))}
+                    />
+                  </div>
+                  <Button variant="outline" size="sm" className="h-9 border-[#E2E8F0]" onClick={() => setAddingCrew(false)}>Cancel</Button>
+                </div>
+              )}
+              {crew.length === 0 ? (
+                <p className="text-sm text-[#64748B]">No additional crew on this job — just {job.profiles?.name ?? "the assigned tech"}.</p>
+              ) : (
+                crew.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="w-6 h-6"><AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{c.avatar ?? c.name.slice(0, 2)}</AvatarFallback></Avatar>
+                      <span className="text-sm text-[#0F172A]">{c.name}</span>
+                    </div>
+                    <button onClick={() => handleRemoveCrew(c.profile_id)} className="text-[#64748B] hover:text-[#DC2626] text-xs">Remove</button>
+                  </div>
+                ))
+              )}
             </CardContent>
           </Card>
 
@@ -759,22 +929,71 @@ export default function JobDetail() {
             </CardContent>
           </Card>
 
-          {/* Service Forms — shown based on job type */}
-          {job.type === "Maintenance" && (
-            <div className="space-y-4">
-              <WaterTestingForm />
-              <MaintenanceChecklist />
-            </div>
-          )}
-          {(job.type === "Repair" || job.type === "Install" || job.type === "Equipment Service" || job.type === "Renovation / Remodel") && (
-            <OneOffJobChecklist />
-          )}
-          {(job.type !== "Maintenance" && job.type !== "Repair" && job.type !== "Install" && job.type !== "Equipment Service" && job.type !== "Renovation / Remodel") && (
-            <div className="space-y-4">
-              <WaterTestingForm />
-              <MaintenanceChecklist />
-              <OneOffJobChecklist />
-            </div>
+          {/* Service Forms — Client SMS 2026-09-06: custom Form Builder. Templates that suggest
+              themselves for this job's type render automatically; any other template can be
+              tagged on ("Add Another Form") without leaving the job. */}
+          {(() => {
+            const suggested = allTemplates.filter((t) => t.applies_to === job.type || t.applies_to === null);
+            const extra = allTemplates.filter((t) => extraTemplateIds.includes(t.id) && !suggested.some((s) => s.id === t.id));
+            const shown = [...suggested, ...extra];
+            const pickable = allTemplates.filter((t) => !shown.some((s) => s.id === t.id));
+            return (
+              <div className="space-y-4">
+                {shown.map((t) => (
+                  <DynamicForm key={t.id} template={t} onSave={(data) => handleSaveForm(t, data)} onUploadPhoto={handleFormPhotoUpload} />
+                ))}
+                {pickable.length > 0 && (
+                  <Dialog open={addFormPickerOpen} onOpenChange={setAddFormPickerOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1.5 border-[#E2E8F0] border-dashed">
+                        <Plus className="w-3.5 h-3.5" /> Add Another Form
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[80vh] overflow-y-auto">
+                      <DialogHeader><DialogTitle>Tag a Form to This Job</DialogTitle></DialogHeader>
+                      <div className="space-y-2 pt-2">
+                        {pickable.map((t) => (
+                          <button
+                            key={t.id}
+                            className="w-full text-left p-3 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                            onClick={() => { setExtraTemplateIds((prev) => [...prev, t.id]); setAddFormPickerOpen(false); }}
+                          >
+                            <p className="text-sm font-medium text-[#0F172A]">{t.name}</p>
+                            {t.description && <p className="text-xs text-[#64748B]">{t.description}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Past submitted forms for this job — client PDF 2026-09-06: "view all forms from
+              previous jobs". */}
+          {pastForms.length > 0 && (
+            <Card className="border-[#E2E8F0] shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-[#0F172A]">Submitted Forms</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-2">
+                {pastForms.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <div>
+                      <p className="text-sm font-medium text-[#0F172A]">{f.template_name ?? f.type}</p>
+                      <p className="text-xs text-[#64748B]">{new Date(f.submitted_at).toLocaleString()} · {f.submitted_by_name ?? "Unknown"}</p>
+                    </div>
+                    <button
+                      className="text-xs text-[#0891B2] hover:underline shrink-0"
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${f.public_token}`)}
+                    >
+                      Copy Customer Link
+                    </button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
           )}
 
           {/* Line Items — client question 2026-09-03: "How to add items to a service ticket/Job" */}
@@ -804,6 +1023,7 @@ export default function JobDetail() {
                         <Wrench className="w-4 h-4 text-[#0891B2]" />
                         <div>
                           <p className="text-sm font-medium text-[#0F172A]">{li.description}</p>
+                          {li.notes && <p className="text-xs text-[#94A3B8] italic">{li.notes}</p>}
                           <p className="text-xs text-[#64748B]">{li.sku ? `${li.sku} · ` : ""}{li.quantity} × ${li.rate.toFixed(2)}{li.item_type === "labor" ? " · Labor" : ""}</p>
                         </div>
                       </div>

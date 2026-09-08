@@ -14,8 +14,10 @@ export default async function inventoryRoutes(app: FastifyInstance) {
         tx`select * from inventory_locations`,
         tx`select * from inventory_stock`,
         tx`select * from suppliers order by name`,
-        tx`select po.*, jsonb_build_object('name', s.name) as suppliers
-           from purchase_orders po left join suppliers s on s.id = po.supplier_id
+        tx`select po.*, jsonb_build_object('name', s.name) as suppliers, jsonb_build_object('label', sl.label, 'address', sl.address) as locations
+           from purchase_orders po
+           left join suppliers s on s.id = po.supplier_id
+           left join supplier_locations sl on sl.id = po.location_id
            order by po.order_date desc`,
         tx`select v.*, jsonb_build_object('name', ii.name) as inventory_items
            from inventory_variance v left join inventory_items ii on ii.id = v.item_id
@@ -74,16 +76,19 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       subDepartment: string | null;
       manufacturer: string | null;
       reorderThreshold: number;
+      subcategory?: string | null;
+      subSubcategory?: string | null;
+      subSubSubcategory?: string | null;
     };
   }>("/items", async (req) => {
-    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold } = req.body;
+    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold, subcategory, subSubcategory, subSubSubcategory } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         insert into inventory_items
-          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold)
+          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold, subcategory, sub_subcategory, sub_sub_subcategory)
         values
-          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0})
+          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0}, ${subcategory ?? null}, ${subSubcategory ?? null}, ${subSubSubcategory ?? null})
         returning *
       `;
       return row;
@@ -123,13 +128,16 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       taxable: boolean;
       reorderThreshold: number;
       storeQuantity: number | null;
+      subcategory?: string | null;
+      subSubcategory?: string | null;
+      subSubSubcategory?: string | null;
     };
   }>("/items/:id", async (req) => {
     const { id } = req.params;
     const {
       name, sku, category, unitCost, price, shortDescription, longDescription,
       department, subDepartment, manufacturer, barcode, defaultDistributor, unit, taxable, reorderThreshold,
-      storeQuantity,
+      storeQuantity, subcategory, subSubcategory, subSubSubcategory,
     } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
@@ -139,7 +147,8 @@ export default async function inventoryRoutes(app: FastifyInstance) {
           short_description = ${shortDescription}, long_description = ${longDescription},
           department = ${department}, sub_department = ${subDepartment}, manufacturer = ${manufacturer},
           barcode = ${barcode}, default_distributor = ${defaultDistributor}, unit = ${unit}, taxable = ${taxable},
-          reorder_threshold = ${reorderThreshold ?? 0}
+          reorder_threshold = ${reorderThreshold ?? 0}, subcategory = ${subcategory ?? null},
+          sub_subcategory = ${subSubcategory ?? null}, sub_sub_subcategory = ${subSubSubcategory ?? null}
         where id = ${id}
         returning *
       `;
@@ -167,35 +176,84 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
+  // Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list") — distinct
+  // manufacturers already recorded on inventory_items, with an item count each.
+  app.get("/manufacturers", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`
+      select manufacturer, count(*)::int as item_count
+      from inventory_items
+      where manufacturer is not null and manufacturer != ''
+      group by manufacturer
+      order by manufacturer
+    `);
+  });
+
   app.get("/suppliers", async (req) => withTenantContext(req.userId, (tx) => tx`select * from suppliers order by name`));
 
-  app.post<{ Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null } }>("/suppliers", async (req) => {
-    const { name, contact, phone, leadTime } = req.body;
+  app.post<{ Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null } }>("/suppliers", async (req) => {
+    const { name, contact, phone, leadTime, address } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into suppliers (tenant_id, name, contact, phone, lead_time)
-        values (${tenant.id}, ${name}, ${contact}, ${phone}, ${leadTime})
+        insert into suppliers (tenant_id, name, contact, phone, lead_time, address)
+        values (${tenant.id}, ${name}, ${contact}, ${phone}, ${leadTime}, ${address ?? null})
         returning *
       `;
       return row;
     });
   });
 
-  app.patch<{ Params: { id: string }; Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null } }>(
+  app.patch<{ Params: { id: string }; Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null } }>(
     "/suppliers/:id",
     async (req) => {
       const { id } = req.params;
-      const { name, contact, phone, leadTime } = req.body;
+      const { name, contact, phone, leadTime, address } = req.body;
       return withTenantContext(req.userId, async (tx) => {
         const [row] = await tx`
-          update suppliers set name = ${name}, contact = ${contact}, phone = ${phone}, lead_time = ${leadTime}
+          update suppliers set name = ${name}, contact = ${contact}, phone = ${phone}, lead_time = ${leadTime}, address = ${address ?? null}
           where id = ${id} returning *
         `;
         return row;
       });
     },
   );
+
+  // Client PDF 2026-09-05: "Vendor list (with addresses, contact names, phone numbers — some
+  // vendors have multiple locations we put from)". A supplier is the vendor identity; each
+  // location is a separate address/contact a PO can be placed from.
+  app.get<{ Params: { id: string } }>("/suppliers/:id/locations", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`select * from supplier_locations where supplier_id = ${id} order by label`);
+  });
+
+  app.post<{ Params: { id: string }; Body: { label: string; address: string | null; contactName: string | null; phone: string | null } }>(
+    "/suppliers/:id/locations",
+    async (req) => {
+      const { id } = req.params;
+      const { label, address, contactName, phone } = req.body;
+      return withTenantContext(req.userId, async (tx) => {
+        const [tenant] = await tx`select current_tenant_id() as id`;
+        const [row] = await tx`
+          insert into supplier_locations (tenant_id, supplier_id, label, address, contact_name, phone)
+          values (${tenant.id}, ${id}, ${label}, ${address}, ${contactName}, ${phone})
+          returning *
+        `;
+        return row;
+      });
+    },
+  );
+
+  app.delete<{ Params: { locationId: string } }>("/supplier-locations/:locationId", async (req) => {
+    const { locationId } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`delete from supplier_locations where id = ${locationId}`);
+  });
+
+  // Sidebar restructure / inventory: cascading category picker seeded from the client's own
+  // configuration_categories.xlsx (351 rows). Reference data for the Add/Edit Product dialog,
+  // not a per-tenant CRUD surface.
+  app.get("/category-taxonomy", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`select * from category_taxonomy order by category, subcategory, sub_subcategory, sub_sub_subcategory`);
+  });
 
   // Client request 2026-08-27: map each inventory item to QuickBooks COGS/Income/Asset accounts.
   app.get("/qbo-accounts", async (req) => withQuickbooksConnection(req.userId, getChartOfAccounts));
@@ -247,13 +305,13 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post<{ Body: { supplierId: string; number: string } }>("/purchase-orders", async (req) => {
-    const { supplierId, number } = req.body;
+  app.post<{ Body: { supplierId: string; number: string; locationId?: string | null } }>("/purchase-orders", async (req) => {
+    const { supplierId, number, locationId } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into purchase_orders (tenant_id, number, supplier_id, status)
-        values (${tenant.id}, ${number}, ${supplierId}, 'Draft')
+        insert into purchase_orders (tenant_id, number, supplier_id, status, location_id)
+        values (${tenant.id}, ${number}, ${supplierId}, 'Draft', ${locationId ?? null})
         returning *
       `;
       return row;
@@ -263,15 +321,15 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   // Client request 2026-09-03: PO list had no way to view/edit an existing order.
   app.patch<{
     Params: { id: string };
-    Body: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null };
+    Body: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null; locationId?: string | null };
   }>("/purchase-orders/:id", async (req) => {
     const { id } = req.params;
-    const { number, supplierId, status, itemCount, total, receivedDate } = req.body;
+    const { number, supplierId, status, itemCount, total, receivedDate, locationId } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`
         update purchase_orders
         set number = ${number}, supplier_id = ${supplierId}, status = ${status},
-            item_count = ${itemCount}, total = ${total}, received_date = ${receivedDate}
+            item_count = ${itemCount}, total = ${total}, received_date = ${receivedDate}, location_id = ${locationId ?? null}
         where id = ${id}
         returning *
       `;

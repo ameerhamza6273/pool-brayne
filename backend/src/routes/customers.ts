@@ -203,6 +203,21 @@ export default async function customersRoutes(app: FastifyInstance) {
     },
   );
 
+  // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs (water testing
+  // and check list for maintenance with notes)".
+  app.get<{ Params: { id: string } }>("/:id/forms", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`
+      select f.*, j.type as job_type, j.scheduled_date as job_scheduled_date, p.name as submitted_by_name, ft.name as template_name
+      from job_forms f
+      left join jobs j on j.id = f.job_id
+      left join profiles p on p.id = f.submitted_by
+      left join form_templates ft on ft.id = f.template_id
+      where f.customer_id = ${id}
+      order by f.submitted_at desc
+    `);
+  });
+
   app.post<{ Params: { id: string } }>("/:id/quickbooks-sync", async (req) => {
     const qboCustomerId = await syncCustomerToQuickbooks(req.userId, req.params.id);
     return { qboCustomerId };

@@ -387,6 +387,9 @@ export type Database = {
           short_description: string | null
           sku: string
           sub_department: string | null
+          subcategory: string | null
+          sub_subcategory: string | null
+          sub_sub_subcategory: string | null
           taxable: boolean
           tenant_id: string
           unit: string | null
@@ -410,6 +413,9 @@ export type Database = {
           short_description?: string | null
           sku: string
           sub_department?: string | null
+          subcategory?: string | null
+          sub_subcategory?: string | null
+          sub_sub_subcategory?: string | null
           taxable?: boolean
           tenant_id: string
           unit?: string | null
@@ -433,6 +439,9 @@ export type Database = {
           short_description?: string | null
           sku?: string
           sub_department?: string | null
+          subcategory?: string | null
+          sub_subcategory?: string | null
+          sub_sub_subcategory?: string | null
           taxable?: boolean
           tenant_id?: string
           unit?: string | null
@@ -579,6 +588,7 @@ export type Database = {
           id: string
           invoice_id: string
           item_type: string
+          notes: string | null
           quantity: number
           rate: number
           sku: string | null
@@ -591,6 +601,7 @@ export type Database = {
           id?: string
           invoice_id: string
           item_type?: string
+          notes?: string | null
           quantity?: number
           rate?: number
           sku?: string | null
@@ -603,6 +614,7 @@ export type Database = {
           id?: string
           invoice_id?: string
           item_type?: string
+          notes?: string | null
           quantity?: number
           rate?: number
           sku?: string | null
@@ -642,6 +654,8 @@ export type Database = {
           qbo_invoice_id: string | null
           status: string
           tenant_id: string
+          write_off_date: string | null
+          write_off_reason: string | null
         }
         Insert: {
           amount?: number
@@ -659,6 +673,8 @@ export type Database = {
           qbo_invoice_id?: string | null
           status?: string
           tenant_id: string
+          write_off_date?: string | null
+          write_off_reason?: string | null
         }
         Update: {
           amount?: number
@@ -676,6 +692,8 @@ export type Database = {
           qbo_invoice_id?: string | null
           status?: string
           tenant_id?: string
+          write_off_date?: string | null
+          write_off_reason?: string | null
         }
         Relationships: [
           {
@@ -704,6 +722,8 @@ export type Database = {
       estimates: {
         Row: {
           amount: number
+          approval_token: string
+          approved_at: string | null
           converted_invoice_id: string | null
           converted_job_id: string | null
           created_at: string
@@ -720,6 +740,8 @@ export type Database = {
         }
         Insert: {
           amount?: number
+          approval_token?: string
+          approved_at?: string | null
           converted_invoice_id?: string | null
           converted_job_id?: string | null
           created_at?: string
@@ -736,6 +758,8 @@ export type Database = {
         }
         Update: {
           amount?: number
+          approval_token?: string
+          approved_at?: string | null
           converted_invoice_id?: string | null
           converted_job_id?: string | null
           created_at?: string
@@ -760,6 +784,7 @@ export type Database = {
           estimate_id: string
           id: string
           item_type: string
+          notes: string | null
           quantity: number
           rate: number
           sku: string | null
@@ -772,6 +797,7 @@ export type Database = {
           estimate_id: string
           id?: string
           item_type?: string
+          notes?: string | null
           quantity?: number
           rate?: number
           sku?: string | null
@@ -784,6 +810,7 @@ export type Database = {
           estimate_id?: string
           id?: string
           item_type?: string
+          notes?: string | null
           quantity?: number
           rate?: number
           sku?: string | null
@@ -1081,11 +1108,13 @@ export type Database = {
           id: string
           item_sku: string | null
           labor_sku: string | null
+          recurring_job_id: string | null
           scheduled_date: string | null
           scheduled_time: string | null
           stage: Database["public"]["Enums"]["job_stage"]
           status: string
           tech_id: string | null
+          tech_notes: string | null
           tenant_id: string
           type: string
         }
@@ -1102,11 +1131,13 @@ export type Database = {
           id?: string
           item_sku?: string | null
           labor_sku?: string | null
+          recurring_job_id?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
           stage?: Database["public"]["Enums"]["job_stage"]
           status?: string
           tech_id?: string | null
+          tech_notes?: string | null
           tenant_id: string
           type: string
         }
@@ -1123,11 +1154,13 @@ export type Database = {
           id?: string
           item_sku?: string | null
           labor_sku?: string | null
+          recurring_job_id?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
           stage?: Database["public"]["Enums"]["job_stage"]
           status?: string
           tech_id?: string | null
+          tech_notes?: string | null
           tenant_id?: string
           type?: string
         }
@@ -1390,6 +1423,7 @@ export type Database = {
         Row: {
           id: string
           item_count: number
+          location_id: string | null
           number: string
           order_date: string
           received_date: string | null
@@ -1401,6 +1435,7 @@ export type Database = {
         Insert: {
           id?: string
           item_count?: number
+          location_id?: string | null
           number: string
           order_date?: string
           received_date?: string | null
@@ -1412,6 +1447,7 @@ export type Database = {
         Update: {
           id?: string
           item_count?: number
+          location_id?: string | null
           number?: string
           order_date?: string
           received_date?: string | null
@@ -1738,6 +1774,7 @@ export type Database = {
       }
       suppliers: {
         Row: {
+          address: string | null
           contact: string | null
           id: string
           lead_time: string | null
@@ -1746,6 +1783,7 @@ export type Database = {
           tenant_id: string
         }
         Insert: {
+          address?: string | null
           contact?: string | null
           id?: string
           lead_time?: string | null
@@ -1754,6 +1792,7 @@ export type Database = {
           tenant_id: string
         }
         Update: {
+          address?: string | null
           contact?: string | null
           id?: string
           lead_time?: string | null

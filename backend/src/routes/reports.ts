@@ -104,6 +104,17 @@ export default async function reportsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`delete from customer_reminders where id = ${id}`);
   });
 
+  // Client PDF 2026-09-05: "Vendor bills due" under Purchase Orders / Vendor Information.
+  app.get("/vendor-bills-due", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`
+      select s.id as supplier_id, s.name as supplier_name, sum(vb.amount) as total_due, count(vb.id) as bill_count
+      from vendor_bills vb join suppliers s on s.id = vb.supplier_id
+      where vb.status != 'Paid'
+      group by s.id, s.name
+      order by total_due desc
+    `);
+  });
+
   // Historical stock snapshots aren't tracked, so this reflects current on-hand quantities —
   // the `asOf` param is accepted for the UI's date picker but the figures are always "as of now".
   app.get("/inventory-valuation", async (req) => {

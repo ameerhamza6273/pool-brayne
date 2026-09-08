@@ -19,6 +19,10 @@ import tasksRoutes from "./routes/tasks.js";
 import directoryRoutes from "./routes/directory.js";
 import reportsRoutes from "./routes/reports.js";
 import notificationsRoutes from "./routes/notifications.js";
+import libraryRoutes from "./routes/library.js";
+import publicRoutes from "./routes/public.js";
+import formTemplatesRoutes from "./routes/formTemplates.js";
+import recurringJobsRoutes from "./routes/recurringJobs.js";
 
 const app = Fastify({ logger: true });
 
@@ -31,6 +35,8 @@ app.addHook("onRequest", async (req, reply) => {
   // Intuit redirects the browser here directly after OAuth consent, so it carries no Bearer
   // token — identity is instead recovered from the `state` param (see routes/quickbooks.ts).
   if (req.url.startsWith("/api/quickbooks/callback")) return;
+  // Customer-facing "Approve Estimation" link (public.ts) — opened without a login.
+  if (req.url.startsWith("/api/public/")) return;
   await requireAuth(req, reply);
 });
 
@@ -51,6 +57,10 @@ await app.register(tasksRoutes, { prefix: "/api/tasks" });
 await app.register(directoryRoutes, { prefix: "/api/directory" });
 await app.register(reportsRoutes, { prefix: "/api/reports" });
 await app.register(notificationsRoutes, { prefix: "/api/notifications" });
+await app.register(libraryRoutes, { prefix: "/api/library" });
+await app.register(publicRoutes, { prefix: "/api/public" });
+await app.register(formTemplatesRoutes, { prefix: "/api/form-templates" });
+await app.register(recurringJobsRoutes, { prefix: "/api/recurring-jobs" });
 
 const port = Number(process.env.PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

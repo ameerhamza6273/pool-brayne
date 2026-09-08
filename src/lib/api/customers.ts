@@ -70,4 +70,20 @@ export const customersApi = {
 
   deleteAttachment: (customerId: string, attachmentId: string) =>
     api.del(`/api/customers/${customerId}/attachments/${attachmentId}`),
+
+  // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs".
+  getForms: (customerId: string) => api.get<CustomerServiceForm[]>(`/api/customers/${customerId}/forms`),
+};
+
+export type CustomerServiceForm = {
+  id: string;
+  job_id: string;
+  type: string;
+  template_name: string | null;
+  data: Record<string, unknown>;
+  notes: string | null;
+  submitted_at: string;
+  submitted_by_name: string | null;
+  job_type: string | null;
+  job_scheduled_date: string | null;
 };

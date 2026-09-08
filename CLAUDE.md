@@ -2244,3 +2244,310 @@ hai, final ki taraf ja rahe hain, koi glitch nahi hona chahiye" — is se 2 bade
 - **Baaqi/pending:** pehle se pending sab kuch waisa hi hai. Koi naya open item nahi is
   continuation se — customer-list/resale/Authorize.net-production/etc. sab pehle jaisa.
   ---
+
+### 2026-09-08 — 2 naye PDFs (`crm 9-6-2026 updates.pdf` + real "Pool Supply Atlanta" sample
+estimate) — poora backlog ek session mein, "sab ek sath karo"
+
+Naya Claude account/session tha (purani session history yaad nahi thi), user ne "project read
+kar lo" kaha — is CLAUDE.md se poora context liya. Phir Downloads mein 2 naye PDFs point kiye:
+`crm 9-6-2026 updates.pdf` (sidebar restructure + estimate/invoice UX list) aur
+`sample estimte pdf.pdf` (Pool Supply Atlanta ka real estimate document sample). Dono padh kar
+summary di, user ne "sab ek sath hi start kar do" kaha — poora ek hi session mein complete hua.
+
+**Naya migration** `20260908090000_client_backlog_2026_09_08.sql` (access token nahi tha,
+pehle jaisa hi `DATABASE_URL` se `postgres` package wale temp-script pattern se apply kiya):
+`invoice_line_items`/`estimate_line_items`/`job_line_items` sab mein `notes` column (line-item
+subtitle — model/part detail, sample PDF ke "260K BTU Natural Gas... — JNDJXIQ260NK" jaisa),
+`estimates.approval_token` (unique uuid, default `gen_random_uuid()`) + `approved_at`, naya
+`estimate_templates` table, `estimate_attachments.type` ('document'|'photo'), `invoices.
+write_off_reason`/`write_off_date`, naya `job_crew_members` table, naya `job_forms` table, naya
+`library_documents` table — sab tenant-scoped RLS ke sath.
+
+**Sidebar poori restructure ho gayi** (`AppShell.tsx`) — flat `navItems` list ki jagah ab
+`navSections` (Radix `Collapsible` groups, default open, click se collapse) hai jo client ke
+literal spec se match karta hai: Dashboard/POS (top-level) → Scheduling Tools (Technician
+Field/Jobs/Recurring/Tasks/Dispatch/Fleet) → Customer Tools (Estimates·Quotes/Customer Invoices)
+→ Vendor Tools (Purchase Orders/Pay POs) → Employee Section (Timesheets/Directory/**naya
+Library**/**naya Forms**) → Data (Customers/Inventory/**naya Vendor List link**/**naya
+Manufacture List**) → Marketing (Campaigns/**Reminders deep-link**) → Reports/Settings
+(top-level). Har entry existing page/tab par deep-link karta hai (koi data-fetch duplicate nahi
+hua) — sirf 2 client sub-items jaan-boojh kar fold kiye (comment mein wajah likhi hai): "Receive
+PO's" = same Purchase Orders tab jahan edit-dialog se status Received set hota hai, "Send
+invoices" ek action hai na ke alag page. Mobile hamburger-menu aur "More" bottom-sheet grid ab
+`flatNavLinks` (groups ka flattened version) use karte hain — mobile ke liye jaan-boojh kar
+flat rakha, groups replicate nahi kiye.
+- Isi ke liye `Invoicing.tsx`/`Inventory.tsx`/`Reports.tsx` ke tab-state ko sirf ek specific
+  query-param value check karne se generalize kiya (ab koi bhi valid tab value URL se deep-link
+  ho sakta hai — `?tab=tasks`, `?tab=vendor-bills`, `?tab=suppliers`, `?tab=reminders` waghera),
+  `Jobs.tsx` ka schedule-only effect bhi dispatch/map tak extend kiya.
+
+**Naye 3 pages** (Employee Section/Data groups ke liye): `Library.tsx` (generic tenant document
+repository — job-attachments bucket hi reuse kiya `library/` sub-path se, established pattern),
+`Manufacturers.tsx` (distinct manufacturer + item-count list, click se `/inventory?search=...`
+par jump — is ke liye Inventory.tsx ka `search` state ab `useSearchParams` se bhi init hota hai),
+`Forms.tsx` (tenant-wide saare submitted service-forms ka list, naya backend
+`GET /api/jobs/forms/all`).
+
+**Quick fixes** (client PDF ke chhote items): New Invoice/Bulk Invoice/New Estimate/New Vendor
+Bill dialogs ab `w-[90vw] lg:max-w-4xl` (pehle ~20% screen the). New Estimate dialog khulte hi
+issue date = aaj, expiry = +30 din auto-fill (editable). Down Payment field ab %/$ toggle ke
+sath hai, default 50% (dollar value backend ko submit-time par compute hoke jata hai, koi
+schema change nahi — `resolveDownPayment()` helper).
+
+**Estimate/Invoice line-item detail line** — sample PDF ke "description + neeche chhoti
+subtitle (model/part#)" format ko match karne ke liye naya `notes` field. `LineItemsEditor.tsx`
+ka "Pick from inventory" ab is field ko inventory item ki `long_description` se auto-fill karta
+hai (editable). `EstimateDetail.tsx`/`InvoiceDetail.tsx`/`JobDetail.tsx` sab jagah description
+ke neeche italic subtitle dikhta hai. **Parts & Materials aur Labor ab alag subtotal lines hain**
+(pehle sirf ek combined "Subtotal" tha) — sample PDF ka literal ask, `item_type` se split.
+
+**Estimate Templates** — naya "Apply Template" dropdown (New Estimate dialog) + "Save as
+Template" button jab line items maujood hon. 2 seed templates banaye (Heater Replacement, Filter
+Replacement — client ne exactly yehi 2 naam diye the PDF mein), curl se banaye phir real values
+se update kiye (sample PDF ke Jxiq heater/check-valve numbers se inspire).
+
+**Estimate approval link ("Approve Estimation" button)** — client ne kaha estimate email mein
+ek "Approve Estimation" button hoga aur humein email notification milegi. **Real email-sending
+service abhi bhi nahi hai (no SendGrid)** isliye poora automatic nahi ban saka, lekin jo real hai:
+naya unguessable `approval_token` (uuid) per estimate, naya **public/unauthenticated** backend
+route `backend/src/routes/public.ts` (`server.ts` ke auth-hook mein `/api/public/` exempt kiya,
+QuickBooks callback jaisa hi pattern) — is route ne pehli baar `withTenantContext` na use karke
+raw `sql` (jo pooler ke `postgres` role se RLS bypass karta hai) seedha `approval_token` se
+filter karke query kiya, kyunki koi logged-in user hi nahi hota is route par. **Cost/margin
+fields jaan-boojh kar public response se exclude kiye** (customer ko kabhi internal cost nahi
+dikhni chahiye). Naya public frontend route `/estimate/:token` → `PublicEstimate.tsx`
+(AppShell/ProtectedRoute se bahar, `/sales` jaisa) — customer bina login ke estimate dekh kar
+Approve/Decline kar sakta hai. Staff-side `EstimateDetail.tsx` mein "Copy Approval Link" +
+"Email Customer" (mailto: link, established honest-pattern jaisa tel:/sms: pehle se hain) +
+approval status badge. **In-app notification bhi add ki** (`notifications.ts` mein naya query —
+last-7-din ke Accepted estimates) taake staff ko pata chale bina real email ke — yehi honest
+middle-ground hai jab tak SendGrid nahi milta.
+
+**Job-level bad debt write-off** — client ne "job" bola tha, lekin AR/payment status jobs nahi
+invoices par hoti hai, isliye **invoices** par banaya (comment mein yeh scoping choice explain
+ki gayi hai). `InvoiceDetail.tsx` mein naya "Write Off" button + reason dialog → status
+"Written Off" + `write_off_reason`/`write_off_date`.
+
+**Job crews (multiple techs per job)** — naya `job_crew_members` junction table.
+`jobs.tech_id` hi lead/primary tech rehta hai (dispatch/on-time-% logic unchanged), naya "Crew"
+card `JobDetail.tsx` mein (SearchableSelect se tech add, already-assigned exclude, remove
+button). New Job dialog mein crew add nahi kiya (scope simple rakha — sirf JobDetail se).
+
+**Forms persistence (bada gap tha)** — `WaterTestingForm.tsx`/`MaintenanceChecklist.tsx`/
+`OneOffJobChecklist.tsx` pehle **completely UI-only thay, kabhi kuch save nahi karte thay**
+(2026-07-28 se hi flagged gap). Naya `job_forms` table + naya `onSave` prop teeno components
+mein — Save button ab real `POST /api/jobs/:id/forms` call karta hai. `JobDetail.tsx` mein naya
+"Submitted Forms" card (is job ke past forms), `CustomerDetail.tsx` mein naya "Service Forms"
+card (customer ke saare jobs ke forms, `customer_id` job_forms mein denormalized hai). OneOff
+checklist ka photo-upload UI **jaan-boojh kar fake hi chhoड़ा** (checked-items + notes save hoti
+hain, photos nahi — job ke paas already real photo-upload path hai alag se, duplicate nahi
+kiya).
+
+**Real pre-existing bug mila aur fix kiya (is session ka nahi tha, purana tha):**
+`JobDetail.tsx` mein `const [convertingToEstimate, setConvertingToEstimate] = useState(false);`
+`if (isLoading) return...` aur `if (!job) return...` ke **baad** declare tha — React Rules of
+Hooks violation ("Rendered more hooks than during the previous render"), jo browser mein seedha
+kisi bhi JobDetail page par navigate karte hi **poora blank white page** crash deta tha (console
+mein confirm kiya). Fix: hook ko top-level state declarations ke sath move kiya (early returns
+se pehle). Yeh bug purana tha (kabhi pehle discover nahi hua), is session mein browser-testing
+ke dauran mila aur turant fix kiya.
+
+**Poora end-to-end verify kiya** — backend: har naya endpoint (manufacturers, estimate-templates,
+library, forms/all, job forms, job crew, customer forms, invoice write-off, public estimate
+approve/respond) curl + real JWT se test kiya (estimate create → public GET (cost fields
+exclude verify kiya) → Accept → notifications mein dikha → convert-to-invoice mein notes copy
+verify kiya), phir turant cleanup kiya (temp scripts, established pattern). Browser
+(device "Browser 2"/Windows, is baar multiple connected browsers the — AskUserQuestion se
+explicit confirm liya, memory rule follow kiya) mein: sidebar collapse/expand real click se test
+kiya, New Estimate dialog (template apply, date defaults, %/$ toggle) live dekha, real estimate
+detail page (approval link, Trip Photos, split subtotal) verify kiya, us approval link ko
+**naye tab mein bina login ke khola** aur public page confirm kiya (real customer data, koi
+cost/margin leak nahi), Library/Manufacturers/Forms pages load kiye, real JobDetail page par
+Water Testing Form save (DB mein verify kiya) + Crew add/remove (round-trip verify kiya) live
+kiya (yehi wahan JobDetail hooks-crash bug mila), InvoiceDetail par Write Off button +
+Parts&Materials/Labor split real invoice par dekha. Saara test data (test estimate, test
+invoices, test job_forms row, test crew row) turant clean kar diya asli data untouched chhoड़ ke.
+- Frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) dono session ke har checkpoint
+  par clean rahe.
+- **Baaqi/pending:** koi naya open item nahi is session se (poori PDF backlog complete hui) —
+  pehle se pending sab kuch waisa hi hai (customer-list/resale/Authorize.net-production/
+  Twilio-Stripe-SendGrid-Gusto client accounts/Railway-Vercel move/global search bar/
+  dispatch-nearest-tech/QBO two-way sync/QBO production redirect URI/JobDetail content-category
+  tabs ke 10 tabs/"create a job form" builder). **Real SendGrid milte hi**, estimate-approval
+  email automatic bhej sakte hain (link generation already ready hai).
+- **Is session ke changes abhi commit nahi hue** — commit se pehle user se confirm lena
+  (established rule).
+- **Dev servers:** is session ke shuru mein hi `localhost:4000` (backend) aur `localhost:5175`
+  (frontend, `--strictPort`) already background mein chal rahe the (pichli session se persistent
+  processes, is session mein dobara start nahi karne pade) — netstat se process commandline
+  verify karke confirm kiya ke yeh PoolBrayne ke hi hain, koi conflict nahi tha.
+  ---
+
+### 2026-09-08 (continued) — Scope ledger banaya (koi naya code nahi), 5 aur naye files padhe
+
+User ne isi session mein aage kaha: **abhi kaam nahi karna, sirf note karna** — Downloads mein
+5 naye files the (`updates 9-5-2026.pdf`, `inspection form.pdf`, `check list forms.pdf`,
+`configuration_categories.xlsx`, ek WhatsApp estimate-email screenshot) + client ke 2 SMS
+(custom form builder ka ask, aur Dispatch board drag-and-drop ka ask — "it's not active"). User
+ne yeh sab padh kar **`PoolBrayne Developer Brief.docx`** (original scope doc, client ne project
+shuru hote waqt diya tha) ke against compare karke ek naya document banane ko kaha — jo dikhaye
+ke original 8-module brief se **kitna extra kaam** (out-of-scope) ab tak ho chuka hai, aur naye
+PDFs/SMS mein jo aaya hai wo **abhi shuru nahi hua, confirm hone ka wait hai**.
+
+- `.docx` ko PowerShell se (`System.IO.Compression`) unzip karke `word/document.xml` nikala,
+  XML tags strip karke plain text mein padha (koi mammoth/docx-parser library installed nahi
+  thi) — poora 8-module spec + tech-stack table + phases mil gaye.
+- `configuration_categories.xlsx` ko backend ke already-installed `xlsx` package se padha
+  (351 rows, 4-level Category→Subcategory→Sub-subcategory→Sub-sub-subcategory taxonomy, jaise
+  "CLEANER PART → MOTOR") — is file ka exact use-case unclear hai (shayad Inventory ke flat
+  Category/Department fields replace karna hai), isliye document mein "needs clarification" ke
+  tor par flag kiya, guess nahi kiya.
+- Kuch ambiguous items **code check karke verify kiye** (implement nahi kiya, sirf padh kar
+  confirm kiya) taake document accurate ho: PO edit **already exists** (`updatePurchaseOrder`,
+  wired hai), Estimate edit **exist nahi karta** (sirf GET, koi PATCH route nahi), Suppliers
+  table mein address/multi-location fields **nahi hain**, Recurring routes ka sirf `.list()`
+  wired hai (koi create-UI nahi), Dispatch board mein koi drag-library use nahi ho rahi (sirf
+  dropdown-based assign).
+- **Artifact publish kiya**: "PoolBrayne Scope Ledger" — 2 sections: "Delivered" (22 extra
+  systems, area-wise grouped: Sales & Documents/Vendors & Inventory/Jobs & Field/Customers &
+  Reporting/Operations/Where-stack-diverged) aur "Logged, not started" (17 naye items, source ke
+  hisaab se grouped — SMS, updates-PDF, checklist-PDFs, xlsx — jahan kuch already-satisfied thay
+  jaise PO-edit aur Documents-section, unhe "Already there" mark kiya taake dobara na bane).
+  PoolBrayne ke apne design tokens (navy `#0C2A3A`, aqua `#0891B2`) reuse kiye.
+- **Koi code change nahi hua is continuation mein** — poori tarah se sirf documentation/tracking
+  kaam tha, jaisa user ne explicitly kaha.
+- **Naya open item (biggest, flagged in ledger):** custom form builder (client apne khud ke
+  form templates banaye, edit kare, job se tag kare) — genuinely bada naya feature, abhi tak
+  scope/priority discuss nahi hui.
+- **Baaqi/pending:** poori "Logged, not started" list ledger mein hai — koi bhi confirm hone tak
+  shuru nahi karna. Pehle se pending sab kuch (customer-list/resale/Authorize.net-production/
+  Twilio-Stripe-SendGrid-Gusto/Railway-Vercel-move/global-search/dispatch-nearest-tech/QBO
+  two-way-sync/QBO-production-redirect/JobDetail-content-category-tabs) waisa hi hai.
+  ---
+
+### 2026-09-08 (continued) — Client ne kaha "ye sab scope of work mein hai" — poori Scope
+Ledger ki "Logged, not started" list ek hi session mein complete hui
+
+User ne kaha client ne poori list ko in-scope confirm kar diya hai, "ab start kr do". Poori
+17-item pending list (dono naye PDFs + SMS se) ek session mein ban gayi — is project ka ab tak
+ka sabse bada single-session build.
+
+**Naya migration** `20260908120000_client_backlog_round2.sql` (access token nahi tha, phir
+`DATABASE_URL` temp-script pattern se apply kiya): `suppliers.address` + naya
+`supplier_locations` table (multi-location vendors), `purchase_orders.location_id`, naya
+`form_templates` table (custom Form Builder — fields jsonb schema), `job_forms.template_id` +
+`job_forms.public_token` (customer-visible form links), naya `recurring_jobs` table +
+`jobs.recurring_job_id` + `jobs.tech_notes`, naya `category_taxonomy` table +
+`inventory_items.subcategory`/`sub_subcategory`/`sub_sub_subcategory`.
+
+**Custom Form Builder (sabse bada item)** — client SMS: "something he can create his own
+forms... edit, create, and tag to a job". Naya `form_templates` (fields jsonb: id/label/type
+[text/textarea/number/select/checkbox/yesno/photo]/options/helpText) + naya generic
+`DynamicForm.tsx` renderer jo kisi bhi template ko render kar sakta hai. **3 purane hardcoded
+components (`WaterTestingForm.tsx`/`MaintenanceChecklist.tsx`/`OneOffJobChecklist.tsx`) delete
+kar diye** aur unki jagah 3 real, editable seeded templates bana di (ab Form Builder se edit
+karo to turant `JobDetail.tsx` par reflect hota hai — pehle hardcoded components tha, edit
+possible hi nahi tha). Naya 4th template **Equipment Inspection Checklist** (client ke
+`inspection form.pdf` reference se) bhi seed kiya. Naya page `FormBuilder.tsx`
+(`/form-builder`, sidebar "Employee Section" mein "Wand2" icon se) — templates list + create/edit
+dialog (field add/remove/reorder-by-delete, type picker, options/helpText per field, "Suggest
+for Job Type" + "Customer visible" toggle). `JobDetail.tsx` ab job.type se match karne wale
+templates auto-render karta hai + "Add Another Form" se koi bhi template manually tag ho sakta
+hai us job par ("tag to a job" ka literal ask).
+- **Chemical ranges wali complaint (client PDF) ab khud-ba-khud theek ho gayi** — Water Testing
+  Form ab Salt Level + "does customer need to restock chemicals?" fields rakhta hai, CYA range
+  30-150 (pehle 30-80 tha) — sab kuch seed template mein already updated hai, aur ab agar future
+  mein phir range change karni ho to sirf Form Builder se edit karo, code change ki zaroorat
+  nahi.
+- **Customer-visible forms** ("make sure customers can see form") — har submitted form ka
+  unguessable `public_token` hota hai, naya public route `backend/src/routes/public.ts` mein
+  `GET /forms/:token` (template.customer_visible check karta hai, warna 404) + naya frontend
+  route `/form/:token` → `PublicForm.tsx` (read-only, koi login nahi, `/estimate/:token` jaisa
+  hi pattern). `JobDetail.tsx` ke "Submitted Forms" list mein "Copy Customer Link" button.
+
+**Dispatch drag-and-drop** ("it's not active") — native HTML5 drag/drop (koi library nahi lagi),
+`Jobs.tsx` Dispatch Board: job cards ab `draggable`, tech rows drop-targets (`onDragOver`/
+`onDrop` → `assignTech`), visual dashed-highlight jab hover ho.
+
+**Estimate edit after creation** — pehle sirf view+convert tha. Naya
+`PATCH /api/invoices/estimates/:id` (poora header + line items replace, `estimateNumber`
+tabdeel nahi hota) + `EstimateDetail.tsx` mein naya "Edit" mode (poora form New-Estimate-dialog
+jaisa hi, Save/Cancel).
+
+**Vendor section overhaul** — `suppliers` mein ab `address`, naya `supplier_locations`
+(multi-location vendors, "Locations" button per supplier row → add/remove dialog).
+Purchase Orders (New PO + PO edit) mein optional "Order From (Location)" picker jab supplier ke
+paas locations hon.
+
+**Vendor Bills Due** — naya `GET /api/reports/vendor-bills-due`, `Invoicing.tsx` ke Vendor Bills
+tab ke upar summary strip (per-vendor total due + bill count).
+
+**Invoicing/Estimates button-order + tab-order** — client ke literal spec (`New Estimate → New
+Task → New Invoice` top buttons; `Estimates → Tasks → Recurring → Customer Invoices → Payments`
+tabs) ko **CSS `order` utility classes se** achieve kiya (koi bada JSX cut-paste risk nahi liya
+— har trigger Button ek flex child hai, `order-N` se visual sequence control hoti hai bina code
+move kiye). "New Task" button header mein add kiya jo Tasks tab switch + dialog open dono ek
+sath karta hai (uska poora form JSX Tasks tab mein hi rehta hai, sirf entry-point header mein
+hai).
+
+**Recurring Jobs (naya real scheduling engine)** — purana `recurring_routes` table
+kabhi real jobs se linked nahi tha (sirf display, `customer_count` ek dummy number tha). Naya
+`recurring_jobs` table + naya `POST /api/recurring-jobs` jo turant pehla occurrence (`jobs` row,
+`recurring_job_id` set) generate karta hai. **Koi cron/scheduler is environment mein nahi chal
+sakta**, isliye "roll-forward" pattern use kiya (customer_reminders ke "Mark Serviced" jaisa) —
+`jobs.ts` ka generic `PATCH /:id` route ab check karta hai: agar `stage === 'completed'` aur job
+`recurring_job_id` rakhta hai, to agla occurrence turant generate ho jata hai (agar template
+active hai aur end_date cross nahi hui). `Jobs.tsx` mein naya "+ New Recurring" button (New Job
+ke bagal), Schedule tab ka "Recurring Maintenance Routes" section ab real `recurring_jobs` data
+dikhata hai. `jobs.tech_notes` (naya column) — "notes sirf tech ke liye" (JobDetail par amber
+card), recurring template ke `tech_notes` har generated occurrence par copy hote hain ("notes
+for all recurring jobs moving forward"). Reschedule panel mein naya **temporary vs permanent**
+prompt (sirf tab dikhta hai jab job `recurring_job_id` rakhta ho) — temporary sirf us job ko
+move karta hai, permanent `recurring_jobs.day_of_week`/`day_of_month` bhi update karta hai
+(future occurrences ke liye).
+- **Real timezone bug mila aur fix kiya** (is session ka khud ka bug, turant pakड़ा gaya):
+  `nextOccurrenceDate()` date ko bina "Z" suffix ke parse kar raha tha (`new Date("2026-09-08T00:
+  00:00")` local time se parse hota hai), phir `.toISOString()` UTC mein convert karta — is
+  machine ka timezone UTC+5 hone ki wajah se 7-din-baad wali date ek din peeche shift ho rahi
+  thi (Sept 15 → Sept 14). Curl se test karte waqt pakड़ा gaya. Fix: pura calculation UTC mein
+  hi kiya (`T00:00:00Z` + `getUTCDate`/`setUTCDate`/`setUTCMonth`), dobara test karke confirm
+  kiya (Sept 15 sahi aaya). **Yaad rakhna:** is codebase mein kahin bhi date-only string ko
+  `new Date()` se parse karke phir `.toISOString()` se wapas nikalna ho, hamesha `Z` suffix +
+  UTC getters/setters use karna — warna server ke timezone ke hisaab se silently ek din shift
+  ho sakta hai.
+
+**Category taxonomy → Inventory** — client ki `configuration_categories.xlsx` (351 rows,
+4-level: Category→Subcategory→Sub-subcategory→Sub-sub-subcategory) ko seed kiya. **User ne
+explicitly kaha "review kr lo, list bna kr shuru kr do, koi cheez client se poochni ho to
+batana"** is item ke exact use-case ke baare mein — maine best-guess (Inventory categorization)
+par implement kiya, koi block nahi kiya. Naya `CategoryPicker.tsx` component (4 cascading
+`<Select>`, har level pichle level se filter hota hai) — Add/Edit Product dialogs mein purane
+free-text Category `<Input>` ki jagah lag gaya (jab tak taxonomy load na ho, purana free-text
+fallback rehta hai backward-compat ke liye).
+
+**End-to-end poora verify kiya** — backend: har naya endpoint curl+real-JWT se (recurring-job
+create→complete→next-occurrence-generate cycle poora chalaya do baar, timezone-bug fix se pehle
+aur baad mein; form-template create/update/delete; job-form save with template_id + public link
+view — cost/margin fields properly excluded; supplier-location add/list/delete; estimate
+edit — amount recompute confirm kiya), phir turant cleanup. Browser (same device jo pehle is
+session mein confirm hua tha) mein: Form Builder page (4 templates, badges sahi), Edit-Form
+dialog (Water Testing Form ke saare 12 fields editable dikhe), New Recurring dialog (poora form
+render hua), Dispatch Board ("Drag a job onto a technician" hint dikha, drag-drop code review
+se verify kiya — real browser-automation drag simulation is environment mein unreliable hai,
+established memory), aur CategoryPicker (Category→Subcategory cascading, real xlsx data se
+match — "CHEMICAL" select karne par "005/BALANCER/BUCKET OPENER/CLEANER/ENHANCER/SANITATION/
+SHOCK/TREATMENT" options aayin, xlsx dump se exactly match).
+- Frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) dono har checkpoint par clean
+  rahe (session ke dauran multiple real TS errors mile aur turant fix kiye — JSX escaped-quote
+  syntax error, missing Database type fields, unused imports).
+- **Baaqi/pending:** koi naya open item nahi — poori Scope Ledger ki "Logged, not started" list
+  complete ho gayi is session mein. Pehle se pending sab kuch waisa hi hai (customer-list/
+  resale/Authorize.net-production/Twilio-Stripe-SendGrid-Gusto/Railway-Vercel-move/
+  global-search-bar/notifications-panel/dispatch-nearest-tech/QBO-two-way-sync/
+  QBO-production-redirect-URI/JobDetail-content-category-tabs-ke-10-tabs). Is session ke saare
+  changes (2 migrations, 3 files delete, ~20 files modify, ~14 naye files) **abhi commit nahi
+  hue** — commit se pehle user se confirm lena.
+- **Dev servers:** poore is session mein `localhost:4000` (backend, `tsx watch` — auto-restart
+  ho gaya har naye route file ke sath) aur `localhost:5175` (frontend, `--strictPort`) already
+  chal rahe the, dobara start nahi karne pade.
+  ---

@@ -12,6 +12,7 @@ export type CustomerReminder = {
   customers: { name: string; phone: string | null } | null;
 };
 export type ValuationRow = { name: string; sku: string; unit_cost: number; quantity: number; value: number };
+export type VendorBillDueRow = { supplier_id: string; supplier_name: string; total_due: number; bill_count: number };
 
 export const reportsApi = {
   itemMovement: (start: string, end: string) => api.get<ItemMovementRow[]>(`/api/reports/item-movement?start=${start}&end=${end}`),
@@ -31,4 +32,6 @@ export const reportsApi = {
   deleteReminder: (id: string) => api.del(`/api/reports/reminders/${id}`),
 
   inventoryValuation: () => api.get<ValuationRow[]>("/api/reports/inventory-valuation"),
+
+  vendorBillsDue: () => api.get<VendorBillDueRow[]>("/api/reports/vendor-bills-due"),
 };

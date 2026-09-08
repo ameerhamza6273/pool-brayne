@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +14,19 @@ import { customersApi } from "@/lib/api/customers";
 // Client request 2026-09-02 ("Need a reports section"): item movement, customer deposits,
 // invoices total-due per customer, recurring reminder-job types, inventory valuation, plus the
 // sales-tax report that already existed on the POS page (reused here from the same endpoint).
+const reportTabs = ["sales-tax", "movement", "deposits", "due", "reminders", "valuation"];
+
 export default function Reports() {
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => {
+    const tab = searchParams.get("tab");
+    return tab && reportTabs.includes(tab) ? tab : "sales-tax";
+  });
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab && reportTabs.includes(tab)) setActiveTab(tab);
+  }, [searchParams]);
+
   const [start, setStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
@@ -98,7 +111,7 @@ export default function Reports() {
       {isLoading && <div className="text-center py-8 text-[#64748B]">Loading reports...</div>}
 
       {!isLoading && (
-      <Tabs defaultValue="sales-tax" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="sales-tax" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Receipt className="w-4 h-4" /> Sales Tax</TabsTrigger>
           <TabsTrigger value="movement" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Package className="w-4 h-4" /> Item Movement</TabsTrigger>

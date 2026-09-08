@@ -3,8 +3,11 @@ import type { Database } from "@/lib/database.types";
 
 type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"];
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
-type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null };
+type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
 type InventoryVariance = Database["public"]["Tables"]["inventory_variance"]["Row"] & { inventory_items: { name: string } | null };
+
+export type SupplierLocation = { id: string; supplier_id: string; label: string; address: string | null; contact_name: string | null; phone: string | null };
+export type CategoryTaxonomyRow = { id: string; category: string; subcategory: string | null; sub_subcategory: string | null; sub_sub_subcategory: string | null };
 
 export type ItemWithStock = InventoryItem & { storeQty: number; vehicleQty: number; total: number; status: "In Stock" | "Low" | "Out" };
 
@@ -26,15 +29,25 @@ export const inventoryApi = {
 
   suppliers: () => api.get<Supplier[]>("/api/inventory/suppliers"),
 
-  addSupplier: (data: { name: string; contact: string | null; phone: string | null; leadTime: string | null }) =>
+  addSupplier: (data: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null }) =>
     api.post<Supplier>("/api/inventory/suppliers", data),
 
-  updateSupplier: (id: string, data: { name: string; contact: string | null; phone: string | null; leadTime: string | null }) =>
+  updateSupplier: (id: string, data: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null }) =>
     api.patch<Supplier>(`/api/inventory/suppliers/${id}`, data),
+
+  // Client PDF 2026-09-05: "some vendors have multiple locations we put from".
+  getSupplierLocations: (supplierId: string) => api.get<SupplierLocation[]>(`/api/inventory/suppliers/${supplierId}/locations`),
+
+  addSupplierLocation: (supplierId: string, data: { label: string; address: string | null; contactName: string | null; phone: string | null }) =>
+    api.post<SupplierLocation>(`/api/inventory/suppliers/${supplierId}/locations`, data),
+
+  removeSupplierLocation: (locationId: string) => api.del(`/api/inventory/supplier-locations/${locationId}`),
+
+  categoryTaxonomy: () => api.get<CategoryTaxonomyRow[]>("/api/inventory/category-taxonomy"),
 
   updatePurchaseOrder: (
     id: string,
-    data: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null },
+    data: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null; locationId?: string | null },
   ) => api.patch<PurchaseOrder>(`/api/inventory/purchase-orders/${id}`, data),
 
   addItem: (data: {
@@ -49,6 +62,9 @@ export const inventoryApi = {
     subDepartment: string | null;
     manufacturer: string | null;
     reorderThreshold: number;
+    subcategory?: string | null;
+    subSubcategory?: string | null;
+    subSubSubcategory?: string | null;
   }) => api.post<InventoryItem>("/api/inventory/items", data),
 
   updatePricing: (itemId: string, unitCost: number, price: number | null) =>
@@ -73,10 +89,13 @@ export const inventoryApi = {
       taxable: boolean;
       reorderThreshold: number;
       storeQuantity: number | null;
+      subcategory?: string | null;
+      subSubcategory?: string | null;
+      subSubSubcategory?: string | null;
     },
   ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
 
-  createPurchaseOrder: (data: { supplierId: string; number: string }) =>
+  createPurchaseOrder: (data: { supplierId: string; number: string; locationId?: string | null }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),
 
   getQboAccounts: () => api.get<QboAccount[]>("/api/inventory/qbo-accounts"),
@@ -88,6 +107,9 @@ export const inventoryApi = {
 
   createWriteoff: (data: { itemId: string; quantity: number; reason: string; note: string | null }) =>
     api.post<InventoryWriteoff>("/api/inventory/writeoffs", data),
+
+  // Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list").
+  manufacturers: () => api.get<{ manufacturer: string; item_count: number }[]>("/api/inventory/manufacturers"),
 };
 
 export type InventoryWriteoff = {

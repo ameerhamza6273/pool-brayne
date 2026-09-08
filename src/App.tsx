@@ -23,6 +23,12 @@ import PointOfSale from "@/pages/PointOfSale";
 import SalesPortal from "@/pages/SalesPortal";
 import Directory from "@/pages/Directory";
 import Reports from "@/pages/Reports";
+import Library from "@/pages/Library";
+import Manufacturers from "@/pages/Manufacturers";
+import Forms from "@/pages/Forms";
+import FormBuilder from "@/pages/FormBuilder";
+import PublicForm from "@/pages/PublicForm";
+import PublicEstimate from "@/pages/PublicEstimate";
 import { Toaster } from "@/components/ui/sonner";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -38,6 +44,8 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/onboarding" element={<Onboarding />} />
+      <Route path="/estimate/:token" element={<PublicEstimate />} />
+      <Route path="/form/:token" element={<PublicForm />} />
       <Route
         element={
           <ProtectedRoute>
@@ -61,6 +69,10 @@ function AppRoutes() {
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/directory" element={<Directory />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/library" element={<Library />} />
+        <Route path="/manufacturers" element={<Manufacturers />} />
+        <Route path="/forms" element={<Forms />} />
+        <Route path="/form-builder" element={<FormBuilder />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>

@@ -9,7 +9,7 @@ export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { cust
 export type EstimateLineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
 export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null };
 
-export type EstimateAttachment = { id: string; estimate_id: string; url: string; label: string | null; filename: string | null; created_at: string };
+export type EstimateAttachment = { id: string; estimate_id: string; url: string; label: string | null; filename: string | null; type: "document" | "photo"; created_at: string };
 
 export type LineItemInput = {
   description: string;
@@ -18,6 +18,19 @@ export type LineItemInput = {
   quantity: number;
   cost?: number;
   rate: number;
+  notes?: string | null;
+};
+
+export type EstimateTemplate = { id: string; name: string; line_items: LineItemInput[] };
+
+export type PublicEstimate = {
+  estimate: {
+    id: string; number: string; issue_date: string; expiry_date: string | null; job_description: string | null;
+    status: string; down_payment: number; approved_at: string | null;
+    customers: { name: string; address: string | null; phone: string | null } | null;
+  };
+  lineItems: { description: string; sku: string | null; item_type: string; quantity: number; rate: number; amount: number; notes: string | null }[];
+  business: Business | null;
 };
 
 type Business = {
@@ -80,13 +93,19 @@ export const invoicingApi = {
     lineItems?: LineItemInput[];
   }) => api.post<Estimate>("/api/invoices/estimates", data),
 
+  // Client PDF 2026-09-05: "Need to be able to edit an estimate once created and saves".
+  updateEstimate: (id: string, data: {
+    customerId: string; issueDate: string; expiryDate: string | null; downPayment?: number;
+    jobDescription?: string | null; lineItems?: LineItemInput[];
+  }) => api.patch<Estimate>(`/api/invoices/estimates/${id}`, data),
+
   convertEstimateToInvoice: (id: string) => api.post<{ invoiceId: string }>(`/api/invoices/estimates/${id}/convert-to-invoice`, {}),
 
   convertEstimateToJob: (id: string) => api.post<{ jobId: string }>(`/api/invoices/estimates/${id}/convert-to-job`, {}),
 
   getEstimateAttachments: (id: string) => api.get<EstimateAttachment[]>(`/api/invoices/estimates/${id}/attachments`),
 
-  addEstimateAttachment: (id: string, data: { url: string; label?: string | null; filename?: string | null }) =>
+  addEstimateAttachment: (id: string, data: { url: string; label?: string | null; filename?: string | null; type?: "document" | "photo" }) =>
     api.post<EstimateAttachment>(`/api/invoices/estimates/${id}/attachments`, data),
 
   vendorBills: () => api.get<VendorBill[]>("/api/invoices/vendor-bills/list"),
@@ -95,4 +114,19 @@ export const invoicingApi = {
     api.post<VendorBill>("/api/invoices/vendor-bills", data),
 
   markVendorBillPaid: (id: string) => api.patch<VendorBill>(`/api/invoices/vendor-bills/${id}/mark-paid`, {}),
+
+  // Client PDF 2026-09-06: "A way to Write off a job – (bad debt)".
+  writeOffInvoice: (id: string, reason: string) => api.patch<Invoice>(`/api/invoices/${id}/write-off`, { reason }),
+
+  // Client PDF 2026-09-06: "Estimate templates" (Heater replacement, Filter replacement...).
+  estimateTemplates: () => api.get<EstimateTemplate[]>("/api/invoices/estimate-templates"),
+  createEstimateTemplate: (data: { name: string; lineItems: LineItemInput[] }) =>
+    api.post<EstimateTemplate>("/api/invoices/estimate-templates", data),
+  deleteEstimateTemplate: (id: string) => api.del(`/api/invoices/estimate-templates/${id}`),
+
+  // Public "Approve Estimation" link (backend/src/routes/public.ts) — no login required, so these
+  // hit an unauthenticated route (apiClient just omits the Bearer header when there's no session).
+  publicEstimate: (token: string) => api.get<PublicEstimate>(`/api/public/estimates/${token}`),
+  respondToEstimate: (token: string, decision: "Accepted" | "Declined") =>
+    api.post<{ id: string; status: string; approved_at: string | null }>(`/api/public/estimates/${token}/respond`, { decision }),
 };

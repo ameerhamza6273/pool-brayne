@@ -8,7 +8,7 @@ import type { ItemWithStock } from "@/lib/api/inventory";
 
 export type DraftLineItem = LineItemInput;
 
-const emptyLine = (): DraftLineItem => ({ description: "", sku: "", itemType: "material", quantity: 1, cost: 0, rate: 0 });
+const emptyLine = (): DraftLineItem => ({ description: "", sku: "", itemType: "material", quantity: 1, cost: 0, rate: 0, notes: "" });
 
 export function newDraftLineItem() {
   return emptyLine();
@@ -30,7 +30,10 @@ export default function LineItemsEditor({
   const applyInventoryPick = (index: number, itemId: string) => {
     const picked = inventoryItems.find((i) => i.id === itemId);
     if (!picked) return;
-    update(index, { description: picked.name, sku: picked.sku, cost: picked.unit_cost, rate: picked.price ?? picked.unit_cost });
+    // Client sample estimate PDF (2026-09-06): line items show a subtitle under the description
+    // with model/part detail (e.g. "260K BTU Natural Gas, Versaflo, Copper Hx... — JNDJXIQ260NK")
+    // -- pre-fill it from the inventory item's long description, still freely editable.
+    update(index, { description: picked.name, sku: picked.sku, cost: picked.unit_cost, rate: picked.price ?? picked.unit_cost, notes: picked.long_description ?? "" });
   };
 
   const addLine = () => onChange([...items, emptyLine()]);
@@ -76,6 +79,12 @@ export default function LineItemsEditor({
               </Button>
             </div>
             <Input placeholder="Description" value={li.description} onChange={(e) => update(idx, { description: e.target.value })} className="h-8 text-sm" />
+            <Input
+              placeholder="Detail line (optional) — model #, part #, specs shown under the description"
+              value={li.notes ?? ""}
+              onChange={(e) => update(idx, { notes: e.target.value })}
+              className="h-8 text-xs text-[#64748B]"
+            />
             <div className="grid grid-cols-4 gap-2">
               <div>
                 <label className="text-[10px] text-[#64748B]">SKU</label>
