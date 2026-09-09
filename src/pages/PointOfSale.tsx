@@ -121,7 +121,10 @@ export default function PointOfSale() {
   }, [runReport]);
 
   const filtered = products.filter((p) => {
-    const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    const matchesSearch = !q || [p.name, p.sku, p.short_description, p.long_description, p.manufacturer, p.category]
+      .filter(Boolean)
+      .some((f) => (f as string).toLowerCase().includes(q));
     const matchesCat = category === "All" || p.category === category;
     return matchesSearch && matchesCat;
   });
@@ -316,7 +319,7 @@ export default function PointOfSale() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
               <Input
-                placeholder="Search by name or SKU..."
+                placeholder="Search name, SKU, description, category, or manufacturer..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 h-10 bg-[#F8FAFC] border-[#E2E8F0]"

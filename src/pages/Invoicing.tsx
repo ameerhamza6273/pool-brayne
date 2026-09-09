@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Truck, Layers, ClipboardList, Camera, X, Pencil } from "lucide-react";
+import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Layers, ClipboardList, Camera, X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -8,13 +8,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { invoicingApi, type Estimate, type VendorBill, type EstimateTemplate } from "@/lib/api/invoicing";
+import { invoicingApi, type Estimate, type EstimateTemplate } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { settingsApi } from "@/lib/api/settings";
 import { jobsApi } from "@/lib/api/jobs";
 import { tasksApi, type FreeformTask } from "@/lib/api/tasks";
-import { reportsApi, type VendorBillDueRow } from "@/lib/api/reports";
 import { profilesApi } from "@/lib/api/profiles";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/lib/supabase";
@@ -29,7 +28,6 @@ type UninvoicedJob = Database["public"]["Tables"]["jobs"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
 type Customer = { id: string; name: string; email: string | null; phone: string | null; address: string | null };
-type Supplier = { id: string; name: string };
 
 const statusColors: Record<string, string> = {
   Draft: "bg-[#F59E0B]/10 text-[#F59E0B]",
@@ -63,19 +61,15 @@ export default function Invoicing() {
   const [newEstimateDownPaymentMode, setNewEstimateDownPaymentMode] = useState<"percent" | "fixed">("percent");
   const [qboConnected, setQboConnected] = useState(false);
   const [estimates, setEstimates] = useState<Estimate[]>([]);
-  const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [newEstimateOpen, setNewEstimateOpen] = useState(false);
   const [newEstimate, setNewEstimate] = useState({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "50", jobDescription: "" });
   const [newEstimateLines, setNewEstimateLines] = useState<DraftLineItem[]>([]);
   const [estimateTemplates, setEstimateTemplates] = useState<EstimateTemplate[]>([]);
-  // Client PDF 2026-09-05: "Vendor bills due" under Purchase Orders / Vendor Information.
-  const [vendorBillsDue, setVendorBillsDue] = useState<VendorBillDueRow[]>([]);
-  const [newBillOpen, setNewBillOpen] = useState(false);
-  const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
   const [searchParams] = useSearchParams();
-  const validTabs = ["all", "estimates", "tasks", "vendor-bills", "recurring", "payments"];
+  // Client SMS 2026-09-09: Vendor Bills moved out of this page to Inventory > Vendor Tools
+  // (under Purchase Orders) -- "vendor-bills" is no longer a tab here.
+  const validTabs = ["all", "estimates", "tasks", "recurring", "payments"];
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
     return tab && validTabs.includes(tab) ? tab : "all";
@@ -114,20 +108,17 @@ export default function Invoicing() {
 
   const loadInvoicing = useCallback(async () => {
     setIsLoading(true);
-    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, vendorBillsData, suppliersData, inventoryData, tasksData, techsData, templatesData, vendorBillsDueData] = await Promise.all([
+    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, inventoryData, tasksData, techsData, templatesData] = await Promise.all([
       invoicingApi.list(),
       invoicingApi.recurringBilling(),
       invoicingApi.payments(),
       customersApi.list(),
       settingsApi.all(),
       invoicingApi.estimates(),
-      invoicingApi.vendorBills(),
-      inventoryApi.suppliers(),
       inventoryApi.summary(),
       tasksApi.list(),
       profilesApi.list(),
       invoicingApi.estimateTemplates(),
-      reportsApi.vendorBillsDue(),
     ]);
     setInvoices((invoicesData ?? []) as Invoice[]);
     setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
@@ -135,13 +126,10 @@ export default function Invoicing() {
     setCustomers(customersData ?? []);
     setQboConnected(settingsData.integrations.some((i) => i.provider === "quickbooks" && i.status === "Connected"));
     setEstimates((estimatesData ?? []) as Estimate[]);
-    setVendorBills((vendorBillsData ?? []) as VendorBill[]);
-    setSuppliers(suppliersData ?? []);
     setInventoryItems(inventoryData?.items ?? []);
     setTasks(tasksData ?? []);
     setTechs((techsData ?? []).map((t) => ({ id: t.id, name: t.name })));
     setEstimateTemplates(templatesData ?? []);
-    setVendorBillsDue(vendorBillsDueData ?? []);
     setIsLoading(false);
   }, []);
 
@@ -229,25 +217,6 @@ export default function Invoicing() {
     const { invoiceId } = await invoicingApi.convertEstimateToInvoice(id);
     await loadInvoicing();
     navigate(`/invoicing/${invoiceId}`);
-  };
-
-  const handleCreateBill = async () => {
-    if (!newBill.supplierId || !newBill.number || !newBill.issueDate) return;
-    await invoicingApi.createVendorBill({
-      supplierId: newBill.supplierId,
-      number: newBill.number,
-      issueDate: newBill.issueDate,
-      dueDate: newBill.dueDate || null,
-      amount: parseFloat(newBill.amount) || 0,
-    });
-    setNewBill({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
-    setNewBillOpen(false);
-    loadInvoicing();
-  };
-
-  const handleMarkBillPaid = async (id: string) => {
-    await invoicingApi.markVendorBillPaid(id);
-    loadInvoicing();
   };
 
   const handleTaskPhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -733,46 +702,6 @@ export default function Invoicing() {
               </div>
             </DialogContent>
           </Dialog>
-          <Dialog open={newBillOpen} onOpenChange={setNewBillOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white order-5">
-                <Plus className="w-4 h-4" /> New Vendor Bill
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-lg lg:max-w-3xl w-[90vw] max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Create New Vendor Bill</DialogTitle></DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Supplier</label>
-                  <Select value={newBill.supplierId} onValueChange={(v) => setNewBill((p) => ({ ...p, supplierId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select supplier" /></SelectTrigger>
-                    <SelectContent>{suppliers.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Bill Number</label>
-                  <Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Issue Date</label>
-                    <Input type="date" className="mt-1" value={newBill.issueDate} onChange={(e) => setNewBill((p) => ({ ...p, issueDate: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Due Date</label>
-                    <Input type="date" className="mt-1" value={newBill.dueDate} onChange={(e) => setNewBill((p) => ({ ...p, dueDate: e.target.value }))} />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Amount</label>
-                  <Input type="number" className="mt-1" placeholder="0.00" value={newBill.amount} onChange={(e) => setNewBill((p) => ({ ...p, amount: e.target.value }))} />
-                </div>
-                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateBill}>
-                  Create Vendor Bill
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
 
@@ -845,7 +774,8 @@ export default function Invoicing() {
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         {/* Client PDF 2026-09-05: tab order "Estimates - Tasks - Recurring - Customer Invoices -
-            Payments" (Vendor Bills wasn't in their list -- kept, placed last). */}
+            Payments". Vendor Bills moved out entirely (client SMS 2026-09-09) to Inventory >
+            Vendor Tools, next to Purchase Orders. */}
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="estimates" className="order-1 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Copy className="w-4 h-4" /> Estimates
@@ -861,9 +791,6 @@ export default function Invoicing() {
           </TabsTrigger>
           <TabsTrigger value="payments" className="order-5 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <CreditCard className="w-4 h-4" /> Payments
-          </TabsTrigger>
-          <TabsTrigger value="vendor-bills" className="order-6 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Truck className="w-4 h-4" /> Vendor Bills
           </TabsTrigger>
         </TabsList>
 
@@ -1122,64 +1049,6 @@ export default function Invoicing() {
                   ))}
                   {tasks.length === 0 && (
                     <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">No tasks yet</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="vendor-bills" className="mt-4 space-y-3">
-          {vendorBillsDue.length > 0 && (
-            <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-3">Vendor Bills Due</p>
-              <div className="flex flex-wrap gap-3">
-                {vendorBillsDue.map((v) => (
-                  <div key={v.supplier_id} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2">
-                    <span className="text-sm font-medium text-[#0F172A]">{v.supplier_name}</span>
-                    <span className="text-sm font-bold text-[#DC2626]">${v.total_due.toLocaleString()}</span>
-                    <span className="text-xs text-[#64748B]">({v.bill_count} bill{v.bill_count === 1 ? "" : "s"})</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Bill #</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vendor</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Issue Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Due Date</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendorBills.map((bill) => (
-                    <tr key={bill.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{bill.number}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{bill.suppliers?.name ?? "—"}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{bill.issue_date}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{bill.due_date ?? "—"}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${bill.amount.toLocaleString()}</td>
-                      <td className="text-center py-3 px-4">
-                        <Badge className={`${statusColors[bill.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{bill.status}</Badge>
-                      </td>
-                      <td className="text-center py-3 px-4">
-                        {bill.status !== "Paid" && (
-                          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleMarkBillPaid(bill.id)}>
-                            Mark Paid
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  {vendorBills.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No vendor bills yet</td></tr>
                   )}
                 </tbody>
               </table>

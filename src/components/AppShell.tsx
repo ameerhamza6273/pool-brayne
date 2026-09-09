@@ -54,7 +54,7 @@ const navSections: (NavLink | NavGroup)[] = [
     icon: Boxes,
     items: [
       { path: "/inventory?tab=purchase", label: "Purchase Orders", icon: ClipboardList },
-      { path: "/invoicing?tab=vendor-bills", label: "Pay POs (Vendor Bills)", icon: Receipt },
+      { path: "/inventory?tab=vendor-bills", label: "Pay POs (Vendor Bills)", icon: Receipt },
     ],
   },
   {

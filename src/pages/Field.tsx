@@ -349,7 +349,7 @@ export default function Field() {
                     if ((partsUsed[item.id] ?? 0) > 0) return true;
                     if (!partsSearch.trim()) return false;
                     const q = partsSearch.toLowerCase();
-                    return [item.name, item.sku, item.short_description, item.long_description]
+                    return [item.name, item.sku, item.short_description, item.long_description, item.category, item.manufacturer]
                       .filter(Boolean)
                       .some((f) => (f as string).toLowerCase().includes(q));
                   })

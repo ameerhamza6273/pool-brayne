@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Calendar, LayoutDashboard, Truck, User, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon, Navigation,
+  X, Pencil, Trash2, Pause, Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -172,6 +173,73 @@ export default function Jobs() {
     const d = new Date(mapDate + "T00:00:00");
     d.setDate(d.getDate() + days);
     setMapDate(d.toISOString().slice(0, 10));
+  };
+
+  // Client SMS 2026-09-09: "active schedule so we can manipulate add, delete, change, drag and
+  // drop, recurring fields, full functionality" -- the old Schedule tab was a hardcoded "June
+  // 2024" grid with no navigation and no interaction at all.
+  const [scheduleMonth, setScheduleMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const shiftScheduleMonth = (months: number) => {
+    setScheduleMonth((m) => new Date(m.getFullYear(), m.getMonth() + months, 1));
+  };
+  const scheduleDateKey = (day: number) => {
+    const y = scheduleMonth.getFullYear();
+    const m = String(scheduleMonth.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}-${String(day).padStart(2, "0")}`;
+  };
+  const daysInScheduleMonth = new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() + 1, 0).getDate();
+  const scheduleFirstWeekday = new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth(), 1).getDay();
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
+
+  const handleRescheduleDrop = async (dateKey: string, jobId: string) => {
+    await jobsApi.update(jobId, { scheduled_date: dateKey });
+    loadJobs();
+  };
+
+  const handleUnschedule = async (jobId: string) => {
+    await jobsApi.update(jobId, { scheduled_date: null, scheduled_time: null });
+    loadJobs();
+  };
+
+  const openNewJobForDate = (dateKey: string) => {
+    setNewJob((p) => ({ ...p, date: dateKey }));
+    setNewJobOpen(true);
+  };
+
+  // Recurring Jobs card actions -- backend already supported update/delete, only the UI to
+  // reach them was missing.
+  const [editRecurring, setEditRecurring] = useState<RecurringJob | null>(null);
+  const [editRecurringDraft, setEditRecurringDraft] = useState({ techId: "", amount: "", endDate: "" });
+
+  const openEditRecurring = (rj: RecurringJob) => {
+    setEditRecurring(rj);
+    setEditRecurringDraft({ techId: rj.tech_id ?? "", amount: String(rj.amount), endDate: rj.end_date ?? "" });
+  };
+
+  const handleSaveRecurring = async () => {
+    if (!editRecurring) return;
+    await recurringJobsApi.update(editRecurring.id, {
+      techId: editRecurringDraft.techId || null,
+      amount: parseFloat(editRecurringDraft.amount) || 0,
+      endDate: editRecurringDraft.endDate || null,
+    });
+    setEditRecurring(null);
+    recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
+  };
+
+  const handleToggleRecurringActive = async (rj: RecurringJob) => {
+    await recurringJobsApi.update(rj.id, { active: !rj.active });
+    recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
+  };
+
+  const handleDeleteRecurring = async (rj: RecurringJob) => {
+    await recurringJobsApi.remove(rj.id);
+    recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
   };
 
   const mapJobs = jobs.filter((j) => j.scheduled_date === mapDate);
@@ -650,13 +718,15 @@ export default function Jobs() {
       {/* Schedule View */}
       {activeTab === "schedule" && (
         <div className="space-y-4">
-          {/* Calendar Placeholder */}
+          {/* Client SMS 2026-09-09: "active schedule... add, delete, change, drag and drop" --
+              real month navigation, click an empty day to add a job, drag a job chip onto another
+              day to reschedule it, and an "x" on hover to pull a job off the schedule. */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <button className="p-1 rounded hover:bg-[#F8FAFC]"><ChevronLeft className="w-4 h-4" /></button>
-                <h3 className="font-semibold text-[#0F172A]">June 2024</h3>
-                <button className="p-1 rounded hover:bg-[#F8FAFC]"><ChevronRight className="w-4 h-4" /></button>
+                <button className="p-1 rounded hover:bg-[#F8FAFC]" onClick={() => shiftScheduleMonth(-1)}><ChevronLeft className="w-4 h-4" /></button>
+                <h3 className="font-semibold text-[#0F172A]">{scheduleMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h3>
+                <button className="p-1 rounded hover:bg-[#F8FAFC]" onClick={() => shiftScheduleMonth(1)}><ChevronRight className="w-4 h-4" /></button>
               </div>
               <div className="flex items-center gap-3 text-xs">
                 {technicians.map((t) => (
@@ -667,34 +737,56 @@ export default function Jobs() {
                 ))}
               </div>
             </div>
+            <p className="text-xs text-[#94A3B8] -mt-2 mb-3">Click an empty day to schedule a job. Drag a job onto another day to reschedule it.</p>
             <div className="grid grid-cols-7 gap-2 text-center text-xs text-[#64748B] mb-2">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                 <div key={d} className="font-semibold py-2">{d}</div>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-2">
-              {Array.from({ length: 30 }, (_, i) => {
+              {Array.from({ length: scheduleFirstWeekday }, (_, i) => <div key={`pad-${i}`} />)}
+              {Array.from({ length: daysInScheduleMonth }, (_, i) => {
                 const day = i + 1;
-                const dayJobs = jobs.filter((j) => {
-                  const jobDay = parseInt((j.scheduled_date ?? "").split("-")[2]);
-                  return jobDay === day;
-                });
+                const dateKey = scheduleDateKey(day);
+                const dayJobs = jobs.filter((j) => j.scheduled_date === dateKey);
+                const isToday = dateKey === todayKey;
+                const isDragOver = dragOverDay === dateKey;
                 return (
                   <div
                     key={day}
-                    className={`min-h-[80px] rounded-lg border border-[#E2E8F0] p-1.5 ${day === 20 ? "bg-[#0891B2]/5 border-[#0891B2]" : "bg-white"}`}
+                    onDragOver={(e) => { e.preventDefault(); setDragOverDay(dateKey); }}
+                    onDragLeave={() => setDragOverDay((cur) => (cur === dateKey ? null : cur))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const jobId = e.dataTransfer.getData("text/job-id");
+                      if (jobId) handleRescheduleDrop(dateKey, jobId);
+                      setDragOverDay(null);
+                    }}
+                    onClick={() => openNewJobForDate(dateKey)}
+                    className={`min-h-[80px] rounded-lg border p-1.5 cursor-pointer transition-colors ${
+                      isDragOver ? "bg-[#0891B2]/10 border-[#0891B2] border-dashed" : isToday ? "bg-[#0891B2]/5 border-[#0891B2]" : "bg-white border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                    }`}
                   >
-                    <span className={`text-xs font-medium ${day === 20 ? "text-[#0891B2]" : "text-[#0F172A]"}`}>{day}</span>
+                    <span className={`text-xs font-medium ${isToday ? "text-[#0891B2]" : "text-[#0F172A]"}`}>{day}</span>
                     <div className="space-y-1 mt-1">
-                      {dayJobs.slice(0, 3).map((j) => (
+                      {dayJobs.map((j) => (
                         <div
                           key={j.id}
-                          className="text-[10px] px-1.5 py-0.5 rounded cursor-pointer truncate"
+                          draggable
+                          onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData("text/job-id", j.id); e.dataTransfer.effectAllowed = "move"; }}
+                          className="group text-[10px] px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing truncate flex items-center justify-between gap-1"
                           style={techStyle(j.tech_id)}
                           title={j.description ?? `${j.type} — ${j.customers?.name ?? "Unassigned"}`}
-                          onClick={() => navigate(`/jobs/${j.id}`)}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${j.id}`); }}
                         >
-                          {j.scheduled_time} {j.customers?.name.split(" ")[0]}
+                          <span className="truncate">{j.scheduled_time} {j.customers?.name.split(" ")[0]}</span>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 shrink-0"
+                            title="Remove from schedule"
+                            onClick={(e) => { e.stopPropagation(); handleUnschedule(j.id); }}
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -706,7 +798,9 @@ export default function Jobs() {
 
           {/* Recurring Jobs -- client PDF 2026-09-05: real schedule, not the old read-only
               "Recurring Routes" (never linked to actual jobs). Each generates a real job
-              occurrence and rolls forward automatically as the current one completes. */}
+              occurrence and rolls forward automatically as the current one completes.
+              Client SMS 2026-09-09: "recurring fields, full functionality" -- pause/resume,
+              edit, and delete a series (backend already supported this, UI didn't expose it). */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
             <h3 className="font-semibold text-[#0F172A] mb-3">Recurring Jobs</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -723,11 +817,46 @@ export default function Jobs() {
                     <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {rj.profiles?.name ?? "Unassigned"}</p>
                     <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Since {rj.start_date}{rj.end_date ? ` · ends ${rj.end_date}` : " · no end date"}</p>
                   </div>
+                  <div className="flex items-center gap-3 mt-3 pt-2 border-t border-[#E2E8F0]">
+                    <button className="text-xs text-[#0891B2] font-medium flex items-center gap-1" onClick={() => handleToggleRecurringActive(rj)}>
+                      {rj.active ? <><Pause className="w-3 h-3" /> Pause</> : <><Play className="w-3 h-3" /> Resume</>}
+                    </button>
+                    <button className="text-xs text-[#64748B] font-medium flex items-center gap-1" onClick={() => openEditRecurring(rj)}>
+                      <Pencil className="w-3 h-3" /> Edit
+                    </button>
+                    <button className="text-xs text-[#DC2626] font-medium flex items-center gap-1" onClick={() => handleDeleteRecurring(rj)}>
+                      <Trash2 className="w-3 h-3" /> Delete
+                    </button>
+                  </div>
                 </div>
               ))}
               {recurringJobs.length === 0 && <p className="text-sm text-[#64748B] col-span-full py-2">No recurring jobs set up yet.</p>}
             </div>
           </div>
+
+          <Dialog open={!!editRecurring} onOpenChange={(open) => !open && setEditRecurring(null)}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>Edit Recurring Job — {editRecurring?.customers?.name}</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div>
+                  <Label>Technician</Label>
+                  <Select value={editRecurringDraft.techId} onValueChange={(v) => setEditRecurringDraft((p) => ({ ...p, techId: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Unassigned" /></SelectTrigger>
+                    <SelectContent>{technicians.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Amount</Label>
+                  <Input type="number" className="mt-1" value={editRecurringDraft.amount} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, amount: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>End Date</Label>
+                  <Input type="date" className="mt-1" value={editRecurringDraft.endDate} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, endDate: e.target.value }))} />
+                </div>
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveRecurring}>Save Changes</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
 

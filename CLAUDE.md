@@ -2551,3 +2551,127 @@ SHOCK/TREATMENT" options aayin, xlsx dump se exactly match).
   ho gaya har naye route file ke sath) aur `localhost:5175` (frontend, `--strictPort`) already
   chal rahe the, dobara start nahi karne pade.
   ---
+
+### 2026-09-09 — Client SMS (vendor/schedule/tech/GPS backlog), poora ek session mein, live
+browser + curl dono se test kiya
+
+Pehle isi session mein user ne Railway ke "trial expiring tomorrow" email ke baare mein pucha —
+sirf ek informational SMS client ko bhejna tha ("abhi testing men he, kuch nahi krna"), koi
+action nahi liya (dekho memory `project_railway_trial_deadline.md`). Phir client ne ek naya SMS
++ document (`DistributorPayment20260905.xls`, Downloads mein) bheja — 10-item backlog, "sab ek
+sath start kar do, last mein test kar lenge" kaha gaya.
+
+**1. Vendor list import + "Supplier" → "Vendor" rename** — `DistributorPayment20260905.xls`
+asal mein Pool Supply Atlanta ka distributor-payment report tha (37 unique names, kuch duplicate
+formatting ke sath = 40 rows import huin). Temp script (`backend/_tmp-import-vendors.cjs`, run
+karke turant delete — established pattern, access token nahi tha) se `suppliers` table mein
+insert kiya — purane 6 demo suppliers (Pentair Direct, Taylor Technologies, etc.) jaan-boojh kar
+nahi hataye (destructive, explicit ask nahi tha) — ab total 46 vendors. UI mein har jagah
+user-facing "Supplier" text ko "Vendor" se replace kiya (`Inventory.tsx`: tab label, Add/Edit
+dialog titles, table headers, PO dialog labels) — internal variable/function names (`Supplier`
+type, `openEditSupplier`, etc.) jaan-boojh kar waise hi rakhe (scope simple, sirf UI-facing text).
+- **Naya `DELETE /api/inventory/suppliers/:id`** (backend `inventory.ts`) + frontend
+  `inventoryApi.deleteSupplier()` — Vendors tab mein Trash2 icon add kiya per row (koi confirm()
+  dialog nahi — app mein kahin bhi native confirm use nahi hota, established pattern). Schema
+  cascade already safe tha (`vendor_bills` → `on delete cascade`, `purchase_orders.supplier_id`
+  → `on delete set null`) — koi naya migration nahi lagi.
+- New PO aur New Vendor Bill dialogs ke supplier `<Select>` dropdown dono **SearchableSelect** mein
+  convert kiye (46+ vendors ke liye plain dropdown ab practical nahi tha).
+
+**2. Vendor Bills page Invoicing se Inventory mein move** ("under estimates/quote, move vendor
+bills under purchase orders") — poora Vendor Bills tab (state, handlers, dialog, table) Invoicing.
+tsx se cut karke Inventory.tsx mein "Purchase Orders" ke bagal naye "vendor-bills" tab ke tor par
+paste kiya — `invoicingApi.vendorBills/createVendorBill/markVendorBillPaid` aur
+`reportsApi.vendorBillsDue()` reuse kiye (koi naya backend route nahi laga). AppShell ka "Pay POs
+(Vendor Bills)" nav link ab `/inventory?tab=vendor-bills` par point karta hai (pehle
+`/invoicing?tab=vendor-bills`). Isi move ki wajah se client ke doosre do asks automatically
+satisfy ho gaye: Vendor Bills page ke top-right ab koi "New Estimate/New Task/New Invoice" button
+nahi hai (Inventory page mein woh kabhi the hi nahi), aur bottom mein koi
+"Estimate/Task/Recurring/Customer Invoices/Payments" tab nahi hai (Inventory ka apna tab-set hai:
+Catalog/Vendors/Purchase Orders/Vendor Bills/Variance/Write-Offs).
+
+**3. Rich search (long/short description + category + manufacturer)** — `LineItemsEditor.tsx`
+(Estimates/Invoices/Jobs sab jagah shared) mein already yeh sab search fields the (pehle session
+se). Naye se fix kiye: **POS product grid** (pehle sirf name/SKU), **Inventory Catalog ka apna
+search box** (pehle sirf name/SKU), aur **Field.tsx Parts Used list** (category/manufacturer add
+kiye, description pehle se thi) — teeno ab short/long description + category + manufacturer bhi
+match karte hain, placeholder text update kiya taake clear ho.
+
+**4. Schedule tab — poori tarah interactive bana diya** ("active schedule... add, delete, change,
+drag and drop, recurring fields, full functionality") — `Jobs.tsx` ka Schedule view pehle
+hardcoded "June 2024" grid tha (30 fixed cells, koi navigation/interaction nahi). Ab:
+- Real month calendar (`scheduleMonth` state, `<`/`>` navigation, sahi weekday-alignment +
+  days-in-month computation, aaj ka din highlight).
+- **Click empty day → New Job dialog** us date ke sath pre-filled (`openNewJobForDate`).
+- **Drag a job chip onto another day → reschedule** (native HTML5 drag/drop, Dispatch board jaisa
+  hi pattern — `dataTransfer.setData("text/job-id", ...)` + day-cell `onDrop` → `jobsApi.update`).
+  Real browser mein drag-drop test kiya aur **kaam kiya** (job "93 EAST SABRA" Sept 4 → Sept 12
+  move hui, verify + restore kiya) — is baar automation ka simple single-jump drag bhi kaam kar
+  gaya (pehle kabhi is app mein aisa pura verify nahi hua tha, sirf code-review se confirm hota
+  tha ke Dispatch board ka drag-drop sahi likha hai).
+- **"x" per job chip (hover) → unschedule** (`scheduled_date`/`scheduled_time` null karta hai,
+  job delete nahi karta — job kahin aur, jaise Pipeline, abhi bhi dikhta rahega — jaan-boojh kar
+  yeh safer choice li, kyunki app mein kahin bhi real job-row-delete feature nahi hai aur invoices/
+  attachments/forms sab job se linked ho sakte hain).
+- **Recurring Jobs cards** mein Pause/Resume, Edit (tech/amount/end-date), Delete buttons add
+  kiye — backend endpoints (`PATCH`/`DELETE /api/recurring-jobs/:id`) already exist karte the
+  (pehle session se), sirf UI missing thi. **Real bug mila aur fix kiya**: purana DELETE route
+  sirf `active = false` set karta tha (soft-delete), asal row kabhi delete nahi hoti thi — client
+  ne real "delete" maanga tha, aur FK (`jobs.recurring_job_id` → `on delete set null`) safely
+  real hard-delete allow karta hai, isliye route ko real `delete from recurring_jobs` mein badla.
+
+**5. GPS7000 link fix** — `Fleet.tsx` ka "Open GPS7000" button `gps7000.com` se
+`https://platform.gps7000.com/` kiya (client ne exact URL diya tha SMS mein).
+
+**6. Techs add/edit/delete** — Settings > Team ka purana "Invite User" dialog **bilkul dead tha**
+(sirf email/role UI, "Send Invite" kuch nahi karta tha, kabhi kaam hi nahi kiya). Real bana diya:
+- **Naya backend:** `backend/src/lib/supabaseAdmin.ts` (lazy service-role Supabase client — sirf
+  admin.createUser/deleteUser ke liye, baaqi sab RLS-scoped `withTenantContext` hi rehta hai).
+  `backend/.env` mein `SUPABASE_SERVICE_ROLE_KEY` add kiya (root `.env` se copy, gitignored,
+  backend mein pehle kabhi nahi tha), `@supabase/supabase-js` backend mein install kiya (pehle
+  sirf frontend mein tha).
+  - `POST /api/profiles` — naya tech add karta hai `supabase.auth.admin.createUser()` se, **seed
+    script (2026-07-28) jaisa hi `existing_tenant_id` + `role` metadata pattern** taake
+    `handle_new_user_join_tenant` trigger naya tenant banane ke bajaye caller ke existing tenant
+    mein hi profile bana de. Koi email service nahi hai, isliye admin khud password set karta hai
+    aur tech ko directly bata deta hai (UI mein bhi yehi disclaimer text hai).
+  - `PATCH /api/profiles/:id` — name/role edit (naya, pehle sirf employment-type edit tha).
+  - `DELETE /api/profiles/:id` — `auth.admin.deleteUser()` (profiles.id → auth.users FK cascade
+    se profile row bhi delete ho jati hai) — do guards: (1) apna khud ka login delete nahi kar
+    sakte (`id === req.userId` check), (2) sirf apne tenant ka profile delete kar sakte ho
+    (explicit tenant-match query, kyunki yeh route RLS-scoped nahi hai — admin API seedha
+    auth.users par kaam karta hai).
+  - Frontend `Settings.tsx`: "Add Tech" dialog (Name/Email/Password/Role), per-row Edit (Pencil)
+    aur Delete (Trash2) icons, `staffRoles` array (owner/manager/technician/contractor/
+    office_manager) se role Select dono dialogs mein.
+
+**7. Field.tsx phone-view arrive/notes/complete** — verify kiya (koi naya kaam nahi), pehle se
+  built tha (2026-07-28/29 session se) — status-flow buttons, Job Notes → customer_notes insert,
+  sab already real hain.
+
+**Poora end-to-end test kiya dono tareeqon se** (backend: curl + real JWT se — tech create/edit/
+self-delete-guard/delete, supplier create/delete, job reschedule/unschedule, recurring job create/
+pause/edit/delete cycle, PO create against naye imported vendor; browser: do connected browsers
+the is baar bhi, `AskUserQuestion`/`select_browser` se explicit confirm liya (established
+memory rule) — Vendors tab + Add/Edit/Delete, Vendor Bills naya location + clean header/tabs,
+Schedule calendar real render + click-to-add + drag-reschedule (dono directions) + Recurring
+Pause/Edit/Delete, Settings > Team Add/Edit/Delete Tech). Har test ke baad turant cleanup kiya
+(temp DB scripts + kuch direct API calls) — koi test debris nahi bacha, final counts baseline se
+match karte hain (46 suppliers, 6 original staff profiles, 0 recurring_jobs).
+- **Non-obvious gotcha is session ka:** UI ke Pause/Edit/Delete clicks (Recurring Jobs cards,
+  Team table) kai baar screenshot mein turant reflect nahi hote the (React state update ka
+  `list()` refetch complete hone se pehle screenshot le liya jata tha) — lekin backend/DB hamesha
+  turant sahi tha jab curl se verify kiya. **Yaad rakhna:** agar koi delete/toggle click "kaam
+  nahi kar raha" lage screenshot mein, pehle DB/API se seedha confirm karo before assuming a bug
+  — yeh multiple baar is session mein false-alarm nikla.
+- Frontend (`npm run typecheck`) aur backend (`npx tsc --noEmit`) dono session ke har checkpoint
+  par clean rahe.
+- **Baaqi/pending:** pehle se pending sab kuch waisa hi hai (customer-list/resale-reply/
+  Authorize.net-production/Twilio-Stripe-SendGrid-Gusto/Railway-Vercel-client-move/
+  global-search-bar/notifications-panel-abhi-bhi-basic/dispatch-nearest-tech/QBO-two-way-sync/
+  QBO-production-redirect-URI/JobDetail-content-category-tabs/"create a job form" builder). Is
+  session ke saare changes (naya `supabaseAdmin.ts`, `backend/.env` mein service-role key add,
+  ~14 files modify) **abhi commit nahi hue** — commit se pehle user se confirm lena.
+- **Dev servers:** `localhost:4000` (backend, `tsx watch`) aur `localhost:5175` (frontend,
+  `--strictPort`) is session ke shuru se hi chal rahe the, dobara start nahi karne pade.
+  ---

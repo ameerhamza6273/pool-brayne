@@ -221,6 +221,14 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   // Client PDF 2026-09-05: "Vendor list (with addresses, contact names, phone numbers — some
   // vendors have multiple locations we put from)". A supplier is the vendor identity; each
   // location is a separate address/contact a PO can be placed from.
+  // Client SMS 2026-09-09: "able to edit and delete vendors from list" — cascades to that
+  // vendor's locations and vendor bills (schema-level on-delete-cascade), and clears
+  // purchase_orders.supplier_id (on-delete-set-null) rather than deleting past POs.
+  app.delete<{ Params: { id: string } }>("/suppliers/:id", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`delete from suppliers where id = ${id}`);
+  });
+
   app.get<{ Params: { id: string } }>("/suppliers/:id/locations", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`select * from supplier_locations where supplier_id = ${id} order by label`);

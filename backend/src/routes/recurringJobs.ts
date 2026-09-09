@@ -116,9 +116,13 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client SMS 2026-09-09: "recurring fields, full functionality" -- a real delete, distinct
+  // from Pause (which just flips `active` and is reversible). Jobs already generated from this
+  // template keep existing (jobs.recurring_job_id is on-delete-set-null) -- only the template
+  // itself, and any future auto-generated occurrences, go away.
   app.delete<{ Params: { id: string } }>("/:id", async (req) => {
     const { id } = req.params;
-    return withTenantContext(req.userId, (tx) => tx`update recurring_jobs set active = false where id = ${id}`);
+    return withTenantContext(req.userId, (tx) => tx`delete from recurring_jobs where id = ${id}`);
   });
 }
 

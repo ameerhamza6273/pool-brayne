@@ -35,6 +35,8 @@ export const inventoryApi = {
   updateSupplier: (id: string, data: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null }) =>
     api.patch<Supplier>(`/api/inventory/suppliers/${id}`, data),
 
+  deleteSupplier: (id: string) => api.del(`/api/inventory/suppliers/${id}`),
+
   // Client PDF 2026-09-05: "some vendors have multiple locations we put from".
   getSupplierLocations: (supplierId: string) => api.get<SupplierLocation[]>(`/api/inventory/suppliers/${supplierId}/locations`),
 

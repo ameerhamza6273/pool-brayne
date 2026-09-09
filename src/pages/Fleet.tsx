@@ -46,7 +46,7 @@ export default function Fleet() {
         <Button
           variant="outline"
           className="gap-2 border-[#E2E8F0]"
-          onClick={() => window.open("https://gps7000.com", "_blank", "noopener,noreferrer")}
+          onClick={() => window.open("https://platform.gps7000.com/", "_blank", "noopener,noreferrer")}
         >
           <ExternalLink className="w-4 h-4" /> Open GPS7000
         </Button>

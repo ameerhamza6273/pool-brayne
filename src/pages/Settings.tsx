@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Upload, Users, Plus, BookOpen, MapPin, CreditCard, Mail, MessageSquare, Shield, Bell, CheckCircle2, Globe, Forward, Trash2, Filter, Inbox, AlertCircle, Wrench, Settings2, Tag, Phone, RotateCw, FileText } from "lucide-react";
+import { Upload, Users, Plus, BookOpen, MapPin, CreditCard, Mail, MessageSquare, Shield, Bell, CheckCircle2, Globe, Forward, Trash2, Filter, Inbox, AlertCircle, Wrench, Settings2, Tag, Phone, RotateCw, FileText, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -41,9 +41,18 @@ const iconMap: Record<string, React.ElementType> = {
   CreditCard: CreditCard,
 };
 
+const staffRoles = ["owner", "manager", "technician", "contractor", "office_manager"];
+
 export default function Settings() {
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  // Client SMS 2026-09-09: "able to add, edit, delete techs" -- there's no email service wired
+  // (no SendGrid) for a real invite link, so an admin sets the new tech's password directly and
+  // hands it to them, the same way the original demo staff seed script created logins.
+  const [newTechOpen, setNewTechOpen] = useState(false);
+  const [newTech, setNewTech] = useState({ name: "", email: "", password: "", role: "technician" });
+  const [techError, setTechError] = useState("");
+  const [editTech, setEditTech] = useState<Profile | null>(null);
+  const [editTechDraft, setEditTechDraft] = useState({ name: "", role: "technician" });
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
@@ -81,6 +90,39 @@ export default function Settings() {
   const handleEmploymentTypeChange = async (profileId: string, employmentType: "Employee" | "Contractor") => {
     await profilesApi.updateEmploymentType(profileId, employmentType);
     setTeamMembers((prev) => prev.map((m) => (m.id === profileId ? { ...m, employment_type: employmentType } : m)));
+  };
+
+  const handleAddTech = async () => {
+    if (!newTech.name.trim() || !newTech.email.trim() || !newTech.password.trim()) {
+      setTechError("Name, email, and password are required.");
+      return;
+    }
+    setTechError("");
+    try {
+      await profilesApi.create(newTech);
+      setNewTech({ name: "", email: "", password: "", role: "technician" });
+      setNewTechOpen(false);
+      loadSettings();
+    } catch (err) {
+      setTechError(err instanceof Error ? err.message : "Failed to add tech");
+    }
+  };
+
+  const openEditTech = (m: Profile) => {
+    setEditTech(m);
+    setEditTechDraft({ name: m.name, role: m.role });
+  };
+
+  const handleSaveTech = async () => {
+    if (!editTech) return;
+    await profilesApi.update(editTech.id, editTechDraft);
+    setEditTech(null);
+    loadSettings();
+  };
+
+  const handleDeleteTech = async (m: Profile) => {
+    await profilesApi.remove(m.id);
+    loadSettings();
   };
 
   useEffect(() => {
@@ -235,32 +277,65 @@ export default function Settings() {
         {/* Team */}
         <TabsContent value="team" className="mt-4 space-y-4">
           <div className="flex justify-end">
-            <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+            <Dialog open={newTechOpen} onOpenChange={(open) => { setNewTechOpen(open); if (!open) setTechError(""); }}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
-                  <Plus className="w-4 h-4" /> Invite User
+                  <Plus className="w-4 h-4" /> Add Tech
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Invite Team Member</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>Add Tech</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
+                    <Label>Name</Label>
+                    <Input className="mt-1" value={newTech.name} onChange={(e) => setNewTech((p) => ({ ...p, name: e.target.value }))} />
+                  </div>
+                  <div>
                     <Label>Email</Label>
-                    <Input className="mt-1" placeholder="team@poolbrayne.com" />
+                    <Input className="mt-1" type="email" placeholder="tech@poolsupplyatlanta.com" value={newTech.email} onChange={(e) => setNewTech((p) => ({ ...p, email: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>Password</Label>
+                    <Input className="mt-1" type="text" placeholder="Set a password to hand to them" value={newTech.password} onChange={(e) => setNewTech((p) => ({ ...p, password: e.target.value }))} />
+                    <p className="text-xs text-[#64748B] mt-1">No email service is connected yet, so share this password with them directly.</p>
                   </div>
                   <div>
                     <Label>Role</Label>
-                    <div className="flex gap-2 mt-2">
-                      <Badge className="cursor-pointer bg-[#0891B2]/10 text-[#0891B2]">Owner</Badge>
-                      <Badge className="cursor-pointer bg-[#F59E0B]/10 text-[#F59E0B]">Manager</Badge>
-                      <Badge className="cursor-pointer bg-[#16A34A]/10 text-[#16A34A]">Technician</Badge>
-                    </div>
+                    <Select value={newTech.role} onValueChange={(v) => setNewTech((p) => ({ ...p, role: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {staffRoles.map((r) => <SelectItem key={r} value={r}>{formatRole(r)}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={() => setInviteOpen(false)}>Send Invite</Button>
+                  {techError && <p className="text-sm text-[#DC2626]">{techError}</p>}
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddTech}>Add Tech</Button>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
+
+          <Dialog open={!!editTech} onOpenChange={(open) => !open && setEditTech(null)}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>Edit {editTech?.name}</DialogTitle></DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div>
+                  <Label>Name</Label>
+                  <Input className="mt-1" value={editTechDraft.name} onChange={(e) => setEditTechDraft((p) => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>Role</Label>
+                  <Select value={editTechDraft.role} onValueChange={(v) => setEditTechDraft((p) => ({ ...p, role: v }))}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {staffRoles.map((r) => <SelectItem key={r} value={r}>{formatRole(r)}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveTech}>Save Changes</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -271,6 +346,7 @@ export default function Settings() {
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Role</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Type</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -299,6 +375,10 @@ export default function Settings() {
                       </td>
                       <td className="text-center py-3 px-4">
                         <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{u.status}</Badge>
+                      </td>
+                      <td className="text-center py-3 px-4">
+                        <button onClick={() => openEditTech(u)} title="Edit Tech"><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></button>
+                        <button onClick={() => handleDeleteTech(u)} title="Delete Tech" className="ml-2"><Trash2 className="w-3.5 h-3.5 text-[#DC2626] inline" /></button>
                       </td>
                     </tr>
                   ))}
