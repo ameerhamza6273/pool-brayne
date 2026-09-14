@@ -29,16 +29,15 @@ type NavGroup = { label: string; icon: typeof LayoutDashboard; items: NavLink[] 
 // "Send invoices" is an action inside Customer Invoices, not a separate page.
 const navSections: (NavLink | NavGroup)[] = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/pos", label: "POS", icon: ScanLine },
+  { path: "/pos", label: "Point of Sale", icon: ScanLine },
   {
     label: "Scheduling Tools",
     icon: Calendar,
     items: [
       { path: "/field", label: "Technician Field", icon: Phone },
-      { path: "/jobs", label: "Jobs", icon: Wrench },
+      { path: "/jobs", label: "Jobs / Dispatch", icon: Wrench },
       { path: "/jobs?tab=schedule", label: "Recurring", icon: ListChecks },
       { path: "/invoicing?tab=tasks", label: "Tasks", icon: ClipboardList },
-      { path: "/jobs?tab=dispatch", label: "Dispatch", icon: Truck },
       { path: "/fleet", label: "Fleet", icon: Truck },
     ],
   },

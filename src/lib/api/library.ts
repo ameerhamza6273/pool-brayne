@@ -4,6 +4,7 @@ export type LibraryDocument = {
   id: string;
   name: string;
   category: string | null;
+  manufacturer: string | null;
   url: string;
   filename: string | null;
   uploaded_by_name: string | null;
@@ -13,8 +14,11 @@ export type LibraryDocument = {
 export const libraryApi = {
   list: () => api.get<LibraryDocument[]>("/api/library"),
 
-  add: (data: { name: string; category: string | null; url: string; filename: string | null }) =>
+  add: (data: { name: string; category: string | null; manufacturer: string | null; url: string; filename: string | null }) =>
     api.post<LibraryDocument>("/api/library", data),
+
+  update: (id: string, data: { category: string | null; manufacturer: string | null }) =>
+    api.patch<LibraryDocument>(`/api/library/${id}`, data),
 
   remove: (id: string) => api.del(`/api/library/${id}`),
 };

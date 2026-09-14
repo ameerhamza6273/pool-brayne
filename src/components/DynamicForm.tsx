@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useLanguage } from "@/lib/language-context";
-import type { FormTemplate } from "@/lib/api/formTemplates";
+import type { FormTemplate, FormField } from "@/lib/api/formTemplates";
 
 // Client SMS 2026-09-06: "something he can create his own forms... need to be able to edit,
 // create, and tag to a job". Renders whatever fields a form_templates row defines -- this is
@@ -26,8 +26,25 @@ export default function DynamicForm({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
+  const [missingFields, setMissingFields] = useState<Set<string>>(new Set());
 
-  const setValue = (id: string, v: unknown) => setValues((p) => ({ ...p, [id]: v }));
+  const setValue = (id: string, v: unknown) => {
+    setValues((p) => ({ ...p, [id]: v }));
+    setMissingFields((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  // Client meeting 2026-09: individual fields (not just the whole form) can be marked mandatory.
+  const isFieldEmpty = (f: FormField) => {
+    const v = values[f.id];
+    if (f.type === "checkbox" || f.type === "yesno") return !v;
+    if (f.type === "photo") return !((v as string[] | undefined)?.length);
+    return v == null || String(v).trim() === "";
+  };
 
   const handlePhotoSelect = async (fieldId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -44,6 +61,11 @@ export default function DynamicForm({
   };
 
   const handleSave = async () => {
+    const missing = new Set(template.fields.filter((f) => f.required && isFieldEmpty(f)).map((f) => f.id));
+    if (missing.size > 0) {
+      setMissingFields(missing);
+      return;
+    }
     setSaving(true);
     try {
       await onSave(values);
@@ -69,17 +91,18 @@ export default function DynamicForm({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {checkboxFields.map((f) => {
               const checked = !!values[f.id];
+              const missing = missingFields.has(f.id);
               return (
                 <button
                   key={f.id}
                   type="button"
                   onClick={() => setValue(f.id, !checked)}
                   className={`flex items-center gap-2.5 p-2.5 rounded-lg border text-left transition-colors ${
-                    checked ? "border-[#16A34A] bg-[#16A34A]/5" : "border-[#E2E8F0] bg-white hover:bg-[#F8FAFC]"
+                    checked ? "border-[#16A34A] bg-[#16A34A]/5" : missing ? "border-[#DC2626] bg-[#DC2626]/5" : "border-[#E2E8F0] bg-white hover:bg-[#F8FAFC]"
                   }`}
                 >
                   {checked ? <CheckCircle2 className="w-4 h-4 text-[#16A34A] shrink-0" /> : <Circle className="w-4 h-4 text-[#CBD5E1] shrink-0" />}
-                  <span className={`text-sm ${checked ? "text-[#0F172A] font-medium" : "text-[#64748B]"}`}>{t(f.label)}</span>
+                  <span className={`text-sm ${checked ? "text-[#0F172A] font-medium" : "text-[#64748B]"}`}>{t(f.label)}{f.required && <span className="text-[#DC2626]"> *</span>}</span>
                 </button>
               );
             })}
@@ -88,9 +111,10 @@ export default function DynamicForm({
 
         {otherFields.map((f) => (
           <div key={f.id}>
-            <label className="text-xs font-medium text-[#0F172A]">{t(f.label)}</label>
+            <label className="text-xs font-medium text-[#0F172A]">{t(f.label)}{f.required && <span className="text-[#DC2626]"> *</span>}</label>
             {f.helpText && <p className="text-[10px] text-[#94A3B8] mb-1">{t(f.helpText)}</p>}
-            <div className="mt-1">
+            {missingFields.has(f.id) && <p className="text-[10px] text-[#DC2626] mb-1">{t("This field is required")}</p>}
+            <div className={`mt-1 ${missingFields.has(f.id) ? "rounded-lg ring-1 ring-[#DC2626]" : ""}`}>
               {f.type === "text" && <Input value={(values[f.id] as string) ?? ""} onChange={(e) => setValue(f.id, e.target.value)} className="h-9" />}
               {f.type === "number" && <Input type="number" value={(values[f.id] as string) ?? ""} onChange={(e) => setValue(f.id, e.target.value)} className="h-9" />}
               {f.type === "textarea" && <Textarea value={(values[f.id] as string) ?? ""} onChange={(e) => setValue(f.id, e.target.value)} rows={3} className="text-sm" />}
@@ -146,6 +170,9 @@ export default function DynamicForm({
           </div>
         ))}
 
+        {missingFields.size > 0 && (
+          <p className="text-xs text-[#DC2626]">{t("Please fill in every mandatory field before saving.")}</p>
+        )}
         <div className="flex items-center justify-between pt-2">
           {checkboxFields.length > 0 && (
             <p className="text-xs text-[#64748B]">{completedCount} {t("of")} {checkboxFields.length} {t("items completed")}</p>

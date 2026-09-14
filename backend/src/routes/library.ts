@@ -13,13 +13,29 @@ export default async function libraryRoutes(app: FastifyInstance) {
     `);
   });
 
-  app.post<{ Body: { name: string; category: string | null; url: string; filename: string | null } }>("/", async (req) => {
-    const { name, category, url, filename } = req.body;
+  app.post<{ Body: { name: string; category: string | null; manufacturer: string | null; url: string; filename: string | null } }>("/", async (req) => {
+    const { name, category, manufacturer, url, filename } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into library_documents (tenant_id, name, category, url, filename, uploaded_by)
-        values (${tenant.id}, ${name}, ${category}, ${url}, ${filename}, ${req.userId})
+        insert into library_documents (tenant_id, name, category, manufacturer, url, filename, uploaded_by)
+        values (${tenant.id}, ${name}, ${category}, ${manufacturer ?? null}, ${url}, ${filename}, ${req.userId})
+        returning *
+      `;
+      return row;
+    });
+  });
+
+  // Client meeting 2026-09: "go into each one of these PDFs and say, this is the category and
+  // this is what it is" — tagging happens after upload too, not just at upload time.
+  app.patch<{ Params: { id: string }; Body: { category: string | null; manufacturer: string | null } }>("/:id", async (req) => {
+    const { id } = req.params;
+    const { category, manufacturer } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        update library_documents
+        set category = ${category}, manufacturer = ${manufacturer}
+        where id = ${id}
         returning *
       `;
       return row;

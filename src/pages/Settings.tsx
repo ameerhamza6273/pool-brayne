@@ -421,7 +421,7 @@ export default function Settings() {
                             {t(int.status)}
                           </Badge>
                         </div>
-                        <p className="text-sm text-[#64748B] mt-1">{t(int.description)}</p>
+                        <p className="text-sm text-[#64748B] mt-1">{t(int.description ?? "")}</p>
                         {isQuickbooks ? (
                           <Button
                             variant="outline"
@@ -485,7 +485,7 @@ export default function Settings() {
                     {plan.recommended && <Badge className="bg-[#0891B2] text-white text-[10px] px-1.5 py-0">{t("Recommended")}</Badge>}
                   </div>
                   <p className="text-2xl font-bold text-[#0F172A]">${plan.price}<span className="text-sm font-normal text-[#64748B]">{t("/mo")}</span></p>
-                  <p className="text-sm text-[#64748B] mt-1">{t(plan.description)}</p>
+                  <p className="text-sm text-[#64748B] mt-1">{t(plan.description ?? "")}</p>
                   <ul className="mt-3 space-y-1.5">
                     {plan.features.map((f, i) => (
                       <li key={i} className="flex items-center gap-2 text-sm text-[#0F172A]">

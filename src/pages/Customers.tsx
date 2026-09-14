@@ -11,6 +11,7 @@ import { customersApi } from "@/lib/api/customers";
 import { formatPhoneInput } from "@/lib/phone";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { useLanguage } from "@/lib/language-context";
+import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -82,9 +83,7 @@ export default function Customers() {
   };
 
   const filtered = customers.filter((c) => {
-    const matchesSearch =
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      (c.address ?? "").toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = matchesQuery(search, [c.name, c.address, c.phone, c.email]);
     const matchesTag = tagFilter === "All" || c.tags.includes(tagFilter);
     return matchesSearch && matchesTag;
   });

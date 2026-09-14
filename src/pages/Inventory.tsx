@@ -12,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import CategoryPicker from "@/components/CategoryPicker";
-import PoLineItemsEditor, { newPoLineItem } from "@/components/PoLineItemsEditor";
+import PoLineItemsEditor from "@/components/PoLineItemsEditor";
 import { inventoryApi } from "@/lib/api/inventory";
 import { useLanguage } from "@/lib/language-context";
+import { matchesQuery } from "@/lib/search";
 import { invoicingApi, type VendorBill } from "@/lib/api/invoicing";
 import { reportsApi, type VendorBillDueRow } from "@/lib/api/reports";
 import type { Database } from "@/lib/database.types";
@@ -459,10 +460,7 @@ export default function Inventory() {
   };
 
   const filtered = items.filter((p) => {
-    const q = search.toLowerCase();
-    const matchesSearch = !q || [p.name, p.sku, p.short_description, p.long_description, p.category, p.manufacturer]
-      .filter(Boolean)
-      .some((f) => (f as string).toLowerCase().includes(q));
+    const matchesSearch = matchesQuery(search, [p.name, p.sku, p.short_description, p.long_description, p.category, p.manufacturer]);
     const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });

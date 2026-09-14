@@ -65,7 +65,12 @@ export default function LineItemsEditor({
                     placeholder={t("Pick from inventory (optional)")}
                     searchPlaceholder={t("Search item #, SKU, name, or description...")}
                     emptyText={t("No matching items.")}
-                    options={inventoryItems.map((inv) => ({
+                    // Client meeting 2026-09: "making sure the labor is linked to our labor SKUs
+                    // and materials are linked to our material SKUs" -- reuses the same
+                    // category === "Services" convention POS already uses to distinguish labor.
+                    options={inventoryItems
+                      .filter((inv) => (li.itemType === "labor" ? inv.category === "Services" : inv.category !== "Services"))
+                      .map((inv) => ({
                       value: inv.id,
                       // Client SMS 2026-09-04 (staff, "Michael"): "typing our item number,
                       // nothing was populating" -- item_number wasn't in the searchable text at

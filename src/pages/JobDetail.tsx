@@ -117,6 +117,7 @@ export default function JobDetail() {
   const [job, setJob] = useState<JobRow | null>(null);
   const [descEditing, setDescEditing] = useState(false);
   const [descDraft, setDescDraft] = useState("");
+  const [techEditing, setTechEditing] = useState(false);
   const [techNotesEditing, setTechNotesEditing] = useState(false);
   const [techNotesDraft, setTechNotesDraft] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -354,6 +355,15 @@ export default function JobDetail() {
     loadJob();
   };
 
+  // Client meeting 2026-09: "Once we have a job here, we're unable to change this assigned tech."
+  // Crew (below) covers additional techs; this reassigns the primary/lead tech (job.tech_id).
+  const handleReassignTech = async (techId: string) => {
+    if (!job) return;
+    await jobsApi.update(job.id, { tech_id: techId });
+    setTechEditing(false);
+    loadJob();
+  };
+
   const handleReschedule = async () => {
     if (!job || !rescheduleAt) return;
     const [date, time] = rescheduleAt.split("T");
@@ -583,14 +593,29 @@ export default function JobDetail() {
                   <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center">
                     <Truck className="w-5 h-5 text-[#0891B2]" />
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-xs text-[#64748B]">{t("Assigned")}</p>
-                    <div className="flex items-center gap-1.5">
-                      <Avatar className="w-5 h-5">
-                        <AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{job.profiles?.avatar}</AvatarFallback>
-                      </Avatar>
-                      <span className="font-medium text-[#0F172A]">{job.profiles?.name}</span>
-                    </div>
+                    {techEditing ? (
+                      <div className="flex items-center gap-1.5">
+                        <SearchableSelect
+                          value={job.tech_id ?? ""}
+                          onChange={handleReassignTech}
+                          placeholder={t("Select a technician")}
+                          options={allTechs.map((tech) => ({ value: tech.id, label: tech.name }))}
+                        />
+                        <button className="text-[#64748B] hover:text-[#DC2626] text-xs shrink-0" onClick={() => setTechEditing(false)}>{t("Cancel")}</button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Avatar className="w-5 h-5">
+                          <AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{job.profiles?.avatar}</AvatarFallback>
+                        </Avatar>
+                        <span className="font-medium text-[#0F172A]">{job.profiles?.name}</span>
+                        <button className="text-[#64748B] hover:text-[#0891B2]" onClick={() => setTechEditing(true)}>
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

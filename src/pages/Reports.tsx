@@ -17,6 +17,46 @@ import { useLanguage } from "@/lib/language-context";
 // sales-tax report that already existed on the POS page (reused here from the same endpoint).
 const reportTabs = ["sales-tax", "movement", "deposits", "due", "reminders", "valuation"];
 
+// Client meeting 2026-09: "a lot of these reports here may be a way to sort these reports by
+// clicking higher to lower." Generic click-to-sort for every report table on this page.
+function useSort<T>(rows: T[], getValue: (row: T, key: string) => string | number | null) {
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const sorted = sortKey
+    ? [...rows].sort((a, b) => {
+        const av = getValue(a, sortKey);
+        const bv = getValue(b, sortKey);
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : rows;
+  const toggleSort = (key: string) => {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  };
+  return { sorted, sortKey, sortDir, toggleSort };
+}
+
+function SortTh({ label, sortKey, active, dir, onClick, align = "left" }: {
+  label: string; sortKey: string; active: string | null; dir: "asc" | "desc";
+  onClick: (key: string) => void; align?: "left" | "right" | "center";
+}) {
+  const isActive = active === sortKey;
+  return (
+    <th
+      className={`py-3 px-4 text-xs font-semibold text-[#64748B] uppercase cursor-pointer select-none hover:text-[#0891B2] ${align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"}`}
+      onClick={() => onClick(sortKey)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {isActive && <span className="text-[10px]">{dir === "asc" ? "▲" : "▼"}</span>}
+      </span>
+    </th>
+  );
+}
+
 export default function Reports() {
   const { t } = useLanguage();
   const [searchParams] = useSearchParams();
@@ -93,11 +133,18 @@ export default function Reports() {
 
   const today = new Date().toISOString().slice(0, 10);
   const totalValuation = valuation.reduce((s, v) => s + Number(v.value), 0);
+
+  const movementSort = useSort(movement, (m, key) => (m as unknown as Record<string, string | number | null>)[key]);
+  const depositsSort = useSort(deposits, (d, key) => key === "customer" ? d.customers?.name ?? null : (d as unknown as Record<string, string | number | null>)[key]);
+  const invoicesDueSort = useSort(invoicesDue, (r, key) => (r as unknown as Record<string, string | number | null>)[key]);
+  const remindersSort = useSort(reminders, (r, key) => key === "customer" ? r.customers?.name ?? null : (r as unknown as Record<string, string | number | null>)[key]);
+  const valuationSort = useSort(valuation, (v, key) => (v as unknown as Record<string, string | number | null>)[key]);
+
   // Client request 2026-09-04: this report rendered all 2,600+ inventory items unpaginated.
   const [valuationPage, setValuationPage] = useState(1);
   const VALUATION_PAGE_SIZE = 50;
   const valuationTotalPages = Math.max(1, Math.ceil(valuation.length / VALUATION_PAGE_SIZE));
-  const paginatedValuation = valuation.slice((valuationPage - 1) * VALUATION_PAGE_SIZE, valuationPage * VALUATION_PAGE_SIZE);
+  const paginatedValuation = valuationSort.sorted.slice((valuationPage - 1) * VALUATION_PAGE_SIZE, valuationPage * VALUATION_PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -139,14 +186,14 @@ export default function Reports() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">SKU</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Movement Type")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Qty")}</th>
+                    <SortTh label={t("Product")} sortKey="name" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label="SKU" sortKey="sku" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Movement Type")} sortKey="movement_type" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Qty")} sortKey="qty" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>
-                  {movement.map((m, i) => (
+                  {movementSort.sorted.map((m, i) => (
                     <tr key={i} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{m.name}</td>
                       <td className="py-3 px-4 text-[#64748B]">{m.sku}</td>
@@ -167,14 +214,14 @@ export default function Reports() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Invoice #")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Deposit")}</th>
+                    <SortTh label={t("Invoice #")} sortKey="number" active={depositsSort.sortKey} dir={depositsSort.sortDir} onClick={depositsSort.toggleSort} />
+                    <SortTh label={t("Customer")} sortKey="customer" active={depositsSort.sortKey} dir={depositsSort.sortDir} onClick={depositsSort.toggleSort} />
+                    <SortTh label={t("Issue Date")} sortKey="issue_date" active={depositsSort.sortKey} dir={depositsSort.sortDir} onClick={depositsSort.toggleSort} />
+                    <SortTh label={t("Deposit")} sortKey="down_payment" active={depositsSort.sortKey} dir={depositsSort.sortDir} onClick={depositsSort.toggleSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>
-                  {deposits.map((d, i) => (
+                  {depositsSort.sorted.map((d, i) => (
                     <tr key={i} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{d.number}</td>
                       <td className="py-3 px-4 text-[#64748B]">{d.customers?.name ?? "—"}</td>
@@ -195,13 +242,13 @@ export default function Reports() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Open Invoices")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total Due")}</th>
+                    <SortTh label={t("Customer")} sortKey="customer_name" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} />
+                    <SortTh label={t("Open Invoices")} sortKey="invoice_count" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
+                    <SortTh label={t("Total Due")} sortKey="total_due" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>
-                  {invoicesDue.map((r) => (
+                  {invoicesDueSort.sorted.map((r) => (
                     <tr key={r.customer_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{r.customer_name}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{r.invoice_count}</td>
@@ -251,15 +298,15 @@ export default function Reports() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Reminder Type")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Frequency")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Next Due")}</th>
+                    <SortTh label={t("Customer")} sortKey="customer" active={remindersSort.sortKey} dir={remindersSort.sortDir} onClick={remindersSort.toggleSort} />
+                    <SortTh label={t("Reminder Type")} sortKey="label" active={remindersSort.sortKey} dir={remindersSort.sortDir} onClick={remindersSort.toggleSort} />
+                    <SortTh label={t("Frequency")} sortKey="frequency_months" active={remindersSort.sortKey} dir={remindersSort.sortDir} onClick={remindersSort.toggleSort} />
+                    <SortTh label={t("Next Due")} sortKey="next_due" active={remindersSort.sortKey} dir={remindersSort.sortDir} onClick={remindersSort.toggleSort} />
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {reminders.map((r) => {
+                  {remindersSort.sorted.map((r) => {
                     const overdue = r.next_due <= today;
                     return (
                       <tr key={r.id} className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] ${overdue ? "bg-[#DC2626]/5" : ""}`}>
@@ -289,11 +336,11 @@ export default function Reports() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">SKU</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Qty")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Unit Cost")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Value")}</th>
+                    <SortTh label={t("Product")} sortKey="name" active={valuationSort.sortKey} dir={valuationSort.sortDir} onClick={valuationSort.toggleSort} />
+                    <SortTh label="SKU" sortKey="sku" active={valuationSort.sortKey} dir={valuationSort.sortDir} onClick={valuationSort.toggleSort} />
+                    <SortTh label={t("Qty")} sortKey="quantity" active={valuationSort.sortKey} dir={valuationSort.sortDir} onClick={valuationSort.toggleSort} align="right" />
+                    <SortTh label={t("Unit Cost")} sortKey="unit_cost" active={valuationSort.sortKey} dir={valuationSort.sortDir} onClick={valuationSort.toggleSort} align="right" />
+                    <SortTh label={t("Value")} sortKey="value" active={valuationSort.sortKey} dir={valuationSort.sortDir} onClick={valuationSort.toggleSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>

@@ -3,7 +3,7 @@ import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, CreditCard,
   Banknote, FileText, Receipt, Percent, User, Package,
   TrendingUp, DollarSign, CheckCircle2, Printer,
-  ArrowRight, RotateCcw, PackagePlus,
+  ArrowRight, RotateCcw, PackagePlus, LayoutGrid, Table2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import { useLanguage } from "@/lib/language-context";
+import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
 
 type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"];
@@ -53,6 +54,10 @@ export default function PointOfSale() {
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
+  // Client meeting 2026-09: "I don't know if I'm the greatest fan of seeing this stuff go three
+  // across... maybe look more like a spreadsheet going straight down." Grid stays the default;
+  // list is a dense, spreadsheet-like alternative.
+  const [productView, setProductView] = useState<"grid" | "list">("grid");
   // Client request 2026-09-04: the product grid rendered every catalog item at once (2,500+
   // after the real inventory import) -- same pagination fix applied to Inventory/Customers.
   const [page, setPage] = useState(1);
@@ -123,10 +128,7 @@ export default function PointOfSale() {
   }, [runReport]);
 
   const filtered = products.filter((p) => {
-    const q = search.toLowerCase();
-    const matchesSearch = !q || [p.name, p.sku, p.short_description, p.long_description, p.manufacturer, p.category]
-      .filter(Boolean)
-      .some((f) => (f as string).toLowerCase().includes(q));
+    const matchesSearch = matchesQuery(search, [p.name, p.sku, p.short_description, p.long_description, p.manufacturer, p.category]);
     const matchesCat = category === "All" || p.category === category;
     return matchesSearch && matchesCat;
   });
@@ -318,14 +320,32 @@ export default function PointOfSale() {
         {/* Product Grid */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
           <div className="p-4 border-b border-[#E2E8F0] space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-              <Input
-                placeholder={t("Search name, SKU, description, category, or manufacturer...")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-10 bg-[#F8FAFC] border-[#E2E8F0]"
-              />
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+                <Input
+                  placeholder={t("Search name, SKU, description, category, or manufacturer...")}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 h-10 bg-[#F8FAFC] border-[#E2E8F0]"
+                />
+              </div>
+              <div className="flex items-center gap-1 border border-[#E2E8F0] rounded-lg p-1 shrink-0">
+                <button
+                  onClick={() => setProductView("grid")}
+                  className={`p-1.5 rounded ${productView === "grid" ? "bg-[#0891B2]/10 text-[#0891B2]" : "text-[#64748B] hover:bg-[#F8FAFC]"}`}
+                  title={t("Grid view")}
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setProductView("list")}
+                  className={`p-1.5 rounded ${productView === "list" ? "bg-[#0891B2]/10 text-[#0891B2]" : "text-[#64748B] hover:bg-[#F8FAFC]"}`}
+                  title={t("List view")}
+                >
+                  <Table2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               {categories.map((c) => (
@@ -345,39 +365,86 @@ export default function PointOfSale() {
           </div>
 
           <div className="p-4 max-h-[560px] overflow-y-auto">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {paginatedProducts.map((p) => {
-                const isService = p.category === "Services";
-                // Client request 2026-09-02: out-of-stock items are still sellable (inventory is
-                // allowed to go negative) rather than blocked.
-                const out = !isService && p.stock <= 0;
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    className="text-left p-3 rounded-xl border transition-all bg-white border-[#E2E8F0] hover:border-[#0891B2] hover:shadow-md active:scale-[0.98] cursor-pointer"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <Badge className={`${categoryColors[p.category] || "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]"} text-[10px] px-1.5 py-0`}>
-                        {p.category}
-                      </Badge>
-                      {out ? (
-                        <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">{t("Out — will go negative")}</Badge>
-                      ) : isService ? (
-                        <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">{t("Service")}</Badge>
-                      ) : p.stock <= 5 ? (
-                        <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Low")}: {p.stock}</Badge>
-                      ) : (
-                        <span className="text-[10px] text-[#64748B] font-medium">{p.stock} {t("in stock")}</span>
-                      )}
-                    </div>
-                    <p className="text-sm font-semibold text-[#0F172A] leading-snug mb-1 line-clamp-2">{p.name}</p>
-                    <p className="text-[10px] text-[#64748B] font-mono">{p.sku}</p>
-                    <p className="text-base font-bold text-[#0891B2] mt-2">${(p.price ?? 0).toFixed(2)}</p>
-                  </button>
-                );
-              })}
-            </div>
+            {productView === "grid" ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {paginatedProducts.map((p) => {
+                  const isService = p.category === "Services";
+                  // Client request 2026-09-02: out-of-stock items are still sellable (inventory is
+                  // allowed to go negative) rather than blocked.
+                  const out = !isService && p.stock <= 0;
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => addToCart(p)}
+                      className="text-left p-3 rounded-xl border transition-all bg-white border-[#E2E8F0] hover:border-[#0891B2] hover:shadow-md active:scale-[0.98] cursor-pointer"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <Badge className={`${categoryColors[p.category] || "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]"} text-[10px] px-1.5 py-0`}>
+                          {p.category}
+                        </Badge>
+                        {out ? (
+                          <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">{t("Out — will go negative")}</Badge>
+                        ) : isService ? (
+                          <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">{t("Service")}</Badge>
+                        ) : p.stock <= 5 ? (
+                          <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Low")}: {p.stock}</Badge>
+                        ) : (
+                          <span className="text-[10px] text-[#64748B] font-medium">{p.stock} {t("in stock")}</span>
+                        )}
+                      </div>
+                      <p className="text-sm font-semibold text-[#0F172A] leading-snug mb-1 line-clamp-2">{p.name}</p>
+                      <p className="text-[10px] text-[#64748B] font-mono">{p.sku}</p>
+                      <p className="text-base font-bold text-[#0891B2] mt-2">${(p.price ?? 0).toFixed(2)}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="border border-[#E2E8F0] rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("SKU")}</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Category")}</th>
+                      <th className="text-right py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Stock")}</th>
+                      <th className="text-right py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Price")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedProducts.map((p) => {
+                      const isService = p.category === "Services";
+                      const out = !isService && p.stock <= 0;
+                      return (
+                        <tr
+                          key={p.id}
+                          onClick={() => addToCart(p)}
+                          className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer"
+                        >
+                          <td className="py-2 px-3 font-medium text-[#0F172A]">{p.name}</td>
+                          <td className="py-2 px-3 text-[#64748B] font-mono text-xs">{p.sku}</td>
+                          <td className="py-2 px-3">
+                            <Badge className={`${categoryColors[p.category] || "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]"} text-[10px] px-1.5 py-0`}>
+                              {p.category}
+                            </Badge>
+                          </td>
+                          <td className="text-right py-2 px-3">
+                            {isService ? (
+                              <span className="text-[10px] text-[#7C3AED]">{t("Service")}</span>
+                            ) : out ? (
+                              <span className="text-[10px] text-[#DC2626]">{t("Out")}</span>
+                            ) : (
+                              <span className={`text-xs ${p.stock <= 5 ? "text-[#F59E0B]" : "text-[#64748B]"}`}>{p.stock}</span>
+                            )}
+                          </td>
+                          <td className="text-right py-2 px-3 font-semibold text-[#0891B2]">${(p.price ?? 0).toFixed(2)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
             {filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-[#64748B]">
                 <Package className="w-10 h-10 mb-3 opacity-40" />

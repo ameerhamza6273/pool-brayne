@@ -152,6 +152,11 @@ export default function FormBuilder() {
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
+                      {/* Client meeting 2026-09: mandatory per field, not just per form. */}
+                      <div className="flex items-center gap-2">
+                        <Switch id={`required-${f.id}`} checked={!!f.required} onCheckedChange={(v) => updateField(idx, { required: v })} />
+                        <Label htmlFor={`required-${f.id}`} className="cursor-pointer text-xs">{translate("Mandatory field")}</Label>
+                      </div>
                       {f.type === "select" && (
                         <Input
                           placeholder={translate("Options, comma separated (e.g. Truck Supply, Customer Supply)")}
