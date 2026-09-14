@@ -1117,6 +1117,8 @@ export type Database = {
           tech_notes: string | null
           tenant_id: string
           type: string
+          write_off_reason: string | null
+          write_off_date: string | null
         }
         Insert: {
           address?: string | null
@@ -1140,6 +1142,8 @@ export type Database = {
           tech_notes?: string | null
           tenant_id: string
           type: string
+          write_off_reason?: string | null
+          write_off_date?: string | null
         }
         Update: {
           address?: string | null
@@ -1163,6 +1167,8 @@ export type Database = {
           tech_notes?: string | null
           tenant_id?: string
           type?: string
+          write_off_reason?: string | null
+          write_off_date?: string | null
         }
         Relationships: [
           {

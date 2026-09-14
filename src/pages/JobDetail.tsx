@@ -4,7 +4,7 @@ import {
   ArrowLeft, MapPin, Clock, User, Wrench, FileText, Camera,
   Plus, CheckCircle2, Circle, Send, Signature, Truck, DollarSign,
   Phone, MessageSquare, Mail, UserX, AlertCircle, Lock, ExternalLink,
-  Barcode, Receipt, Info, Upload, Languages, RotateCw, Copy,
+  Barcode, Receipt, Info, Upload, Languages, RotateCw, Copy, Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -127,6 +127,11 @@ export default function JobDetail() {
   const [rescheduleAt, setRescheduleAt] = useState("");
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [rescheduleScope, setRescheduleScope] = useState<"temporary" | "permanent">("temporary");
+  // Client meeting 2026-09-14: "write off a job... customer refuses to pay" -- modeled on the
+  // existing Invoice write-off (InvoiceDetail.tsx), distinct from SKU write-offs in Inventory.
+  const [writeOffOpen, setWriteOffOpen] = useState(false);
+  const [writeOffReason, setWriteOffReason] = useState("");
+  const [writingOff, setWritingOff] = useState(false);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
@@ -364,6 +369,20 @@ export default function JobDetail() {
     loadJob();
   };
 
+  // Client meeting 2026-09-14: "write off a job... customer refuses to pay." Reuses the generic
+  // job update endpoint (same one used everywhere else in this file) rather than a new route --
+  // mirrors invoicingApi.writeOffInvoice's field shape (status + reason + date).
+  const handleWriteOff = async () => {
+    if (!job || !writeOffReason.trim()) return;
+    setWritingOff(true);
+    const today = new Date().toISOString().slice(0, 10);
+    await jobsApi.update(job.id, { status: "Written Off", write_off_reason: writeOffReason.trim(), write_off_date: today });
+    setWritingOff(false);
+    setWriteOffOpen(false);
+    setWriteOffReason("");
+    loadJob();
+  };
+
   const handleReschedule = async () => {
     if (!job || !rescheduleAt) return;
     const [date, time] = rescheduleAt.split("T");
@@ -470,6 +489,26 @@ export default function JobDetail() {
             <Copy className="w-4 h-4" />
             <span className="hidden sm:inline">{t("Clone Job")}</span>
           </Button>
+          {job.stage === "completed" && job.status !== "Written Off" && (
+            <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#64748B]">
+                  <Ban className="w-4 h-4" />
+                  <span className="hidden sm:inline">{t("Write Off")}</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader><DialogTitle>{t("Write Off Job (Bad Debt)")}</DialogTitle></DialogHeader>
+                <div className="space-y-3 pt-2">
+                  <p className="text-sm text-[#64748B]">{t("This marks this job as uncollectible bad debt (e.g. customer refuses to pay). This can't be undone from here.")}</p>
+                  <Textarea placeholder={t("Reason (e.g. customer unreachable, bankruptcy, disputed...)")} value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} rows={3} />
+                  <Button className="w-full bg-[#DC2626] hover:bg-[#B91C1C] text-white" onClick={handleWriteOff} disabled={writingOff || !writeOffReason.trim()}>
+                    {writingOff ? t("Writing off...") : t("Confirm Write-Off")}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
           {job.converted_to_estimate_id ? (
             <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={() => navigate(`/invoicing/estimates/${job.converted_to_estimate_id}`)}>
               <span className="hidden sm:inline">{t("View Estimate")}</span>
@@ -481,27 +520,36 @@ export default function JobDetail() {
               <span className="sm:hidden">{t("To Estimate")}</span>
             </Button>
           )}
-          <Button
-            className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9"
-            disabled={generatingInvoice || (job.status === "Completed" && !!invoiceId)}
-            onClick={handleMarkComplete}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            <span className="hidden sm:inline">
-              {job.status === "Completed" && invoiceId
-                ? t("Job Completed")
-                : generatingInvoice
-                ? t("Working...")
-                : job.status === "Completed"
-                ? t("Generate Invoice")
-                : t("Mark Complete & Generate Invoice")}
-            </span>
-            <span className="sm:hidden">{t("Complete")}</span>
-          </Button>
+          {job.status !== "Written Off" && (
+            <Button
+              className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9"
+              disabled={generatingInvoice || (job.status === "Completed" && !!invoiceId)}
+              onClick={handleMarkComplete}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span className="hidden sm:inline">
+                {job.status === "Completed" && invoiceId
+                  ? t("Job Completed")
+                  : generatingInvoice
+                  ? t("Working...")
+                  : job.status === "Completed"
+                  ? t("Generate Invoice")
+                  : t("Mark Complete & Generate Invoice")}
+              </span>
+              <span className="sm:hidden">{t("Complete")}</span>
+            </Button>
+          )}
         </div>
       </div>
 
       {formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
+
+      {job.status === "Written Off" && job.write_off_reason && (
+        <div className="p-3 rounded-lg bg-[#64748B]/5 border border-[#64748B]/20">
+          <p className="text-xs font-semibold text-[#64748B] uppercase mb-1 flex items-center gap-1.5"><Ban className="w-3.5 h-3.5" /> {t("Written Off (Bad Debt)")} — {job.write_off_date}</p>
+          <p className="text-sm text-[#0F172A]">{job.write_off_reason}</p>
+        </div>
+      )}
 
       {/* Reschedule panel */}
       {rescheduleOpen && (

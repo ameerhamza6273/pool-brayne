@@ -541,6 +541,9 @@ export const jobStatuses = [
   { id: "rescheduled", label: "Rescheduled", color: "#F59E0B" },
   { id: "no_answer", label: "No Answer / Customer Not Available", color: "#EF4444" },
   { id: "callback", label: "Needs Callback", color: "#EC4899" },
+  // Client meeting 2026-09-14: "write off a job... customer refuses to pay" -- bad-debt marker,
+  // distinct from Cancelled (job never happened) or SKU write-offs (inventory).
+  { id: "written_off", label: "Written Off", color: "#64748B" },
 ];
 
 export const estimateStatuses = [
