@@ -289,12 +289,21 @@ vendor, different payment processor).
 8. **From the 2026-09-14 client video-call transcript, still needs client confirmation before
    building** (ambiguous — don't guess): (a) PO item-selection/edit — client described it as
    broken, but this was already built 2026-09-11 and may just not have been deployed yet when
-   they tested; (b) job-level write-off (bad debt) — unclear if this should reuse the existing
-   Invoice write-off or be a separate job-level flow for jobs with no invoice yet; (c) a
-   "Documents" section on Estimates — unclear if this means the existing DocumentsSection
-   library-attach flow (already built) or a distinct new top-level Documents page; (d) Field.tsx
-   inventory for techs — unclear if "show inventory list" means line items (already shown) or an
-   inventory picker to add new parts on the fly.
+   they tested; (b) a "Documents" section on Estimates — unclear if this means the existing
+   DocumentsSection library-attach flow (already built) or a distinct new top-level Documents
+   page; (c) Field.tsx inventory for techs — unclear if "show inventory list" means line items
+   (already shown) or an inventory picker to add new parts on the fly. (Job-level write-off, the
+   4th item, was clarified and built 2026-09-14 — see below and Architecture-adjacent note: it's
+   a new `jobs.write_off_reason`/`write_off_date` pair, separate from both SKU write-offs and the
+   existing Invoice write-off.)
+9. **Flaky `GET /api/invoices/by-job` on JobDetail load** — observed intermittent 500s (then
+   succeeding on manual retry) while testing job write-off 2026-09-14, in this pre-existing route
+   unrelated to that feature. JobDetail fires ~12 parallel GET requests on mount (notifications,
+   form-templates, library, profiles, job detail, invoices/by-job, parts, line-items, attachments,
+   crew, forms, inventory/summary), each opening its own `withTenantContext` transaction — a
+   connection-pool-exhaustion-under-burst theory is untested but plausible. Not investigated
+   further (out of scope for that session); worth a dedicated look if it recurs or a client
+   reports JobDetail intermittently missing invoice-linked UI state.
 
 ## Session Changelog
 
@@ -371,4 +380,15 @@ history was condensed into the structural sections above on 2026-09-10.)*
   while verifying the build. Verified live in the browser (Library tagging round-trip, Reports
   sort, Form Builder per-field mandatory) — no console errors. **Not done, needs client
   clarification first** — see Open/Pending Items #8: PO item-selection (likely already fixed, just
-  undeployed), job-level write-off, Estimate "Documents" section, Field view inventory picker.
+  undeployed), Estimate "Documents" section, Field view inventory picker. All pushed to origin/main
+  and confirmed live on Vercel/Railway production the same day.
+- **2026-09-14 (same day, follow-up)** — Client clarified the job-write-off ambiguity: a specific
+  past Job (e.g. completed, customer refuses to pay) needs its own write-off, separate from both
+  SKU write-offs (Inventory, untouched) and the existing Invoice write-off. Added
+  `jobs.write_off_reason`/`write_off_date` columns and a "Write Off" button on JobDetail (shown
+  once a job reaches Completed), mirroring the Invoice write-off's UI/copy exactly, reusing the
+  jobs route's existing generic PATCH (no new backend route needed). Verified the button and
+  dialog render correctly in the browser on a real Completed job; did not submit the action itself
+  to avoid mutating a real record during testing. Also noted (see Open/Pending Items #9, not
+  fixed): `GET /api/invoices/by-job` intermittently 500s on JobDetail load — pre-existing,
+  unrelated to this change, not investigated further this session.
