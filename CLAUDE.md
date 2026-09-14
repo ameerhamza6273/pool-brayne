@@ -286,16 +286,18 @@ vendor, different payment processor).
 7. Empty leftover Railway project (`content-commitment`) in the developer's old trial workspace —
    its service was deleted 2026-09-10, but Railway's UI has no self-service "delete whole
    project" button, so a serviceless shell remains (costs nothing, safe to ignore).
-8. **From the 2026-09-14 client video-call transcript, still needs client confirmation before
-   building** (ambiguous — don't guess): (a) PO item-selection/edit — client described it as
-   broken, but this was already built 2026-09-11 and may just not have been deployed yet when
-   they tested; (b) a "Documents" section on Estimates — unclear if this means the existing
-   DocumentsSection library-attach flow (already built) or a distinct new top-level Documents
-   page; (c) Field.tsx inventory for techs — unclear if "show inventory list" means line items
-   (already shown) or an inventory picker to add new parts on the fly. (Job-level write-off, the
-   4th item, was clarified and built 2026-09-14 — see below and Architecture-adjacent note: it's
-   a new `jobs.write_off_reason`/`write_off_date` pair, separate from both SKU write-offs and the
-   existing Invoice write-off.)
+8. **From the 2026-09-14 client video-call transcript — one item left, needs the client to
+   re-verify on the now-deployed build, not a build task**: PO item-selection/edit — client
+   described it as broken, but this was already built 2026-09-11 and (per the deploy-gap found
+   that same session) likely just wasn't live yet when they tested on the call. The other 3
+   originally-ambiguous items all turned out to be already-built, confirmed live in the browser
+   2026-09-14: job-level write-off (built that day, see below), the Estimate "Documents" section
+   (already IS the Library + DocumentsSection "attach from Library" flow — EstimateDetail.tsx
+   already wires `libraryDocuments`/`onAttachExisting`, no separate Documents page needed), and
+   Field.tsx's technician inventory picker (already IS the "Parts Used" search+stepper block in
+   Field.tsx, confirmed live by searching "filter" and getting 50+ real inventory results with
+   add/remove steppers — client just hadn't seen the undeployed build). Nothing left to build from
+   this transcript; only re-confirm with the client once they're on the current deploy.
 9. **Flaky `GET /api/invoices/by-job` on JobDetail load** — observed intermittent 500s (then
    succeeding on manual retry) while testing job write-off 2026-09-14, in this pre-existing route
    unrelated to that feature. JobDetail fires ~12 parallel GET requests on mount (notifications,
@@ -392,3 +394,14 @@ history was condensed into the structural sections above on 2026-09-10.)*
   to avoid mutating a real record during testing. Also noted (see Open/Pending Items #9, not
   fixed): `GET /api/invoices/by-job` intermittently 500s on JobDetail load — pre-existing,
   unrelated to this change, not investigated further this session.
+- **2026-09-14 (same day, second follow-up)** — Re-examined the remaining 2 ambiguous transcript
+  items by re-reading the exact quotes and checking code directly instead of guessing: both turned
+  out to already be built, just not something the client had seen live yet. (1) Estimate
+  "Documents" section — Bryan's ask ("a section that has about four or five documents we can
+  upload at any time" + not being "forced to upload") is exactly what Library + DocumentsSection's
+  "attach from Library" dropdown already does; confirmed `EstimateDetail.tsx` already passes
+  `libraryDocuments`/`onAttachExisting` to it. (2) Field.tsx inventory for techs — Bryan/Michael's
+  ask ("a pump, a filter... an anode" + "add stuff on the fly") is exactly the existing "Piezas
+  Usadas"/"Parts Used" search+stepper block; confirmed live by searching "filter" in the field view
+  and getting 50+ real inventory results with working +/- steppers. No code changes needed for
+  either — only Open/Pending Items #8's PO item-selection needs the client to actually re-check.
