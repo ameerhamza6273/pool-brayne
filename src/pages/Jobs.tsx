@@ -171,6 +171,18 @@ export default function Jobs() {
     loadJobs();
   };
 
+  // Client meeting 2026-09-14: "you need to make that drag and drop like we have on the full
+  // schedule" -- the Pipeline board's stage columns, same native drag/drop pattern as the
+  // Dispatch Board (assignTech, above) and Schedule tab.
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const stageStatusLabels: Record<string, string> = {
+    lead: "Lead", booked: "Booked", dispatched: "Dispatched", in_progress: "In Progress", completed: "Completed",
+  };
+  const moveToStage = async (jobId: string, stageId: string) => {
+    await jobsApi.update(jobId, { stage: stageId, status: stageStatusLabels[stageId] ?? stageId });
+    loadJobs();
+  };
+
   const shiftMapDate = (days: number) => {
     const d = new Date(mapDate + "T00:00:00");
     d.setDate(d.getDate() + days);
@@ -589,10 +601,22 @@ export default function Jobs() {
                     <span className="font-semibold text-sm text-[#0F172A]">{t(stage.label)}</span>
                     <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px]">{stageJobs.length}</Badge>
                   </div>
-                  <div className="bg-[#F8FAFC] rounded-b-lg border border-[#E2E8F0] border-t-0 p-2 space-y-2 min-h-[300px]">
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOverStage(stage.id); }}
+                    onDragLeave={() => setDragOverStage((cur) => (cur === stage.id ? null : cur))}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const jobId = e.dataTransfer.getData("text/job-id");
+                      if (jobId) moveToStage(jobId, stage.id);
+                      setDragOverStage(null);
+                    }}
+                    className={`rounded-b-lg border border-t-0 p-2 space-y-2 min-h-[300px] transition-colors ${dragOverStage === stage.id ? "bg-[#0891B2]/10 border-[#0891B2] border-dashed" : "bg-[#F8FAFC] border-[#E2E8F0]"}`}
+                  >
                     {stageJobs.map((job) => (
                       <div
                         key={job.id}
+                        draggable
+                        onDragStart={(e) => { e.dataTransfer.setData("text/job-id", job.id); e.dataTransfer.effectAllowed = "move"; }}
                         className="bg-white rounded-lg p-3 border border-[#E2E8F0] shadow-sm hover:shadow-md transition-shadow cursor-pointer"
                         onClick={() => navigate(`/jobs/${job.id}`)}
                       >
