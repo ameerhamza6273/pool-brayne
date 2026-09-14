@@ -3,6 +3,7 @@ import { Bell, CheckCircle2, Truck, DollarSign, Package, MessageSquare, Wrench, 
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
 import { notificationsApi, type Notification } from "@/lib/api/notifications";
+import { useLanguage } from "@/lib/language-context";
 
 const iconMap: Record<string, React.ReactNode> = {
   job: <Wrench className="w-4 h-4 text-[#0891B2]" />,
@@ -12,15 +13,15 @@ const iconMap: Record<string, React.ReactNode> = {
   fleet: <Truck className="w-4 h-4 text-[#F59E0B]" />,
 };
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (s: string) => string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1) return t("just now");
+  if (minutes < 60) return `${minutes} ${t("min ago")}`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  if (hours < 24) return `${hours} ${hours === 1 ? t("hour ago") : t("hours ago")}`;
   const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  return `${days} ${days === 1 ? t("day ago") : t("days ago")}`;
 }
 
 // Client bug report 2026-09-04: this was entirely fake (hardcoded array, one link even pointed
@@ -49,6 +50,7 @@ function saveReadIds(ids: Set<string>) {
 }
 
 export default function NotificationsPanel() {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(() => loadReadIds());
@@ -103,10 +105,10 @@ export default function NotificationsPanel() {
           <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl border border-[#E2E8F0] shadow-lg z-40 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0]">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-sm text-[#0F172A]">Notifications</h3>
+                <h3 className="font-semibold text-sm text-[#0F172A]">{t("Notifications")}</h3>
                 {unreadCount > 0 && (
                   <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">
-                    {unreadCount} new
+                    {unreadCount} {t("new")}
                   </Badge>
                 )}
               </div>
@@ -116,7 +118,7 @@ export default function NotificationsPanel() {
                     onClick={markAllRead}
                     className="text-xs text-[#0891B2] hover:text-[#0E7490] font-medium"
                   >
-                    Mark all read
+                    {t("Mark all read")}
                   </button>
                 )}
                 <button onClick={() => setOpen(false)} className="p-1 rounded hover:bg-[#F8FAFC]">
@@ -129,7 +131,7 @@ export default function NotificationsPanel() {
               {notifications.length === 0 ? (
                 <div className="p-6 text-center">
                   <Bell className="w-8 h-8 text-[#E2E8F0] mx-auto mb-2" />
-                  <p className="text-sm text-[#64748B]">No notifications</p>
+                  <p className="text-sm text-[#64748B]">{t("No notifications")}</p>
                 </div>
               ) : (
                 notifications.map((n) => {
@@ -151,13 +153,13 @@ export default function NotificationsPanel() {
                           {!read && <div className="w-2 h-2 rounded-full bg-[#0891B2] shrink-0" />}
                         </div>
                         <p className="text-xs text-[#64748B] mt-0.5">{n.description}</p>
-                        <p className="text-xs text-[#64748B] mt-1">{timeAgo(n.time)}</p>
+                        <p className="text-xs text-[#64748B] mt-1">{timeAgo(n.time, t)}</p>
                       </div>
                       {!read && (
                         <button
                           onClick={(e) => { e.stopPropagation(); markAsRead(n.id); }}
                           className="p-1 rounded hover:bg-[#E2E8F0] shrink-0 mt-0.5"
-                          title="Mark as read"
+                          title={t("Mark as read")}
                         >
                           <CheckCircle2 className="w-3.5 h-3.5 text-[#0891B2]" />
                         </button>

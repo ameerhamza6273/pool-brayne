@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { customersApi } from "@/lib/api/customers";
 import { formatPhoneInput } from "@/lib/phone";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -24,6 +25,7 @@ const tagColors: Record<string, string> = {
 };
 
 export default function Customers() {
+  const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("All");
   const [viewMode, setViewMode] = useState<"table" | "grid" | "reminders">("table");
@@ -109,45 +111,45 @@ export default function Customers() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0F172A]">Customers</h1>
+        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Customers")}</h1>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
               <Plus className="w-4 h-4" />
-              Add Customer
+              {t("Add Customer")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Add New Customer</DialogTitle>
+              <DialogTitle>{t("Add New Customer")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-2">
               <div>
-                <Label>Customer Type</Label>
+                <Label>{t("Customer Type")}</Label>
                 <div className="flex gap-2 mt-2">
                   <Badge
                     className={`cursor-pointer ${newCustomer.type === "Residential" ? "bg-[#0891B2] text-white" : "bg-[#0891B2]/10 text-[#0891B2]"}`}
                     onClick={() => setNewCustomer((p) => ({ ...p, type: "Residential" }))}
                   >
-                    Residential
+                    {t("Residential")}
                   </Badge>
                   <Badge
                     className={`cursor-pointer ${newCustomer.type === "Commercial" ? "bg-[#F59E0B] text-white" : "bg-[#F59E0B]/10 text-[#F59E0B]"}`}
                     onClick={() => setNewCustomer((p) => ({ ...p, type: "Commercial" }))}
                   >
-                    Commercial
+                    {t("Commercial")}
                   </Badge>
                 </div>
               </div>
               <div>
-                <Label>Property Address</Label>
+                <Label>{t("Property Address")}</Label>
                 <AddressAutocomplete
                   placeholder="123 Main St, Austin, TX"
                   className="mt-1"
                   value={newCustomer.address}
                   onChange={(address) => setNewCustomer((p) => ({ ...p, address }))}
                 />
-                <p className="text-xs text-[#64748B] mt-1">Shared by every contact added below.</p>
+                <p className="text-xs text-[#64748B] mt-1">{t("Shared by every contact added below.")}</p>
               </div>
 
               <div className="space-y-3">
@@ -163,24 +165,24 @@ export default function Customers() {
                       </button>
                     )}
                     <p className="text-xs font-semibold text-[#64748B] uppercase">
-                      {newCustomer.contacts.length > 1 ? `Customer ${index + 1}` : "Customer"}
+                      {newCustomer.contacts.length > 1 ? `${t("Customer")} ${index + 1}` : t("Customer")}
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label>First Name</Label>
-                        <Input placeholder="First" className="mt-1" value={contact.firstName} onChange={(e) => updateContact(index, "firstName", e.target.value)} />
+                        <Label>{t("First Name")}</Label>
+                        <Input placeholder={t("First")} className="mt-1" value={contact.firstName} onChange={(e) => updateContact(index, "firstName", e.target.value)} />
                       </div>
                       <div>
-                        <Label>Last Name</Label>
-                        <Input placeholder="Last" className="mt-1" value={contact.lastName} onChange={(e) => updateContact(index, "lastName", e.target.value)} />
+                        <Label>{t("Last Name")}</Label>
+                        <Input placeholder={t("Last")} className="mt-1" value={contact.lastName} onChange={(e) => updateContact(index, "lastName", e.target.value)} />
                       </div>
                     </div>
                     <div>
-                      <Label>Phone</Label>
+                      <Label>{t("Phone")}</Label>
                       <Input placeholder="(512) 555-0000" className="mt-1" value={contact.phone} onChange={(e) => updateContact(index, "phone", formatPhoneInput(e.target.value))} />
                     </div>
                     <div>
-                      <Label>Email</Label>
+                      <Label>{t("Email")}</Label>
                       <Input placeholder="customer@email.com" className="mt-1" value={contact.email} onChange={(e) => updateContact(index, "email", e.target.value)} />
                     </div>
                   </div>
@@ -189,11 +191,11 @@ export default function Customers() {
 
               <Button variant="outline" className="w-full gap-2 border-dashed border-[#0891B2] text-[#0891B2]" onClick={addContactRow}>
                 <Plus className="w-4 h-4" />
-                Add Another Customer at This Address
+                {t("Add Another Customer at This Address")}
               </Button>
 
               <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleAddCustomer}>
-                Save Customer{newCustomer.contacts.length > 1 ? "s" : ""}
+                {newCustomer.contacts.length > 1 ? t("Save Customers") : t("Save Customer")}
               </Button>
             </div>
           </DialogContent>
@@ -205,7 +207,7 @@ export default function Customers() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
           <Input
-            placeholder="Search customers..."
+            placeholder={t("Search customers...")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 h-10 bg-white border-[#E2E8F0]"
@@ -222,7 +224,7 @@ export default function Customers() {
                   : "bg-white text-[#64748B] border border-[#E2E8F0] hover:bg-[#F8FAFC]"
               }`}
             >
-              {tag}
+              {t(tag)}
             </button>
           ))}
         </div>
@@ -241,7 +243,7 @@ export default function Customers() {
           </button>
           <button
             onClick={() => setViewMode("reminders")}
-            title="Service Reminders"
+            title={t("Service Reminders")}
             className={`p-2 rounded-lg relative ${viewMode === "reminders" ? "bg-[#0891B2]/10 text-[#0891B2]" : "text-[#64748B] hover:bg-[#F8FAFC]"}`}
           >
             <Bell className="w-4 h-4" />
@@ -254,7 +256,7 @@ export default function Customers() {
         </div>
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading customers...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading customers...")}</div>}
 
       {/* Table View */}
       {!isLoading && viewMode === "table" && (
@@ -263,13 +265,13 @@ export default function Customers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Phone</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Type</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Address</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Last Service</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">LTV</th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Actions</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Phone")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Type")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Address")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Last Service")}</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("LTV")}</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -294,7 +296,7 @@ export default function Customers() {
                       <div className="flex gap-1 flex-wrap">
                         {c.tags.map((tag) => (
                           <Badge key={tag} className={`${tagColors[tag] || "bg-[#E2E8F0] text-[#64748B]"} text-[10px] px-1.5 py-0`}>
-                            {tag}
+                            {t(tag)}
                           </Badge>
                         ))}
                       </div>
@@ -334,15 +336,15 @@ export default function Customers() {
           </div>
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#E2E8F0] text-sm">
             <p className="text-[#64748B]">
-              Showing {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+              {t("Showing")} {filtered.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} {t("of")} {filtered.length}
             </p>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Previous
+                {t("Previous")}
               </Button>
-              <span className="text-[#64748B] text-xs">Page {page} of {totalPages}</span>
+              <span className="text-[#64748B] text-xs">{t("Page")} {page} {t("of")} {totalPages}</span>
               <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                Next
+                {t("Next")}
               </Button>
             </div>
           </div>
@@ -369,7 +371,7 @@ export default function Customers() {
                   <div className="flex gap-1 mt-1 flex-wrap">
                     {c.tags.map((tag) => (
                       <Badge key={tag} className={`${tagColors[tag] || "bg-[#E2E8F0] text-[#64748B]"} text-[10px] px-1.5 py-0`}>
-                        {tag}
+                        {t(tag)}
                       </Badge>
                     ))}
                   </div>
@@ -387,11 +389,11 @@ export default function Customers() {
               </div>
               <div className="mt-3 pt-3 border-t border-[#F1F5F9] flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-[#64748B]">Lifetime Value</p>
+                  <p className="text-xs text-[#64748B]">{t("Lifetime Value")}</p>
                   <p className="text-lg font-bold text-[#0F172A]">${c.lifetime_value.toLocaleString()}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-xs text-[#64748B]">Last Service</p>
+                  <p className="text-xs text-[#64748B]">{t("Last Service")}</p>
                   <p className="text-sm font-medium text-[#0F172A]">{c.last_service}</p>
                 </div>
               </div>
@@ -438,16 +440,16 @@ export default function Customers() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className={`text-sm font-semibold ${overdue ? "text-[#DC2626]" : "text-[#0F172A]"}`}>
-                      {overdue ? "Overdue" : "Due"} {c.next_reminder_date}
+                      {overdue ? t("Overdue") : t("Due")} {c.next_reminder_date}
                     </p>
-                    <p className="text-xs text-[#64748B]">every {c.reminder_frequency_months ?? "—"} months</p>
+                    <p className="text-xs text-[#64748B]">{t("every")} {c.reminder_frequency_months ?? "—"} {t("months")}</p>
                   </div>
                 </button>
               );
             })}
             {withReminders.length === 0 && (
               <div className="p-8 text-center text-[#64748B]">
-                No service reminders set yet — set one from a customer's detail page.
+                {t("No service reminders set yet — set one from a customer's detail page.")}
               </div>
             )}
           </div>

@@ -21,6 +21,7 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null };
@@ -47,6 +48,7 @@ const paymentMethods: Record<string, { icon: typeof CreditCard; label: string }>
 const daysBetween = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
 
 export default function Invoicing() {
+  const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -396,7 +398,7 @@ export default function Invoicing() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0F172A]">Invoicing</h1>
+        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Invoicing")}</h1>
         <div className="flex items-center gap-2">
           {/* Client PDF 2026-09-05: top-right button order "New Estimate - New Task - New
               Invoice" -- achieved with CSS order rather than physically relocating each dialog's
@@ -406,51 +408,51 @@ export default function Invoicing() {
             className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10 order-2"
             onClick={() => { setActiveTab("tasks"); setNewTaskOpen(true); }}
           >
-            <Plus className="w-4 h-4" /> New Task
+            <Plus className="w-4 h-4" /> {t("New Task")}
           </Button>
           <Dialog open={newInvoiceOpen} onOpenChange={setNewInvoiceOpen}>
             <DialogTrigger asChild>
               <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10 order-3">
-                <Plus className="w-4 h-4" /> New Invoice
+                <Plus className="w-4 h-4" /> {t("New Invoice")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl lg:max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Create New Invoice</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Create New Invoice")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+                  <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
                   <div className="mt-1">
-                    <SearchableSelect value={newInvoice.customerId} onChange={(v) => setNewInvoice((p) => ({ ...p, customerId: v }))} placeholder="Select customer" searchPlaceholder="Search customers..." options={customerOptions} />
+                    <SearchableSelect value={newInvoice.customerId} onChange={(v) => setNewInvoice((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Issue Date</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Issue Date")}</label>
                     <Input type="date" className="mt-1" value={newInvoice.issueDate} onChange={(e) => setNewInvoice((p) => ({ ...p, issueDate: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Due Date</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Due Date")}</label>
                     <Input type="date" className="mt-1" value={newInvoice.dueDate} onChange={(e) => setNewInvoice((p) => ({ ...p, dueDate: e.target.value }))} />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Job Description</label>
+                  <label className="text-sm font-medium text-[#0F172A]">{t("Job Description")}</label>
                   <textarea
                     className="mt-1 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm min-h-[60px]"
-                    placeholder="e.g. Heater Install, Zinc Anode, Check Valve..."
+                    placeholder={t("e.g. Heater Install, Zinc Anode, Check Valve...")}
                     value={newInvoice.jobDescription}
                     onChange={(e) => setNewInvoice((p) => ({ ...p, jobDescription: e.target.value }))}
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Line Items</label>
+                  <label className="text-sm font-medium text-[#0F172A]">{t("Line Items")}</label>
                   <div className="mt-1">
                     <LineItemsEditor items={newInvoiceLines} onChange={setNewInvoiceLines} inventoryItems={inventoryItems} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Amount {newInvoiceLines.length > 0 && <span className="text-xs text-[#64748B]">(from line items)</span>}</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Amount")} {newInvoiceLines.length > 0 && <span className="text-xs text-[#64748B]">({t("from line items")})</span>}</label>
                     <Input
                       type="number"
                       className="mt-1"
@@ -461,7 +463,7 @@ export default function Invoicing() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Down Payment</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Down Payment")}</label>
                     <div className="mt-1 flex gap-2">
                       <Input type="number" placeholder="0" value={newInvoice.downPayment} onChange={(e) => setNewInvoice((p) => ({ ...p, downPayment: e.target.value }))} />
                       <div className="flex rounded-lg border border-[#E2E8F0] overflow-hidden shrink-0">
@@ -473,7 +475,7 @@ export default function Invoicing() {
                   </div>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateInvoice}>
-                  Create Invoice
+                  {t("Create Invoice")}
                 </Button>
               </div>
             </DialogContent>
@@ -481,45 +483,45 @@ export default function Invoicing() {
           <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white order-4">
-                <Layers className="w-4 h-4" /> Bulk Invoice
+                <Layers className="w-4 h-4" /> {t("Bulk Invoice")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg lg:max-w-3xl w-[90vw] max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Bulk Invoice</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Bulk Invoice")}</DialogTitle></DialogHeader>
               <div className="flex gap-2 -mt-2">
                 <button
                   onClick={() => setBulkTab("invoices")}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium ${bulkTab === "invoices" ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]"}`}
                 >
-                  Combine Open Invoices
+                  {t("Combine Open Invoices")}
                 </button>
                 <button
                   onClick={() => setBulkTab("jobs")}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium ${bulkTab === "jobs" ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]"}`}
                 >
-                  Combine Completed Jobs
+                  {t("Combine Completed Jobs")}
                 </button>
               </div>
 
               {bulkTab === "invoices" ? (
                 <div className="space-y-4 pt-2">
-                  <p className="text-xs text-[#64748B]">Pick a customer with open invoices, select the ones to combine, then collect payment on all of them at once.</p>
+                  <p className="text-xs text-[#64748B]">{t("Pick a customer with open invoices, select the ones to combine, then collect payment on all of them at once.")}</p>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
                     <div className="mt-1">
                       <SearchableSelect
                         value={bulkInvoiceCustomerId}
                         onChange={(v) => { setBulkInvoiceCustomerId(v); setBulkInvoiceSelected(new Set()); }}
-                        placeholder="Select customer"
-                        searchPlaceholder="Search customers..."
-                        emptyText="No customers with open invoices."
+                        placeholder={t("Select customer")}
+                        searchPlaceholder={t("Search customers...")}
+                        emptyText={t("No customers with open invoices.")}
                         options={customersWithOpenInvoicesOptions}
                       />
                     </div>
                   </div>
                   {bulkInvoiceCustomerId && (
                     <div>
-                      <label className="text-sm font-medium text-[#0F172A]">Open invoices</label>
+                      <label className="text-sm font-medium text-[#0F172A]">{t("Open invoices")}</label>
                       <div className="mt-1 space-y-1.5 max-h-56 overflow-y-auto">
                         {openInvoicesForCustomer.map((inv) => (
                           <label key={inv.id} className="flex items-center gap-2 p-2 rounded-lg border border-[#E2E8F0] text-sm cursor-pointer">
@@ -528,17 +530,17 @@ export default function Invoicing() {
                             <span className="font-medium text-[#0F172A]">${inv.amount.toFixed(2)}</span>
                           </label>
                         ))}
-                        {openInvoicesForCustomer.length === 0 && <p className="text-sm text-[#64748B] py-2">No open invoices for this customer.</p>}
+                        {openInvoicesForCustomer.length === 0 && <p className="text-sm text-[#64748B] py-2">{t("No open invoices for this customer.")}</p>}
                       </div>
                     </div>
                   )}
                   {bulkInvoiceSelected.size > 0 && (
                     <>
                       <p className="text-right text-sm font-semibold text-[#0F172A]">
-                        Total (before tax): ${openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0).toFixed(2)}
+                        {t("Total (before tax):")} ${openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0).toFixed(2)}
                       </p>
                       <div>
-                        <label className="text-sm font-medium text-[#0F172A]">Payment Method</label>
+                        <label className="text-sm font-medium text-[#0F172A]">{t("Payment Method")}</label>
                         <div className="grid grid-cols-3 gap-2 mt-1">
                           {(["Card", "Check", "Email"] as const).map((m) => (
                             <button
@@ -546,7 +548,7 @@ export default function Invoicing() {
                               onClick={() => setBulkPayMethod(m)}
                               className={`py-2 rounded-lg border text-sm font-medium ${bulkPayMethod === m ? "border-[#0891B2] bg-[#0891B2]/10 text-[#0891B2]" : "border-[#E2E8F0] text-[#64748B]"}`}
                             >
-                              {m === "Card" ? "Card on File" : m === "Check" ? "Manual Check" : "Email Customer"}
+                              {m === "Card" ? t("Card on File") : m === "Check" ? t("Manual Check") : t("Email Customer")}
                             </button>
                           ))}
                         </div>
@@ -562,7 +564,7 @@ export default function Invoicing() {
                           onClick={() => (bulkPayMethod === "Email" ? handleBulkEmail() : handleBulkCollect())}
                           disabled={bulkCollecting}
                         >
-                          {bulkPayMethod === "Email" ? "Email Selected Invoices" : "Collect Payment (Check)"}
+                          {bulkPayMethod === "Email" ? t("Email Selected Invoices") : t("Collect Payment (Check)")}
                         </Button>
                       )}
                     </>
@@ -570,28 +572,28 @@ export default function Invoicing() {
                 </div>
               ) : (
               <div className="space-y-4 pt-2">
-                <p className="text-xs text-[#64748B]">Combine several weeks of completed jobs for one customer into a single invoice — one line item per job.</p>
+                <p className="text-xs text-[#64748B]">{t("Combine several weeks of completed jobs for one customer into a single invoice — one line item per job.")}</p>
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+                  <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
                   <div className="mt-1">
-                    <SearchableSelect value={bulkForm.customerId} onChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))} placeholder="Select customer" searchPlaceholder="Search customers..." options={customerOptions} />
+                    <SearchableSelect value={bulkForm.customerId} onChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">From</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("From")}</label>
                     <Input type="date" className="mt-1" value={bulkForm.start} onChange={(e) => setBulkForm((p) => ({ ...p, start: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">To</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("To")}</label>
                     <Input type="date" className="mt-1" value={bulkForm.end} onChange={(e) => setBulkForm((p) => ({ ...p, end: e.target.value }))} />
                   </div>
                 </div>
                 {bulkForm.customerId && bulkForm.start && bulkForm.end && (
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Completed jobs in range</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Completed jobs in range")}</label>
                     <div className="mt-1 space-y-1.5 max-h-64 overflow-y-auto">
-                      {bulkJobs.length === 0 && <p className="text-sm text-[#64748B] py-2">No uninvoiced completed jobs in this range.</p>}
+                      {bulkJobs.length === 0 && <p className="text-sm text-[#64748B] py-2">{t("No uninvoiced completed jobs in this range.")}</p>}
                       {bulkJobs.map((j) => (
                         <label key={j.id} className="flex items-center gap-2 p-2 rounded-lg border border-[#E2E8F0] text-sm cursor-pointer">
                           <input type="checkbox" checked={bulkSelected.has(j.id)} onChange={() => toggleBulkJob(j.id)} />
@@ -602,13 +604,13 @@ export default function Invoicing() {
                     </div>
                     {bulkJobs.length > 0 && (
                       <p className="text-right text-sm font-semibold text-[#0F172A] mt-2">
-                        Total: ${bulkJobs.filter((j) => bulkSelected.has(j.id)).reduce((s, j) => s + j.amount, 0).toFixed(2)}
+                        {t("Total:")} ${bulkJobs.filter((j) => bulkSelected.has(j.id)).reduce((s, j) => s + j.amount, 0).toFixed(2)}
                       </p>
                     )}
                   </div>
                 )}
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateBulkInvoice} disabled={bulkSelected.size === 0}>
-                  Create Bulk Invoice
+                  {t("Create Bulk Invoice")}
                 </Button>
               </div>
               )}
@@ -617,54 +619,54 @@ export default function Invoicing() {
           <Dialog open={newEstimateOpen} onOpenChange={(open) => (open ? openNewEstimateDialog() : setNewEstimateOpen(false))}>
             <DialogTrigger asChild>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white order-1">
-                <Copy className="w-4 h-4" /> New Estimate
+                <Copy className="w-4 h-4" /> {t("New Estimate")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-2xl lg:max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Create New Estimate</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Create New Estimate")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 {estimateTemplates.length > 0 && (
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Apply Template</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Apply Template")}</label>
                     <Select onValueChange={applyEstimateTemplate}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Start from a saved template (optional)" /></SelectTrigger>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t("Start from a saved template (optional)")} /></SelectTrigger>
                       <SelectContent>
-                        {estimateTemplates.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                        {estimateTemplates.map((tpl) => <SelectItem key={tpl.id} value={tpl.id}>{tpl.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                 )}
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+                  <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
                   <div className="mt-1">
-                    <SearchableSelect value={newEstimate.customerId} onChange={(v) => setNewEstimate((p) => ({ ...p, customerId: v }))} placeholder="Select customer" searchPlaceholder="Search customers..." options={customerOptions} />
+                    <SearchableSelect value={newEstimate.customerId} onChange={(v) => setNewEstimate((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Issue Date</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Issue Date")}</label>
                     <Input type="date" className="mt-1" value={newEstimate.issueDate} onChange={(e) => setNewEstimate((p) => ({ ...p, issueDate: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Expires</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Expires")}</label>
                     <Input type="date" className="mt-1" value={newEstimate.expiryDate} onChange={(e) => setNewEstimate((p) => ({ ...p, expiryDate: e.target.value }))} />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-[#0F172A]">Job Description</label>
+                  <label className="text-sm font-medium text-[#0F172A]">{t("Job Description")}</label>
                   <textarea
                     className="mt-1 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm min-h-[60px]"
-                    placeholder="e.g. Heater Install, Zinc Anode, Check Valve..."
+                    placeholder={t("e.g. Heater Install, Zinc Anode, Check Valve...")}
                     value={newEstimate.jobDescription}
                     onChange={(e) => setNewEstimate((p) => ({ ...p, jobDescription: e.target.value }))}
                   />
                 </div>
                 <div>
                   <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-[#0F172A]">Line Items</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Line Items")}</label>
                     {newEstimateLines.some((li) => li.description.trim()) && (
                       <Button type="button" variant="ghost" size="sm" className="h-7 text-xs text-[#0891B2]" onClick={handleSaveAsTemplate} disabled={savingTemplate}>
-                        {savingTemplate ? "Saving..." : "Save as Template"}
+                        {savingTemplate ? t("Saving...") : t("Save as Template")}
                       </Button>
                     )}
                   </div>
@@ -674,7 +676,7 @@ export default function Invoicing() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Amount {newEstimateLines.length > 0 && <span className="text-xs text-[#64748B]">(from line items)</span>}</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Amount")} {newEstimateLines.length > 0 && <span className="text-xs text-[#64748B]">({t("from line items")})</span>}</label>
                     <Input
                       type="number"
                       className="mt-1"
@@ -685,7 +687,7 @@ export default function Invoicing() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Down Payment</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Down Payment")}</label>
                     <div className="mt-1 flex gap-2">
                       <Input type="number" placeholder="50" value={newEstimate.downPayment} onChange={(e) => setNewEstimate((p) => ({ ...p, downPayment: e.target.value }))} />
                       <div className="flex rounded-lg border border-[#E2E8F0] overflow-hidden shrink-0">
@@ -697,7 +699,7 @@ export default function Invoicing() {
                   </div>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateEstimate}>
-                  Create Estimate
+                  {t("Create Estimate")}
                 </Button>
               </div>
             </DialogContent>
@@ -717,11 +719,11 @@ export default function Invoicing() {
                 <div className="flex items-center gap-2">
                   <p className="font-semibold text-sm text-[#0F172A]">QuickBooks Online</p>
                   <Badge className={`${qboConnected ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F59E0B]/10 text-[#F59E0B]"} text-[10px] px-1.5 py-0`}>
-                    {qboConnected ? "Connected" : "Not Connected"}
+                    {qboConnected ? t("Connected") : t("Not Connected")}
                   </Badge>
                 </div>
                 <p className="text-xs text-[#64748B]">
-                  {qboConnected ? "Sync invoices from each invoice's detail page." : "Connect it from Settings > Integrations."}
+                  {qboConnected ? t("Sync invoices from each invoice's detail page.") : t("Connect it from Settings > Integrations.")}
                 </p>
               </div>
             </div>
@@ -730,7 +732,7 @@ export default function Invoicing() {
 
         <Card className="lg:col-span-2 border-[#E2E8F0] shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-[#0F172A]">Aged Receivables</CardTitle>
+            <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Aged Receivables")}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-5 gap-2">
@@ -738,7 +740,7 @@ export default function Invoicing() {
                 <div key={ar.bucket} className="text-center p-3 rounded-lg bg-[#F8FAFC]">
                   <p className="text-xs text-[#64748B]">{ar.bucket}</p>
                   <p className="text-lg font-bold text-[#0F172A]">${ar.amount.toLocaleString()}</p>
-                  <p className="text-xs text-[#64748B]">{ar.count} invoices</p>
+                  <p className="text-xs text-[#64748B]">{ar.count} {t("invoices")}</p>
                 </div>
               ))}
             </div>
@@ -761,7 +763,7 @@ export default function Invoicing() {
                 <Icon className={`w-5 h-5 ${kpi.color}`} />
               </div>
               <div>
-                <p className="text-xs text-[#64748B]">{kpi.label}</p>
+                <p className="text-xs text-[#64748B]">{t(kpi.label)}</p>
                 <p className="text-lg font-bold text-[#0F172A]">{kpi.value}</p>
               </div>
             </div>
@@ -769,7 +771,7 @@ export default function Invoicing() {
         })}
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading invoices...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading invoices...")}</div>}
 
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -778,40 +780,40 @@ export default function Invoicing() {
             Vendor Tools, next to Purchase Orders. */}
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="estimates" className="order-1 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Copy className="w-4 h-4" /> Estimates
+            <Copy className="w-4 h-4" /> {t("Estimates")}
           </TabsTrigger>
           <TabsTrigger value="tasks" className="order-2 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <ClipboardList className="w-4 h-4" /> Tasks
+            <ClipboardList className="w-4 h-4" /> {t("Tasks")}
           </TabsTrigger>
           <TabsTrigger value="recurring" className="order-3 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Repeat className="w-4 h-4" /> Recurring
+            <Repeat className="w-4 h-4" /> {t("Recurring")}
           </TabsTrigger>
           <TabsTrigger value="all" className="order-4 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <FileText className="w-4 h-4" /> Customer Invoices
+            <FileText className="w-4 h-4" /> {t("Customer Invoices")}
           </TabsTrigger>
           <TabsTrigger value="payments" className="order-5 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <CreditCard className="w-4 h-4" /> Payments
+            <CreditCard className="w-4 h-4" /> {t("Payments")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="all" className="mt-4 space-y-3">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-            <Input placeholder="Search invoices..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+            <Input placeholder={t("Search invoices...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
           </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Invoice #</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Description</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Issue Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Due Date</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Sync</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Invoice #")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Due Date")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Sync")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
@@ -825,13 +827,13 @@ export default function Invoicing() {
                       <td className="py-3 px-4 text-[#64748B]">{inv.due_date}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${inv.amount.toLocaleString()}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${statusColors[inv.status]} text-[10px] px-1.5 py-0`}>{inv.status}</Badge>
+                        <Badge className={`${statusColors[inv.status]} text-[10px] px-1.5 py-0`}>{t(inv.status)}</Badge>
                       </td>
                       <td className="text-center py-3 px-4">
                         {inv.qbo_invoice_id ? (
-                          <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">Synced</Badge>
+                          <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{t("Synced")}</Badge>
                         ) : (
-                          <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Not synced</Badge>
+                          <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Not synced")}</Badge>
                         )}
                       </td>
                       <td className="text-center py-3 px-4">
@@ -851,12 +853,12 @@ export default function Invoicing() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Estimate #</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Issue Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Expires</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Estimate #")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Expires")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
@@ -869,23 +871,23 @@ export default function Invoicing() {
                       <td className="py-3 px-4 text-[#64748B]">{est.expiry_date ?? "—"}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${est.amount.toLocaleString()}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${statusColors[est.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{est.status}</Badge>
+                        <Badge className={`${statusColors[est.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{t(est.status)}</Badge>
                       </td>
                       <td className="text-center py-3 px-4" onClick={(e) => e.stopPropagation()}>
                         {est.status !== "Converted" ? (
                           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleConvertEstimate(est.id)}>
-                            Convert to Invoice
+                            {t("Convert to Invoice")}
                           </Button>
                         ) : (
                           <button className="text-xs text-[#0891B2] font-medium hover:underline" onClick={() => navigate(`/invoicing/${est.converted_invoice_id}`)}>
-                            View Invoice
+                            {t("View Invoice")}
                           </button>
                         )}
                       </td>
                     </tr>
                   ))}
                   {estimates.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No estimates yet</td></tr>
+                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{t("No estimates yet")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -915,14 +917,14 @@ export default function Invoicing() {
                     setNewTaskPhotos([]);
                   }}
                 >
-                  <Plus className="w-4 h-4" /> New Task
+                  <Plus className="w-4 h-4" /> {t("New Task")}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>{editTask ? "Edit Task" : "New Task"}</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{editTask ? t("Edit Task") : t("New Task")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Customer (optional)</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Customer (optional)")}</label>
                     <div className="mt-1">
                       <SearchableSelect
                         value={newTask.customerId}
@@ -930,52 +932,52 @@ export default function Invoicing() {
                           const picked = customers.find((c) => c.id === v);
                           setNewTask((p) => ({ ...p, customerId: v, address: picked?.address ?? p.address, email: picked?.email ?? p.email }));
                         }}
-                        placeholder="Select customer"
-                        searchPlaceholder="Search customers..."
+                        placeholder={t("Select customer")}
+                        searchPlaceholder={t("Search customers...")}
                         options={customerOptions}
                       />
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Email (optional)</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Email (optional)")}</label>
                     <Input className="mt-1" value={newTask.email} onChange={(e) => setNewTask((p) => ({ ...p, email: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Address</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Address")}</label>
                     <AddressAutocomplete className="mt-1" value={newTask.address} onChange={(address) => setNewTask((p) => ({ ...p, address }))} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-[#0F172A]">Assign Tech</label>
+                      <label className="text-sm font-medium text-[#0F172A]">{t("Assign Tech")}</label>
                       <Select value={newTask.techId} onValueChange={(v) => setNewTask((p) => ({ ...p, techId: v }))}>
-                        <SelectTrigger className="mt-1"><SelectValue placeholder="Select tech" /></SelectTrigger>
-                        <SelectContent>{techs.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                        <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select tech")} /></SelectTrigger>
+                        <SelectContent>{techs.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-[#0F172A]">Type</label>
+                      <label className="text-sm font-medium text-[#0F172A]">{t("Type")}</label>
                       <Select value={newTask.type} onValueChange={(v) => setNewTask((p) => ({ ...p, type: v }))}>
                         <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Renovation">Renovation</SelectItem>
-                          <SelectItem value="Repair">Repair</SelectItem>
-                          <SelectItem value="Go back">Go back</SelectItem>
+                          <SelectItem value="Renovation">{t("Renovation")}</SelectItem>
+                          <SelectItem value="Repair">{t("Repair")}</SelectItem>
+                          <SelectItem value="Go back">{t("Go back")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-[#0F172A]">Start Date</label>
+                      <label className="text-sm font-medium text-[#0F172A]">{t("Start Date")}</label>
                       <Input type="date" className="mt-1" value={newTask.startDate} onChange={(e) => setNewTask((p) => ({ ...p, startDate: e.target.value }))} />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-[#0F172A]">End Date</label>
+                      <label className="text-sm font-medium text-[#0F172A]">{t("End Date")}</label>
                       <Input type="date" className="mt-1" value={newTask.endDate} onChange={(e) => setNewTask((p) => ({ ...p, endDate: e.target.value }))} />
                     </div>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A]">Notes</label>
+                    <label className="text-sm font-medium text-[#0F172A]">{t("Notes")}</label>
                     <textarea
                       className="mt-1 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm min-h-[60px]"
                       value={newTask.notes}
@@ -983,7 +985,7 @@ export default function Invoicing() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-[#0F172A] flex items-center gap-1.5"><Camera className="w-4 h-4" /> Photos</label>
+                    <label className="text-sm font-medium text-[#0F172A] flex items-center gap-1.5"><Camera className="w-4 h-4" /> {t("Photos")}</label>
                     <input type="file" accept="image/*" multiple className="mt-1 text-sm" onChange={handleTaskPhotoSelect} disabled={taskPhotoUploading} />
                     {newTaskPhotos.length > 0 && (
                       <div className="grid grid-cols-4 gap-2 mt-2">
@@ -1001,7 +1003,7 @@ export default function Invoicing() {
                       </div>
                     )}
                   </div>
-                  <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveTask}>{editTask ? "Save Changes" : "Save Task"}</Button>
+                  <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveTask}>{editTask ? t("Save Changes") : t("Save Task")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -1011,44 +1013,44 @@ export default function Invoicing() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Type</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Address</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Tech</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Dates</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Photos</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Type")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Address")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Tech")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Dates")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Photos")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((t) => (
-                    <tr key={t.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{t.type}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{t.customers?.name ?? "—"}</td>
-                      <td className="py-3 px-4 text-[#64748B] max-w-[180px] truncate">{t.address ?? "—"}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{t.profiles?.name ?? "Unassigned"}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{t.start_date ?? "—"}{t.end_date ? ` → ${t.end_date}` : ""}</td>
-                      <td className="text-center py-3 px-4 text-[#64748B]">{t.photos?.length ?? 0}</td>
+                  {tasks.map((task) => (
+                    <tr key={task.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{t(task.type)}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{task.customers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B] max-w-[180px] truncate">{task.address ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{task.profiles?.name ?? t("Unassigned")}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{task.start_date ?? "—"}{task.end_date ? ` → ${task.end_date}` : ""}</td>
+                      <td className="text-center py-3 px-4 text-[#64748B]">{task.photos?.length ?? 0}</td>
                       <td className="text-center py-3 px-4">
-                        <Select value={t.status} onValueChange={(v) => handleTaskStatusChange(t.id, v)}>
+                        <Select value={task.status} onValueChange={(v) => handleTaskStatusChange(task.id, v)}>
                           <SelectTrigger className="h-8 w-[120px] text-xs mx-auto"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Open">Open</SelectItem>
-                            <SelectItem value="In Progress">In Progress</SelectItem>
-                            <SelectItem value="Done">Done</SelectItem>
+                            <SelectItem value="Open">{t("Open")}</SelectItem>
+                            <SelectItem value="In Progress">{t("In Progress")}</SelectItem>
+                            <SelectItem value="Done">{t("Done")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </td>
                       <td className="text-center py-3 px-4">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditTask(t)}>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEditTask(task)}>
                           <Pencil className="w-3.5 h-3.5 text-[#64748B]" />
                         </Button>
                       </td>
                     </tr>
                   ))}
                   {tasks.length === 0 && (
-                    <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">No tasks yet</td></tr>
+                    <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">{t("No tasks yet")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1062,22 +1064,22 @@ export default function Invoicing() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Frequency</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Next Charge</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Frequency")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Next Charge")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recurringBilling.map((rb) => (
                     <tr key={rb.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{rb.customers?.name ?? "—"}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{rb.frequency}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{t(rb.frequency)}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${rb.amount}</td>
                       <td className="py-3 px-4 text-[#64748B]">{rb.next_charge}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{rb.status}</Badge>
+                        <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{t(rb.status)}</Badge>
                       </td>
                     </tr>
                   ))}
@@ -1093,12 +1095,12 @@ export default function Invoicing() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Invoice</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Method</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Invoice")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Method")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1114,11 +1116,11 @@ export default function Invoicing() {
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-1.5">
                             <MethodIcon className="w-4 h-4 text-[#0891B2]" />
-                            <span className="text-sm text-[#0F172A]">{method.label}</span>
+                            <span className="text-sm text-[#0F172A]">{t(method.label)}</span>
                           </div>
                         </td>
                         <td className="text-center py-3 px-4">
-                          <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{pay.status}</Badge>
+                          <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{t(pay.status)}</Badge>
                         </td>
                       </tr>
                     );

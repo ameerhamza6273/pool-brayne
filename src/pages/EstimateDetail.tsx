@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { invoicingApi, type EstimateAttachment } from "@/lib/api/invoicing";
 import DocumentsSection from "@/components/DocumentsSection";
+import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import { customersApi } from "@/lib/api/customers";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
@@ -34,6 +36,7 @@ const statusColors: Record<string, string> = {
 export default function EstimateDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
@@ -59,6 +62,19 @@ export default function EstimateDetail() {
     inventoryApi.summary().then((data) => setInventoryItems(data?.items ?? []));
   }, []);
 
+  // Client feedback 2026-09-11: "link to select a document from the document folder" -- these
+  // are typically the client's scope-of-work PDFs already sitting in the Library.
+  const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocument[]>([]);
+  useEffect(() => {
+    libraryApi.list().then(setLibraryDocuments);
+  }, []);
+
+  const handleAttachLibraryDocument = async (doc: LibraryDocument) => {
+    if (!id) return;
+    await invoicingApi.addEstimateAttachment(id, { url: doc.url, label: doc.name, filename: doc.filename, type: "document" });
+    invoicingApi.getEstimateAttachments(id).then((all) => setDocuments(all.filter((a) => a.type !== "photo")));
+  };
+
   const loadEstimate = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
@@ -82,14 +98,14 @@ export default function EstimateDetail() {
   }, [loadEstimate]);
 
   if (isLoading) {
-    return <div className="text-center py-20 text-[#64748B]">Loading estimate...</div>;
+    return <div className="text-center py-20 text-[#64748B]">{t("Loading estimate...")}</div>;
   }
 
   if (!estimate) {
     return (
       <div className="text-center py-20">
-        <p className="text-[#64748B]">Estimate not found</p>
-        <Button onClick={() => navigate("/invoicing")} className="mt-4 bg-[#0891B2] text-white">Back to Invoicing</Button>
+        <p className="text-[#64748B]">{t("Estimate not found")}</p>
+        <Button onClick={() => navigate("/invoicing")} className="mt-4 bg-[#0891B2] text-white">{t("Back to Invoicing")}</Button>
       </div>
     );
   }
@@ -213,90 +229,90 @@ export default function EstimateDetail() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{estimate.number}</h1>
-            <Badge className={`${statusColors[estimate.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{estimate.status}</Badge>
+            <Badge className={`${statusColors[estimate.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{t(estimate.status)}</Badge>
           </div>
         </div>
         {estimate.status !== "Converted" && !editing ? (
           <div className="flex gap-2">
             <Button variant="outline" className="h-9 border-[#E2E8F0] gap-2" onClick={handleStartEdit}>
-              <Pencil className="w-4 h-4" /> Edit
+              <Pencil className="w-4 h-4" /> {t("Edit")}
             </Button>
             <Button variant="outline" className="h-9 border-[#E2E8F0] gap-2" onClick={handleConvertToJob} disabled={converting}>
-              <ArrowRight className="w-4 h-4" /> {converting ? "Converting..." : "Convert to Job"}
+              <ArrowRight className="w-4 h-4" /> {converting ? t("Converting...") : t("Convert to Job")}
             </Button>
             <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9" onClick={handleConvert} disabled={converting}>
-              <ArrowRight className="w-4 h-4" /> {converting ? "Converting..." : "Convert to Invoice"}
+              <ArrowRight className="w-4 h-4" /> {converting ? t("Converting...") : t("Convert to Invoice")}
             </Button>
           </div>
         ) : estimate.status === "Converted" && estimate.converted_invoice_id ? (
           <Button variant="outline" className="h-9 border-[#E2E8F0]" onClick={() => navigate(`/invoicing/${estimate.converted_invoice_id}`)}>
-            View Invoice
+            {t("View Invoice")}
           </Button>
         ) : estimate.converted_job_id ? (
           <Button variant="outline" className="h-9 border-[#E2E8F0]" onClick={() => navigate(`/jobs/${estimate.converted_job_id}`)}>
-            View Job
+            {t("View Job")}
           </Button>
         ) : editing ? (
           <div className="flex gap-2">
-            <Button variant="outline" className="h-9 border-[#E2E8F0]" onClick={() => setEditing(false)} disabled={saving}>Cancel</Button>
-            <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-9" onClick={handleSaveEdit} disabled={saving}>{saving ? "Saving..." : "Save Changes"}</Button>
+            <Button variant="outline" className="h-9 border-[#E2E8F0]" onClick={() => setEditing(false)} disabled={saving}>{t("Cancel")}</Button>
+            <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-9" onClick={handleSaveEdit} disabled={saving}>{saving ? t("Saving...") : t("Save Changes")}</Button>
           </div>
         ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => window.print()}>
-          <Download className="w-4 h-4 text-[#0891B2]" /> Download PDF
+          <Download className="w-4 h-4 text-[#0891B2]" /> {t("Download PDF")}
         </Button>
         {estimate.status !== "Converted" && (
           <>
             <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={handleCopyApprovalLink}>
-              <Link2 className="w-4 h-4 text-[#0891B2]" /> {linkCopied ? "Link Copied!" : "Copy Approval Link"}
+              <Link2 className="w-4 h-4 text-[#0891B2]" /> {linkCopied ? t("Link Copied!") : t("Copy Approval Link")}
             </Button>
             <a href={emailApprovalHref}>
               <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" disabled={!estimate.customers?.name}>
-                <Mail className="w-4 h-4 text-[#0891B2]" /> Email Customer
+                <Mail className="w-4 h-4 text-[#0891B2]" /> {t("Email Customer")}
               </Button>
             </a>
           </>
         )}
         {estimate.approved_at && (
           <Badge className={`${approvalStatusColors[estimate.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-xs px-2 py-1`}>
-            {estimate.status} by customer {new Date(estimate.approved_at).toLocaleString()}
+            {t(estimate.status)} {t("by customer")} {new Date(estimate.approved_at).toLocaleString()}
           </Badge>
         )}
       </div>
       {/* No email-sending service is wired up (no SendGrid) -- the link above is real and works,
           but reaching the customer's inbox is a manual copy/mailto step, not automatic. */}
-      <p className="text-xs text-[#94A3B8]">Share the approval link above with the customer — there's no automatic email delivery yet.</p>
+      <p className="text-xs text-[#94A3B8]">{t("Share the approval link above with the customer — there's no automatic email delivery yet.")}</p>
 
       {editing && (
         <Card className="border-[#E2E8F0] shadow-sm">
           <CardContent className="p-6 lg:p-8 space-y-4">
             <div>
-              <label className="text-sm font-medium text-[#0F172A]">Customer</label>
+              <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
               <div className="mt-1">
                 <SearchableSelect
                   value={editDraft.customerId}
                   onChange={(v) => setEditDraft((p) => ({ ...p, customerId: v }))}
-                  placeholder="Select customer"
-                  searchPlaceholder="Search customers..."
+                  placeholder={t("Select customer")}
+                  searchPlaceholder={t("Search customers...")}
                   options={customers.map((c) => ({ value: c.id, label: c.name, sublabel: [c.phone, c.email].filter(Boolean).join(" · ") || undefined }))}
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium text-[#0F172A]">Issue Date</label>
+                <label className="text-sm font-medium text-[#0F172A]">{t("Issue Date")}</label>
                 <Input type="date" className="mt-1" value={editDraft.issueDate} onChange={(e) => setEditDraft((p) => ({ ...p, issueDate: e.target.value }))} />
               </div>
               <div>
-                <label className="text-sm font-medium text-[#0F172A]">Expires</label>
+                <label className="text-sm font-medium text-[#0F172A]">{t("Expires")}</label>
                 <Input type="date" className="mt-1" value={editDraft.expiryDate} onChange={(e) => setEditDraft((p) => ({ ...p, expiryDate: e.target.value }))} />
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-[#0F172A]">Job Description</label>
+              <label className="text-sm font-medium text-[#0F172A]">{t("Job Description")}</label>
               <textarea
                 className="mt-1 w-full rounded-lg border border-[#E2E8F0] p-2 text-sm min-h-[60px]"
                 value={editDraft.jobDescription}
@@ -304,13 +320,13 @@ export default function EstimateDetail() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-[#0F172A]">Line Items</label>
+              <label className="text-sm font-medium text-[#0F172A]">{t("Line Items")}</label>
               <div className="mt-1">
                 <LineItemsEditor items={editLines} onChange={setEditLines} inventoryItems={inventoryItems} />
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-[#0F172A]">Down Payment ($)</label>
+              <label className="text-sm font-medium text-[#0F172A]">{t("Down Payment ($)")}</label>
               <Input type="number" className="mt-1" value={editDraft.downPayment} onChange={(e) => setEditDraft((p) => ({ ...p, downPayment: e.target.value }))} />
             </div>
           </CardContent>
@@ -338,22 +354,22 @@ export default function EstimateDetail() {
               <h3 className="text-2xl font-bold text-[#0F172A]">ESTIMATE</h3>
               <p className="text-sm text-[#64748B]">{estimate.number}</p>
               <div className="mt-2">
-                <Badge className={`${statusColors[estimate.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-2 py-0.5`}>{estimate.status}</Badge>
+                <Badge className={`${statusColors[estimate.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-2 py-0.5`}>{t(estimate.status)}</Badge>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 p-4 rounded-lg bg-[#F8FAFC]">
             <div>
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Client Details</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Client Details")}</p>
               <p className="font-medium text-[#0F172A]">{estimate.customers?.name ?? "—"}</p>
               <p className="text-sm text-[#64748B]">{estimate.customers?.phone ?? ""}</p>
               <p className="text-sm text-[#64748B]">{estimate.customers?.address ?? ""}</p>
             </div>
             <div className="sm:text-right">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Estimate Details</p>
-              <p className="text-sm text-[#0F172A]">Date of Request: <span className="text-[#64748B]">{estimate.issue_date}</span></p>
-              <p className="text-sm text-[#0F172A]">Expires: <span className="text-[#64748B]">{estimate.expiry_date ?? "—"}</span></p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Estimate Details")}</p>
+              <p className="text-sm text-[#0F172A]">{t("Date of Request:")} <span className="text-[#64748B]">{estimate.issue_date}</span></p>
+              <p className="text-sm text-[#0F172A]">{t("Expires:")} <span className="text-[#64748B]">{estimate.expiry_date ?? "—"}</span></p>
             </div>
           </div>
 
@@ -361,20 +377,20 @@ export default function EstimateDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
               {estimate.job_description && (
                 <div className="border border-[#E2E8F0] rounded-lg p-4">
-                  <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Job Description</p>
+                  <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Job Description")}</p>
                   <p className="text-sm text-[#0F172A] whitespace-pre-wrap">{estimate.job_description}</p>
                 </div>
               )}
               <div className="border border-[#E2E8F0] rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-[#64748B] uppercase flex items-center gap-1.5"><Camera className="w-3.5 h-3.5" /> Trip Photos</p>
+                  <p className="text-xs font-semibold text-[#64748B] uppercase flex items-center gap-1.5"><Camera className="w-3.5 h-3.5" /> {t("Trip Photos")}</p>
                   <label className="inline-flex items-center gap-1 text-xs text-[#0891B2] cursor-pointer hover:underline print:hidden">
-                    <Upload className="w-3 h-3" /> {photosUploading ? "Uploading..." : "Add"}
+                    <Upload className="w-3 h-3" /> {photosUploading ? t("Uploading...") : t("Add")}
                     <input type="file" accept="image/*" className="hidden" onChange={handleUploadPhoto} disabled={photosUploading} />
                   </label>
                 </div>
                 {photos.length === 0 ? (
-                  <p className="text-xs text-[#94A3B8]">No photos yet.</p>
+                  <p className="text-xs text-[#94A3B8]">{t("No photos yet.")}</p>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     {photos.map((p) => (
@@ -390,7 +406,7 @@ export default function EstimateDetail() {
           {!estimate.job_description && photos.length === 0 && (
             <div className="mb-6 border border-dashed border-[#E2E8F0] rounded-lg p-4 print:hidden">
               <label className="inline-flex items-center gap-1.5 text-xs text-[#0891B2] cursor-pointer hover:underline">
-                <Camera className="w-3.5 h-3.5" /> Add Trip Photos
+                <Camera className="w-3.5 h-3.5" /> {t("Add Trip Photos")}
                 <input type="file" accept="image/*" className="hidden" onChange={handleUploadPhoto} disabled={photosUploading} />
               </label>
             </div>
@@ -400,10 +416,10 @@ export default function EstimateDetail() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0]">
-                  <th className="text-left py-3 text-xs font-semibold text-[#64748B] uppercase">Description</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Qty</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Price</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
+                  <th className="text-left py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
+                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Qty")}</th>
+                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Price")}</th>
+                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -412,7 +428,7 @@ export default function EstimateDetail() {
                     <td className="py-3 text-[#0F172A]">
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
-                      {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Labor</Badge>}
+                      {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
                       {li.notes && <p className="text-xs text-[#94A3B8]">{li.notes}</p>}
                     </td>
                     <td className="text-right py-3 text-[#64748B]">{li.quantity}</td>
@@ -429,27 +445,27 @@ export default function EstimateDetail() {
               {/* Client sample estimate PDF (2026-09-06): Parts & Materials / Labor shown as
                   separate lines, not a single combined Subtotal. */}
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Parts &amp; Materials</span>
+                <span className="text-[#64748B]">{t("Parts & Materials")}</span>
                 <span className="text-[#0F172A]">${materialsSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Labor</span>
+                <span className="text-[#64748B]">{t("Labor")}</span>
                 <span className="text-[#0F172A]">${laborSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Tax (8.25%)</span>
+                <span className="text-[#64748B]">{t("Tax (8.25%)")}</span>
                 <span className="text-[#0F172A]">${tax.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t border-[#E2E8F0]">
-                <span className="text-[#0F172A]">Total</span>
+                <span className="text-[#0F172A]">{t("Total")}</span>
                 <span className="text-[#0891B2]">${total.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]">
-                <span className="text-[#64748B]">Down Payment</span>
+                <span className="text-[#64748B]">{t("Down Payment")}</span>
                 <span className="text-[#0F172A]">${downPayment.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm font-semibold">
-                <span className="text-[#0F172A]">Remaining Balance</span>
+                <span className="text-[#0F172A]">{t("Remaining Balance")}</span>
                 <span className="text-[#0F172A]">${remainingBalance.toFixed(2)}</span>
               </div>
             </div>
@@ -457,13 +473,13 @@ export default function EstimateDetail() {
 
           {totalCost > 0 && (
             <div className="print:hidden mt-8 border border-dashed border-[#E2E8F0] rounded-lg p-4 bg-[#F8FAFC]">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-2">Internal Costs (Staff Only — not shown to customer)</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-2">{t("Internal Costs (Staff Only — not shown to customer)")}</p>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Total Cost</span>
+                <span className="text-[#64748B]">{t("Total Cost")}</span>
                 <span className="text-[#0F172A]">${totalCost.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Margin</span>
+                <span className="text-[#64748B]">{t("Margin")}</span>
                 <span className="text-[#16A34A] font-medium">${(subtotal - totalCost).toFixed(2)}</span>
               </div>
             </div>
@@ -472,7 +488,7 @@ export default function EstimateDetail() {
           <div className="mt-12 flex justify-end">
             <div className="text-center">
               <div className="w-56 border-t border-[#0F172A] pt-1">
-                <p className="text-xs text-[#64748B]">Customer Signature</p>
+                <p className="text-xs text-[#64748B]">{t("Customer Signature")}</p>
               </div>
             </div>
           </div>
@@ -480,7 +496,13 @@ export default function EstimateDetail() {
       </Card>
       )}
 
-      <DocumentsSection documents={documents} onUpload={handleUploadDocument} uploading={docsUploading} />
+      <DocumentsSection
+        documents={documents}
+        onUpload={handleUploadDocument}
+        uploading={docsUploading}
+        libraryDocuments={libraryDocuments}
+        onAttachExisting={handleAttachLibraryDocument}
+      />
     </div>
   );
 }

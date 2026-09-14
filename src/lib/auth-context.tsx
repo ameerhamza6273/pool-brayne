@@ -10,6 +10,17 @@ interface User {
   tenantId: string;
 }
 
+/** staff_role enum (supabase/migrations/20260728061400_initial_schema.sql): owner | manager |
+ * technician | contractor | office_manager. */
+export type StaffRole = "owner" | "manager" | "technician" | "contractor" | "office_manager";
+
+/** Client feedback 2026-09-11: "Admin / Tech view / Contractor view" -- owner/manager/
+ * office_manager get the full admin app; technician and contractor are field-only roles
+ * restricted to the Field page (see ProtectedRoute in App.tsx). */
+export function isFieldOnlyRole(role: StaffRole | null): boolean {
+  return role === "technician" || role === "contractor";
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -18,6 +29,7 @@ interface AuthContextType {
   /** Raw tenant UUID (for queries/inserts) — distinct from user.tenantId, which is a display label. */
   tenantId: string | null;
   profileId: string | null;
+  role: StaffRole | null;
   signUp: (email: string, password: string, data: { name: string; company: string }) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -29,10 +41,10 @@ function getAvatar(name: string): string {
   return name.split(" ").map((n) => n[0]?.toUpperCase()).join("").slice(0, 2) || "?";
 }
 
-async function loadProfile(session: Session): Promise<{ user: User; tenantId: string; profileId: string } | null> {
+async function loadProfile(session: Session): Promise<{ user: User; tenantId: string; profileId: string; role: StaffRole } | null> {
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("name, email, avatar, tenant_id, tenants(name)")
+    .select("name, email, avatar, tenant_id, role, tenants(name)")
     .eq("id", session.user.id)
     .single();
 
@@ -50,6 +62,7 @@ async function loadProfile(session: Session): Promise<{ user: User; tenantId: st
     },
     tenantId: profile.tenant_id,
     profileId: session.user.id,
+    role: profile.role as StaffRole,
   };
 }
 
@@ -58,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [role, setRole] = useState<StaffRole | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const applyProfile = useCallback((session: Session) => {
@@ -65,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(result?.user ?? null);
       setTenantId(result?.tenantId ?? null);
       setProfileId(result?.profileId ?? null);
+      setRole(result?.role ?? null);
     });
   }, []);
 
@@ -85,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setTenantId(null);
         setProfileId(null);
+        setRole(null);
       }
     });
 
@@ -110,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated: !!session, isLoading, user, session, tenantId, profileId, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ isAuthenticated: !!session, isLoading, user, session, tenantId, profileId, role, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -36,6 +36,7 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import LineItemsEditor, { newDraftLineItem, type DraftLineItem } from "@/components/LineItemsEditor";
 import DocumentsSection from "@/components/DocumentsSection";
+import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
@@ -164,10 +165,24 @@ export default function JobDetail() {
   const [allTemplates, setAllTemplates] = useState<FormTemplate[]>([]);
   const [extraTemplateIds, setExtraTemplateIds] = useState<string[]>([]);
   const [addFormPickerOpen, setAddFormPickerOpen] = useState(false);
+  const [formError, setFormError] = useState("");
 
   useEffect(() => {
     formTemplatesApi.list().then(setAllTemplates);
   }, []);
+
+  // Client feedback 2026-09-11: "link to select a document from the document folder" -- lets
+  // Documents attach an existing Library file instead of re-uploading it.
+  const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocument[]>([]);
+  useEffect(() => {
+    libraryApi.list().then(setLibraryDocuments);
+  }, []);
+
+  const handleAttachLibraryDocument = async (doc: LibraryDocument) => {
+    if (!id) return;
+    await jobsApi.addAttachment(id, { type: "document", url: doc.url, label: doc.name, filename: doc.filename });
+    jobsApi.getAttachments(id).then((docs) => setDocuments(docs.filter((a) => a.type === "document")));
+  };
 
   const loadJob = () => {
     if (!id) return;
@@ -207,6 +222,7 @@ export default function JobDetail() {
     const notes = notesField ? (data[notesField.id] as string | undefined) ?? null : null;
     await jobsApi.saveForm(id, template.name, data, notes, template.id);
     jobsApi.getForms(id).then(setPastForms);
+    setFormError("");
   };
 
   // DynamicForm's photo fields upload here -- same job-attachments bucket/path convention as
@@ -278,14 +294,14 @@ export default function JobDetail() {
   };
 
   if (isLoading) {
-    return <div className="text-center py-20 text-[#64748B]">Loading job...</div>;
+    return <div className="text-center py-20 text-[#64748B]">{t("Loading job...")}</div>;
   }
 
   if (!job) {
     return (
       <div className="text-center py-20">
-        <p className="text-[#64748B]">Job not found</p>
-        <Button onClick={() => navigate("/jobs")} className="mt-4 bg-[#0891B2] text-white">Back to Jobs</Button>
+        <p className="text-[#64748B]">{t("Job not found")}</p>
+        <Button onClick={() => navigate("/jobs")} className="mt-4 bg-[#0891B2] text-white">{t("Back to Jobs")}</Button>
       </div>
     );
   }
@@ -363,8 +379,18 @@ export default function JobDetail() {
     setNoteText("");
   };
 
+  // Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted into the job."
+  const missingRequiredTemplates = job
+    ? allTemplates.filter((t) => (t.applies_to === job.type || t.applies_to === null) && t.required && !pastForms.some((f) => f.template_id === t.id))
+    : [];
+
   const handleMarkComplete = async () => {
     if (!job) return;
+    if (missingRequiredTemplates.length > 0) {
+      setFormError(`Submit the required form${missingRequiredTemplates.length > 1 ? "s" : ""} first: ${missingRequiredTemplates.map((t) => t.name).join(", ")}`);
+      return;
+    }
+    setFormError("");
     setGeneratingInvoice(true);
     await jobsApi.update(job.id, { status: "Completed", stage: "completed" });
 
@@ -416,7 +442,7 @@ export default function JobDetail() {
         </button>
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <h1 className="text-xl font-bold text-[#0F172A]">Job {job.id.slice(0, 8).toUpperCase()}</h1>
+            <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.id.slice(0, 8).toUpperCase()}</h1>
             <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type)}>{job.type}</Badge>
             <Badge className={`${statusBadge(job.status)} text-[10px] px-1.5 py-0`}>{job.status}</Badge>
           </div>
@@ -428,21 +454,21 @@ export default function JobDetail() {
             onClick={() => setRescheduleOpen(!rescheduleOpen)}
           >
             <RotateCw className="w-4 h-4" />
-            <span className="hidden sm:inline">Reschedule</span>
+            <span className="hidden sm:inline">{t("Reschedule")}</span>
           </Button>
           <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0] hover:bg-[#F8FAFC]" onClick={() => navigate("/jobs")}>
             <Copy className="w-4 h-4" />
-            <span className="hidden sm:inline">Clone Job</span>
+            <span className="hidden sm:inline">{t("Clone Job")}</span>
           </Button>
           {job.converted_to_estimate_id ? (
             <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={() => navigate(`/invoicing/estimates/${job.converted_to_estimate_id}`)}>
-              <span className="hidden sm:inline">View Estimate</span>
-              <span className="sm:hidden">Estimate</span>
+              <span className="hidden sm:inline">{t("View Estimate")}</span>
+              <span className="sm:hidden">{t("Estimate")}</span>
             </Button>
           ) : (
             <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={handleConvertToEstimate} disabled={convertingToEstimate}>
-              <span className="hidden sm:inline">{convertingToEstimate ? "Converting..." : "Convert to Estimate"}</span>
-              <span className="sm:hidden">To Estimate</span>
+              <span className="hidden sm:inline">{convertingToEstimate ? t("Converting...") : t("Convert to Estimate")}</span>
+              <span className="sm:hidden">{t("To Estimate")}</span>
             </Button>
           )}
           <Button
@@ -453,17 +479,19 @@ export default function JobDetail() {
             <CheckCircle2 className="w-4 h-4" />
             <span className="hidden sm:inline">
               {job.status === "Completed" && invoiceId
-                ? "Job Completed"
+                ? t("Job Completed")
                 : generatingInvoice
-                ? "Working..."
+                ? t("Working...")
                 : job.status === "Completed"
-                ? "Generate Invoice"
+                ? t("Generate Invoice")
                 : t("Mark Complete & Generate Invoice")}
             </span>
-            <span className="sm:hidden">Complete</span>
+            <span className="sm:hidden">{t("Complete")}</span>
           </Button>
         </div>
       </div>
+
+      {formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
 
       {/* Reschedule panel */}
       {rescheduleOpen && (
@@ -471,31 +499,31 @@ export default function JobDetail() {
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-2">
               <RotateCw className="w-4 h-4 text-[#F59E0B]" />
-              <h3 className="font-semibold text-[#0F172A] text-sm">Reschedule Job</h3>
+              <h3 className="font-semibold text-[#0F172A] text-sm">{t("Reschedule Job")}</h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs">Reschedule Type</Label>
+                <Label className="text-xs">{t("Reschedule Type")}</Label>
                 <Select value={rescheduleReason} onValueChange={setRescheduleReason}>
-                  <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Select reason" /></SelectTrigger>
+                  <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select reason")} /></SelectTrigger>
                   <SelectContent>
                     {rescheduleTypes.map((r) => (
-                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                      <SelectItem key={r} value={r}>{t(r)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label className="text-xs">New Date & Time</Label>
+                <Label className="text-xs">{t("New Date & Time")}</Label>
                 <Input type="datetime-local" className="mt-1 h-9" value={rescheduleAt} onChange={(e) => setRescheduleAt(e.target.value)} />
               </div>
             </div>
-            <Textarea placeholder="Reschedule notes..." className="text-sm" rows={2} />
+            <Textarea placeholder={t("Reschedule notes...")} className="text-sm" rows={2} />
             {/* Client PDF 2026-09-05: "When moving a recurring job make it ask us: is this a
                 temporary change or a permanent change?" */}
             {job.recurring_job_id && (
               <div>
-                <Label className="text-xs">This job repeats — is this move...</Label>
+                <Label className="text-xs">{t("This job repeats — is this move...")}</Label>
                 <div className="flex gap-2 mt-1">
                   {(["temporary", "permanent"] as const).map((opt) => (
                     <button
@@ -504,18 +532,18 @@ export default function JobDetail() {
                       onClick={() => setRescheduleScope(opt)}
                       className={`h-9 px-4 rounded-lg border text-sm font-medium capitalize ${rescheduleScope === opt ? "bg-[#F59E0B] text-white border-[#F59E0B]" : "border-[#E2E8F0] text-[#64748B]"}`}
                     >
-                      {opt}
+                      {t(opt)}
                     </button>
                   ))}
                 </div>
                 <p className="text-[10px] text-[#94A3B8] mt-1">
-                  {rescheduleScope === "temporary" ? "Only this occurrence moves — future ones stay on the original schedule." : "Future occurrences will also generate on this new day."}
+                  {rescheduleScope === "temporary" ? t("Only this occurrence moves — future ones stay on the original schedule.") : t("Future occurrences will also generate on this new day.")}
                 </p>
               </div>
             )}
             <div className="flex gap-2">
-              <Button size="sm" className="bg-[#F59E0B] hover:bg-[#D97706] text-white" disabled={!rescheduleAt} onClick={handleReschedule}>Confirm Reschedule</Button>
-              <Button size="sm" variant="outline" onClick={() => setRescheduleOpen(false)}>Cancel</Button>
+              <Button size="sm" className="bg-[#F59E0B] hover:bg-[#D97706] text-white" disabled={!rescheduleAt} onClick={handleReschedule}>{t("Confirm Reschedule")}</Button>
+              <Button size="sm" variant="outline" onClick={() => setRescheduleOpen(false)}>{t("Cancel")}</Button>
             </div>
           </CardContent>
         </Card>
@@ -591,18 +619,18 @@ export default function JobDetail() {
                   <div className="space-y-2">
                     <Textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)} className="text-sm" rows={3} />
                     <div className="flex gap-2">
-                      <Button size="sm" className="bg-[#0891B2] text-white h-7 text-xs" onClick={handleSaveDescription}>Save</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs border-[#E2E8F0]" onClick={() => setDescEditing(false)}>Cancel</Button>
+                      <Button size="sm" className="bg-[#0891B2] text-white h-7 text-xs" onClick={handleSaveDescription}>{t("Save")}</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-[#E2E8F0]" onClick={() => setDescEditing(false)}>{t("Cancel")}</Button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-[#64748B]">{job.description || "No description yet."}</p>
+                  <p className="text-sm text-[#64748B]">{job.description || t("No description yet.")}</p>
                 )}
               </div>
               {/* Client PDF 2026-09-05: "Able to show notes this job only for the tech to read". */}
               <div className="p-3 rounded-lg bg-[#FEF3E2] border border-[#F3D9AE]">
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium text-[#0F172A] flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> Tech-Only Notes</p>
+                  <p className="text-sm font-medium text-[#0F172A] flex items-center gap-1.5"><Lock className="w-3.5 h-3.5" /> {t("Tech-Only Notes")}</p>
                   {!techNotesEditing && (
                     <button className="text-[#64748B] hover:text-[#0891B2]" onClick={() => { setTechNotesDraft(job.tech_notes ?? ""); setTechNotesEditing(true); }}>
                       <Pencil className="w-3.5 h-3.5" />
@@ -613,12 +641,12 @@ export default function JobDetail() {
                   <div className="space-y-2">
                     <Textarea value={techNotesDraft} onChange={(e) => setTechNotesDraft(e.target.value)} className="text-sm" rows={2} />
                     <div className="flex gap-2">
-                      <Button size="sm" className="bg-[#0891B2] text-white h-7 text-xs" onClick={handleSaveTechNotes}>Save</Button>
-                      <Button size="sm" variant="outline" className="h-7 text-xs border-[#E2E8F0]" onClick={() => setTechNotesEditing(false)}>Cancel</Button>
+                      <Button size="sm" className="bg-[#0891B2] text-white h-7 text-xs" onClick={handleSaveTechNotes}>{t("Save")}</Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs border-[#E2E8F0]" onClick={() => setTechNotesEditing(false)}>{t("Cancel")}</Button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-[#64748B]">{job.tech_notes || "No tech-only notes."}</p>
+                  <p className="text-sm text-[#64748B]">{job.tech_notes || t("No tech-only notes.")}</p>
                 )}
               </div>
             </CardContent>
@@ -628,10 +656,10 @@ export default function JobDetail() {
               stays the lead tech (dispatch/on-time logic); these are additional crew members. */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Crew</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Crew")}</CardTitle>
               {!addingCrew && (
                 <Button variant="ghost" size="sm" className="h-8 gap-1 text-[#0891B2]" onClick={() => setAddingCrew(true)}>
-                  <Plus className="w-3.5 h-3.5" /> Add Tech
+                  <Plus className="w-3.5 h-3.5" /> {t("Add Tech")}
                 </Button>
               )}
             </CardHeader>
@@ -642,16 +670,16 @@ export default function JobDetail() {
                     <SearchableSelect
                       value=""
                       onChange={handleAddCrew}
-                      placeholder="Select a technician"
-                      searchPlaceholder="Search techs..."
+                      placeholder={t("Select a technician")}
+                      searchPlaceholder={t("Search techs...")}
                       options={allTechs.filter((t) => t.id !== job.tech_id && !crew.some((c) => c.profile_id === t.id)).map((t) => ({ value: t.id, label: t.name }))}
                     />
                   </div>
-                  <Button variant="outline" size="sm" className="h-9 border-[#E2E8F0]" onClick={() => setAddingCrew(false)}>Cancel</Button>
+                  <Button variant="outline" size="sm" className="h-9 border-[#E2E8F0]" onClick={() => setAddingCrew(false)}>{t("Cancel")}</Button>
                 </div>
               )}
               {crew.length === 0 ? (
-                <p className="text-sm text-[#64748B]">No additional crew on this job — just {job.profiles?.name ?? "the assigned tech"}.</p>
+                <p className="text-sm text-[#64748B]">{t("No additional crew on this job — just")} {job.profiles?.name ?? t("the assigned tech")}.</p>
               ) : (
                 crew.map((c) => (
                   <div key={c.id} className="flex items-center justify-between p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
@@ -659,7 +687,7 @@ export default function JobDetail() {
                       <Avatar className="w-6 h-6"><AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{c.avatar ?? c.name.slice(0, 2)}</AvatarFallback></Avatar>
                       <span className="text-sm text-[#0F172A]">{c.name}</span>
                     </div>
-                    <button onClick={() => handleRemoveCrew(c.profile_id)} className="text-[#64748B] hover:text-[#DC2626] text-xs">Remove</button>
+                    <button onClick={() => handleRemoveCrew(c.profile_id)} className="text-[#64748B] hover:text-[#DC2626] text-xs">{t("Remove")}</button>
                   </div>
                 ))
               )}
@@ -669,7 +697,7 @@ export default function JobDetail() {
           {/* Content Categories Tabs */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Content Categories</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Content Categories")}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -683,7 +711,7 @@ export default function JobDetail() {
                         className="text-xs data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-3 py-1.5 gap-1.5"
                       >
                         <Icon className="w-3.5 h-3.5" />
-                        {tab.label}
+                        {t(tab.label)}
                       </TabsTrigger>
                     );
                   })}
@@ -693,25 +721,25 @@ export default function JobDetail() {
                 <TabsContent value="trip_details" className="mt-4 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs">Departure Time</Label>
+                      <Label className="text-xs">{t("Departure Time")}</Label>
                       <Input type="time" className="mt-1 h-9" />
                     </div>
                     <div>
-                      <Label className="text-xs">Arrival Time</Label>
+                      <Label className="text-xs">{t("Arrival Time")}</Label>
                       <Input type="time" className="mt-1 h-9" />
                     </div>
                     <div>
-                      <Label className="text-xs">Travel Miles</Label>
+                      <Label className="text-xs">{t("Travel Miles")}</Label>
                       <Input type="number" placeholder="0.0" className="mt-1 h-9" />
                     </div>
                     <div>
-                      <Label className="text-xs">Vehicle</Label>
+                      <Label className="text-xs">{t("Vehicle")}</Label>
                       <Select>
-                        <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Assign vehicle" /></SelectTrigger>
+                        <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Assign vehicle")} /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="v1">Truck 1 — Ford Transit</SelectItem>
-                          <SelectItem value="v2">Truck 2 — Ram Promaster</SelectItem>
-                          <SelectItem value="v3">Truck 3 — Chevy Express</SelectItem>
+                          <SelectItem value="v1">{t("Truck 1 — Ford Transit")}</SelectItem>
+                          <SelectItem value="v2">{t("Truck 2 — Ram Promaster")}</SelectItem>
+                          <SelectItem value="v3">{t("Truck 3 — Chevy Express")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -722,10 +750,10 @@ export default function JobDetail() {
                 <TabsContent value="documents" className="mt-4 space-y-3">
                   <div className="border-2 border-dashed border-[#E2E8F0] rounded-lg p-6 text-center">
                     <Upload className="w-8 h-8 text-[#64748B] mx-auto mb-2" />
-                    <p className="text-sm font-medium text-[#0F172A]">Upload job documents</p>
-                    <p className="text-xs text-[#64748B] mt-1">PDFs, contracts, permits, work orders</p>
+                    <p className="text-sm font-medium text-[#0F172A]">{t("Upload job documents")}</p>
+                    <p className="text-xs text-[#64748B] mt-1">{t("PDFs, contracts, permits, work orders")}</p>
                     <Button variant="outline" size="sm" className="mt-3 gap-2">
-                      <Plus className="w-4 h-4" /> Add Document
+                      <Plus className="w-4 h-4" /> {t("Add Document")}
                     </Button>
                   </div>
                   <div className="space-y-2">
@@ -733,7 +761,7 @@ export default function JobDetail() {
                       <div key={doc} className="flex items-center gap-3 p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                         <FileText className="w-4 h-4 text-[#0891B2] shrink-0" />
                         <span className="text-sm text-[#0F172A] flex-1 truncate">{doc}</span>
-                        <button className="text-xs text-[#0891B2] font-medium hover:underline">View</button>
+                        <button className="text-xs text-[#0891B2] font-medium hover:underline">{t("View")}</button>
                       </div>
                     ))}
                   </div>
@@ -743,34 +771,34 @@ export default function JobDetail() {
                 <TabsContent value="customer_not_available" className="mt-4 space-y-3">
                   <div className="rounded-lg bg-[#EF4444]/5 border border-[#EF4444]/20 p-3 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-[#EF4444] shrink-0 mt-0.5" />
-                    <p className="text-xs text-[#B91C1C]">Mark this job if the customer was not home or unavailable. A cancellation reason is required.</p>
+                    <p className="text-xs text-[#B91C1C]">{t("Mark this job if the customer was not home or unavailable. A cancellation reason is required.")}</p>
                   </div>
                   <div>
-                    <Label className="text-xs">Cancellation Reason</Label>
+                    <Label className="text-xs">{t("Cancellation Reason")}</Label>
                     <Select>
-                      <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Select reason" /></SelectTrigger>
+                      <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select reason")} /></SelectTrigger>
                       <SelectContent>
                         {cancellationReasons.map((r) => (
-                          <SelectItem key={r} value={r}>{r}</SelectItem>
+                          <SelectItem key={r} value={r}>{t(r)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label className="text-xs">Door Tag Left?</Label>
+                    <Label className="text-xs">{t("Door Tag Left?")}</Label>
                     <div className="flex gap-2 mt-1">
-                      <Button size="sm" variant="outline" className="h-8">Yes — Photo Logged</Button>
-                      <Button size="sm" variant="outline" className="h-8">No</Button>
+                      <Button size="sm" variant="outline" className="h-8">{t("Yes — Photo Logged")}</Button>
+                      <Button size="sm" variant="outline" className="h-8">{t("No")}</Button>
                     </div>
                   </div>
-                  <Textarea placeholder="Notes for office / dispatch..." className="text-sm" rows={3} />
+                  <Textarea placeholder={t("Notes for office / dispatch...")} className="text-sm" rows={3} />
                 </TabsContent>
 
                 {/* Known Issue */}
                 <TabsContent value="known_issue" className="mt-4 space-y-3">
                   <div className="rounded-lg bg-[#F59E0B]/5 border border-[#F59E0B]/20 p-3 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
-                    <p className="text-xs text-[#B45309]">Recurring or known issues at this property. Visible to all technicians.</p>
+                    <p className="text-xs text-[#B45309]">{t("Recurring or known issues at this property. Visible to all technicians.")}</p>
                   </div>
                   <div className="space-y-2">
                     {[
@@ -780,12 +808,12 @@ export default function JobDetail() {
                     ].map((issue) => (
                       <div key={issue} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                         <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0" />
-                        <span className="text-sm text-[#0F172A] flex-1">{issue}</span>
+                        <span className="text-sm text-[#0F172A] flex-1">{t(issue)}</span>
                       </div>
                     ))}
                   </div>
                   <Button variant="outline" size="sm" className="gap-2">
-                    <Plus className="w-4 h-4" /> Add Known Issue
+                    <Plus className="w-4 h-4" /> {t("Add Known Issue")}
                   </Button>
                 </TabsContent>
 
@@ -793,40 +821,40 @@ export default function JobDetail() {
                 <TabsContent value="private" className="mt-4 space-y-3">
                   <div className="rounded-lg bg-[#6366F1]/5 border border-[#6366F1]/20 p-3 flex items-start gap-2">
                     <Lock className="w-4 h-4 text-[#6366F1] shrink-0 mt-0.5" />
-                    <p className="text-xs text-[#4338CA]">Private notes visible to office staff only. Not shown to technicians or customers.</p>
+                    <p className="text-xs text-[#4338CA]">{t("Private notes visible to office staff only. Not shown to technicians or customers.")}</p>
                   </div>
-                  <Textarea placeholder="Private internal notes..." className="text-sm" rows={5} />
+                  <Textarea placeholder={t("Private internal notes...")} className="text-sm" rows={5} />
                 </TabsContent>
 
                 {/* Customer Portal */}
                 <TabsContent value="customer_portal" className="mt-4 space-y-3">
                   <div className="rounded-lg bg-[#0891B2]/5 border border-[#0891B2]/20 p-3 flex items-start gap-2">
                     <ExternalLink className="w-4 h-4 text-[#0891B2] shrink-0 mt-0.5" />
-                    <p className="text-xs text-[#0E7490]">Customer-visible job info. This is what the customer sees in their portal.</p>
+                    <p className="text-xs text-[#0E7490]">{t("Customer-visible job info. This is what the customer sees in their portal.")}</p>
                   </div>
                   <div className="space-y-2">
                     <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                      <span className="text-sm text-[#0F172A]">Portal status visible to customer</span>
+                      <span className="text-sm text-[#0F172A]">{t("Portal status visible to customer")}</span>
                       <Switch defaultChecked />
                     </div>
                     <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                      <span className="text-sm text-[#0F172A]">Show before/after photos</span>
+                      <span className="text-sm text-[#0F172A]">{t("Show before/after photos")}</span>
                       <Switch defaultChecked />
                     </div>
                     <div className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                      <span className="text-sm text-[#0F172A]">Allow online payment</span>
+                      <span className="text-sm text-[#0F172A]">{t("Allow online payment")}</span>
                       <Switch defaultChecked />
                     </div>
                   </div>
                   <Button variant="outline" size="sm" className="gap-2">
-                    <ExternalLink className="w-4 h-4" /> Open Customer Portal Preview
+                    <ExternalLink className="w-4 h-4" /> {t("Open Customer Portal Preview")}
                   </Button>
                 </TabsContent>
 
                 {/* Before / After Photos */}
                 <TabsContent value="before_after" className="mt-4 space-y-4">
                   <div>
-                    <p className="text-sm font-medium text-[#0F172A] mb-2">Before</p>
+                    <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Before")}</p>
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                       {[1, 2].map((i) => (
                         <div key={i} className="aspect-square rounded-lg bg-[#F1F5F9] flex items-center justify-center">
@@ -839,7 +867,7 @@ export default function JobDetail() {
                     </div>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-[#0F172A] mb-2">After</p>
+                    <p className="text-sm font-medium text-[#0F172A] mb-2">{t("After")}</p>
                     <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                       {[1, 2, 3].map((i) => (
                         <div key={i} className="aspect-square rounded-lg bg-[#F1F5F9] flex items-center justify-center">
@@ -866,13 +894,13 @@ export default function JobDetail() {
                           <Barcode className="w-4 h-4 text-[#0891B2]" />
                           <span className="text-sm font-semibold text-[#0F172A]">{item.equip}</span>
                         </div>
-                        <p className="text-xs text-[#64748B]">Model: <span className="text-[#0F172A] font-medium">{item.model}</span></p>
-                        <p className="text-xs text-[#64748B]">Serial: <span className="text-[#0F172A] font-mono">{item.serial}</span></p>
+                        <p className="text-xs text-[#64748B]">{t("Model:")} <span className="text-[#0F172A] font-medium">{item.model}</span></p>
+                        <p className="text-xs text-[#64748B]">{t("Serial:")} <span className="text-[#0F172A] font-mono">{item.serial}</span></p>
                       </div>
                     ))}
                   </div>
                   <Button variant="outline" size="sm" className="gap-2">
-                    <Plus className="w-4 h-4" /> Add Equipment
+                    <Plus className="w-4 h-4" /> {t("Add Equipment")}
                   </Button>
                 </TabsContent>
 
@@ -880,10 +908,10 @@ export default function JobDetail() {
                 <TabsContent value="receipts" className="mt-4 space-y-3">
                   <div className="border-2 border-dashed border-[#E2E8F0] rounded-lg p-6 text-center">
                     <Receipt className="w-8 h-8 text-[#64748B] mx-auto mb-2" />
-                    <p className="text-sm font-medium text-[#0F172A]">Upload or attach receipts</p>
-                    <p className="text-xs text-[#64748B] mt-1">Parts purchased, fuel, materials for this job</p>
+                    <p className="text-sm font-medium text-[#0F172A]">{t("Upload or attach receipts")}</p>
+                    <p className="text-xs text-[#64748B] mt-1">{t("Parts purchased, fuel, materials for this job")}</p>
                     <Button variant="outline" size="sm" className="mt-3 gap-2">
-                      <Plus className="w-4 h-4" /> Add Receipt
+                      <Plus className="w-4 h-4" /> {t("Add Receipt")}
                     </Button>
                   </div>
                   <div className="space-y-2">
@@ -904,25 +932,25 @@ export default function JobDetail() {
                 <TabsContent value="extra_job_info" className="mt-4 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <Label className="text-xs">Job Priority</Label>
+                      <Label className="text-xs">{t("Job Priority")}</Label>
                       <Select defaultValue="normal">
                         <SelectTrigger className="mt-1 h-9"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="normal">Normal</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="emergency">Emergency</SelectItem>
+                          <SelectItem value="low">{t("Low")}</SelectItem>
+                          <SelectItem value="normal">{t("Normal")}</SelectItem>
+                          <SelectItem value="high">{t("High")}</SelectItem>
+                          <SelectItem value="emergency">{t("Emergency")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label className="text-xs">Estimated Duration</Label>
-                      <Input placeholder="e.g. 2.5 hrs" className="mt-1 h-9" />
+                      <Label className="text-xs">{t("Estimated Duration")}</Label>
+                      <Input placeholder={t("e.g. 2.5 hrs")} className="mt-1 h-9" />
                     </div>
                   </div>
                   <div>
-                    <Label className="text-xs">Access Notes</Label>
-                    <Textarea placeholder="How to access the property, gate codes, parking..." className="mt-1 text-sm" rows={2} />
+                    <Label className="text-xs">{t("Access Notes")}</Label>
+                    <Textarea placeholder={t("How to access the property, gate codes, parking...")} className="mt-1 text-sm" rows={2} />
                   </div>
                 </TabsContent>
               </Tabs>
@@ -939,27 +967,32 @@ export default function JobDetail() {
             const pickable = allTemplates.filter((t) => !shown.some((s) => s.id === t.id));
             return (
               <div className="space-y-4">
-                {shown.map((t) => (
-                  <DynamicForm key={t.id} template={t} onSave={(data) => handleSaveForm(t, data)} onUploadPhoto={handleFormPhotoUpload} />
+                {shown.map((tpl) => (
+                  <div key={tpl.id} className="relative">
+                    {tpl.required && !pastForms.some((f) => f.template_id === tpl.id) && (
+                      <Badge className="absolute -top-2 right-2 z-10 bg-[#DC2626] text-white text-[10px] px-1.5 py-0">{t("Required")}</Badge>
+                    )}
+                    <DynamicForm template={tpl} onSave={(data) => handleSaveForm(tpl, data)} onUploadPhoto={handleFormPhotoUpload} />
+                  </div>
                 ))}
                 {pickable.length > 0 && (
                   <Dialog open={addFormPickerOpen} onOpenChange={setAddFormPickerOpen}>
                     <DialogTrigger asChild>
                       <Button variant="outline" size="sm" className="gap-1.5 border-[#E2E8F0] border-dashed">
-                        <Plus className="w-3.5 h-3.5" /> Add Another Form
+                        <Plus className="w-3.5 h-3.5" /> {t("Add Another Form")}
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="max-h-[80vh] overflow-y-auto">
-                      <DialogHeader><DialogTitle>Tag a Form to This Job</DialogTitle></DialogHeader>
+                      <DialogHeader><DialogTitle>{t("Tag a Form to This Job")}</DialogTitle></DialogHeader>
                       <div className="space-y-2 pt-2">
-                        {pickable.map((t) => (
+                        {pickable.map((tpl) => (
                           <button
-                            key={t.id}
+                            key={tpl.id}
                             className="w-full text-left p-3 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                            onClick={() => { setExtraTemplateIds((prev) => [...prev, t.id]); setAddFormPickerOpen(false); }}
+                            onClick={() => { setExtraTemplateIds((prev) => [...prev, tpl.id]); setAddFormPickerOpen(false); }}
                           >
-                            <p className="text-sm font-medium text-[#0F172A]">{t.name}</p>
-                            {t.description && <p className="text-xs text-[#64748B]">{t.description}</p>}
+                            <p className="text-sm font-medium text-[#0F172A]">{t(tpl.name)}</p>
+                            {tpl.description && <p className="text-xs text-[#64748B]">{t(tpl.description)}</p>}
                           </button>
                         ))}
                       </div>
@@ -975,20 +1008,20 @@ export default function JobDetail() {
           {pastForms.length > 0 && (
             <Card className="border-[#E2E8F0] shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-[#0F172A]">Submitted Forms</CardTitle>
+                <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Submitted Forms")}</CardTitle>
               </CardHeader>
               <CardContent className="pt-0 space-y-2">
                 {pastForms.map((f) => (
                   <div key={f.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <div>
-                      <p className="text-sm font-medium text-[#0F172A]">{f.template_name ?? f.type}</p>
-                      <p className="text-xs text-[#64748B]">{new Date(f.submitted_at).toLocaleString()} · {f.submitted_by_name ?? "Unknown"}</p>
+                      <p className="text-sm font-medium text-[#0F172A]">{t(f.template_name ?? f.type)}</p>
+                      <p className="text-xs text-[#64748B]">{new Date(f.submitted_at).toLocaleString()} · {f.submitted_by_name ?? t("Unknown")}</p>
                     </div>
                     <button
                       className="text-xs text-[#0891B2] hover:underline shrink-0"
                       onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${f.public_token}`)}
                     >
-                      Copy Customer Link
+                      {t("Copy Customer Link")}
                     </button>
                   </div>
                 ))}
@@ -1002,7 +1035,7 @@ export default function JobDetail() {
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Line Items")}</CardTitle>
               {!lineItemsEditing && (
                 <Button variant="ghost" size="sm" className="h-8 gap-1 text-[#0891B2]" onClick={openLineItemsEditor}>
-                  <Pencil className="w-3.5 h-3.5" /> {jobLineItems.length > 0 ? "Edit" : "Add Items"}
+                  <Pencil className="w-3.5 h-3.5" /> {jobLineItems.length > 0 ? t("Edit") : t("Add Items")}
                 </Button>
               )}
             </CardHeader>
@@ -1011,8 +1044,8 @@ export default function JobDetail() {
                 <div className="space-y-3">
                   <LineItemsEditor items={lineItemsDraft} onChange={setLineItemsDraft} inventoryItems={inventoryItems} />
                   <div className="flex gap-2">
-                    <Button size="sm" className="bg-[#0891B2] text-white h-8 text-xs" onClick={handleSaveLineItems}>Save</Button>
-                    <Button size="sm" variant="outline" className="h-8 text-xs border-[#E2E8F0]" onClick={() => setLineItemsEditing(false)}>Cancel</Button>
+                    <Button size="sm" className="bg-[#0891B2] text-white h-8 text-xs" onClick={handleSaveLineItems}>{t("Save")}</Button>
+                    <Button size="sm" variant="outline" className="h-8 text-xs border-[#E2E8F0]" onClick={() => setLineItemsEditing(false)}>{t("Cancel")}</Button>
                   </div>
                 </div>
               ) : jobLineItems.length > 0 ? (
@@ -1024,22 +1057,22 @@ export default function JobDetail() {
                         <div>
                           <p className="text-sm font-medium text-[#0F172A]">{li.description}</p>
                           {li.notes && <p className="text-xs text-[#94A3B8] italic">{li.notes}</p>}
-                          <p className="text-xs text-[#64748B]">{li.sku ? `${li.sku} · ` : ""}{li.quantity} × ${li.rate.toFixed(2)}{li.item_type === "labor" ? " · Labor" : ""}</p>
+                          <p className="text-xs text-[#64748B]">{li.sku ? `${li.sku} · ` : ""}{li.quantity} × ${li.rate.toFixed(2)}{li.item_type === "labor" ? ` · ${t("Labor")}` : ""}</p>
                         </div>
                       </div>
                       <span className="font-semibold text-[#0F172A]">${li.amount.toFixed(2)}</span>
                     </div>
                   ))}
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-sm font-medium text-[#0F172A]">Subtotal</span>
+                    <span className="text-sm font-medium text-[#0F172A]">{t("Subtotal")}</span>
                     <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-sm text-[#64748B]">Tax (8.25%)</span>
+                    <span className="text-sm text-[#64748B]">{t("Tax (8.25%)")}</span>
                     <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-base font-semibold text-[#0F172A]">Total</span>
+                    <span className="text-base font-semibold text-[#0F172A]">{t("Total")}</span>
                     <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
                   </div>
                 </div>
@@ -1055,15 +1088,15 @@ export default function JobDetail() {
                     <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-sm font-medium text-[#0F172A]">Subtotal</span>
+                    <span className="text-sm font-medium text-[#0F172A]">{t("Subtotal")}</span>
                     <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-sm text-[#64748B]">Tax (8.25%)</span>
+                    <span className="text-sm text-[#64748B]">{t("Tax (8.25%)")}</span>
                     <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-base font-semibold text-[#0F172A]">Total</span>
+                    <span className="text-base font-semibold text-[#0F172A]">{t("Total")}</span>
                     <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
                   </div>
                 </div>
@@ -1071,13 +1104,19 @@ export default function JobDetail() {
             </CardContent>
           </Card>
 
-          <DocumentsSection documents={documents} onUpload={handleUploadDocument} uploading={docsUploading} />
+          <DocumentsSection
+            documents={documents}
+            onUpload={handleUploadDocument}
+            uploading={docsUploading}
+            libraryDocuments={libraryDocuments}
+            onAttachExisting={handleAttachLibraryDocument}
+          />
 
           {/* Parts Used (auto-deducted from store inventory on job completion) */}
           {partsUsed.length > 0 && (
             <Card className="border-[#E2E8F0] shadow-sm">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-[#0F172A]">Parts Used</CardTitle>
+                <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Parts Used")}</CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
                 <div className="divide-y divide-[#F1F5F9]">
@@ -1088,7 +1127,7 @@ export default function JobDetail() {
                         <span className="text-sm text-[#0F172A]">{p.item_name}</span>
                         <span className="text-xs text-[#64748B]">({p.item_sku})</span>
                       </div>
-                      <span className="text-sm font-medium text-[#0F172A]">Qty: {p.quantity}</span>
+                      <span className="text-sm font-medium text-[#0F172A]">{t("Qty:")} {p.quantity}</span>
                     </div>
                   ))}
                 </div>
@@ -1126,7 +1165,7 @@ export default function JobDetail() {
                   }}
                 />
                 <Button size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={savingNote} onClick={handleSaveNote}>
-                  {savingNote ? "Saving..." : "Save Note to Customer Record"}
+                  {savingNote ? t("Saving...") : t("Save Note to Customer Record")}
                 </Button>
                 </>
               )}
@@ -1184,9 +1223,9 @@ export default function JobDetail() {
                       </div>
                       <div className="pb-4">
                         <p className={`text-sm font-medium ${isComplete || isCurrent ? "text-[#0F172A]" : "text-[#64748B]"}`}>
-                          {step.label}
+                          {t(step.label)}
                         </p>
-                        {isCurrent && <p className="text-xs text-[#0891B2]">Current</p>}
+                        {isCurrent && <p className="text-xs text-[#0891B2]">{t("Current")}</p>}
                       </div>
                     </div>
                   );
@@ -1198,7 +1237,7 @@ export default function JobDetail() {
           {/* Status Changer */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Update Status</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Update Status")}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
               <Select value={job.stage} onValueChange={handleStatusChange}>
@@ -1208,7 +1247,7 @@ export default function JobDetail() {
                     <SelectItem key={s.stage} value={s.stage}>
                       <span className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ background: s.color }} />
-                        {s.label}
+                        {t(s.label)}
                       </span>
                     </SelectItem>
                   ))}
@@ -1219,7 +1258,7 @@ export default function JobDetail() {
                 className={`w-full gap-2 h-9 ${job.en_route_at ? "border-[#F59E0B] text-[#F59E0B] bg-[#F59E0B]/5" : "border-[#E2E8F0] text-[#64748B]"}`}
                 onClick={handleToggleEnRoute}
               >
-                <Truck className="w-4 h-4" /> {job.en_route_at ? "En Route" : "Mark En Route"}
+                <Truck className="w-4 h-4" /> {job.en_route_at ? t("En Route") : t("Mark En Route")}
               </Button>
             </CardContent>
           </Card>
@@ -1282,7 +1321,7 @@ export default function JobDetail() {
                 disabled={!invoiceId}
                 onClick={() => invoiceId && navigate(`/invoicing/${invoiceId}`)}
               >
-                <DollarSign className="w-4 h-4 text-[#0891B2]" /> {invoiceId ? t("View Invoice") : "No Invoice Yet"}
+                <DollarSign className="w-4 h-4 text-[#0891B2]" /> {invoiceId ? t("View Invoice") : t("No Invoice Yet")}
               </Button>
             </CardContent>
           </Card>

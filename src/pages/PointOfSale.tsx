@@ -14,6 +14,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
 import CardPaymentForm from "@/components/CardPaymentForm";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"];
@@ -44,6 +45,7 @@ const categoryColors: Record<string, string> = {
 const TAX_RATE = 0.0825;
 
 export default function PointOfSale() {
+  const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<PosOrder[]>([]);
@@ -248,8 +250,8 @@ export default function PointOfSale() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Point of Sale</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Register — linked to inventory in real time</p>
+          <h1 className="text-2xl font-bold text-[#0F172A]">{t("Point of Sale")}</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">{t("Register — linked to inventory in real time")}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -258,30 +260,30 @@ export default function PointOfSale() {
             onClick={() => setReturnMode((v) => !v)}
           >
             <RotateCcw className="w-4 h-4" />
-            <span className="hidden sm:inline">{returnMode ? "Return Mode: On" : "Return Mode"}</span>
+            <span className="hidden sm:inline">{returnMode ? t("Return Mode: On") : t("Return Mode")}</span>
           </Button>
           <Dialog open={customItemOpen} onOpenChange={setCustomItemOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
                 <PackagePlus className="w-4 h-4" />
-                <span className="hidden sm:inline">Custom Item</span>
+                <span className="hidden sm:inline">{t("Custom Item")}</span>
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Add Non-Stock Item</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Add Non-Stock Item")}</DialogTitle></DialogHeader>
               <div className="space-y-4">
-                <div><Label>Description</Label><Input className="mt-1" placeholder="e.g. Special order material" value={customItem.description} onChange={(e) => setCustomItem((p) => ({ ...p, description: e.target.value }))} /></div>
+                <div><Label>{t("Description")}</Label><Input className="mt-1" placeholder={t("e.g. Special order material")} value={customItem.description} onChange={(e) => setCustomItem((p) => ({ ...p, description: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><Label>Price</Label><Input type="number" className="mt-1" placeholder="0.00" value={customItem.price} onChange={(e) => setCustomItem((p) => ({ ...p, price: e.target.value }))} /></div>
-                  <div><Label>Qty</Label><Input type="number" className="mt-1" value={customItem.qty} onChange={(e) => setCustomItem((p) => ({ ...p, qty: e.target.value }))} /></div>
+                  <div><Label>{t("Price")}</Label><Input type="number" className="mt-1" placeholder="0.00" value={customItem.price} onChange={(e) => setCustomItem((p) => ({ ...p, price: e.target.value }))} /></div>
+                  <div><Label>{t("Qty")}</Label><Input type="number" className="mt-1" value={customItem.qty} onChange={(e) => setCustomItem((p) => ({ ...p, qty: e.target.value }))} /></div>
                 </div>
-                <Button className="w-full bg-[#0891B2] text-white" onClick={addCustomItem}>Add to Cart</Button>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={addCustomItem}>{t("Add to Cart")}</Button>
               </div>
             </DialogContent>
           </Dialog>
           <div className="flex items-center gap-2 px-3 h-10 rounded-lg bg-[#0891B2]/10 border border-[#0891B2]/20">
             <Receipt className="w-4 h-4 text-[#0891B2]" />
-            <span className="text-sm font-medium text-[#0891B2]">Register #1 — Open</span>
+            <span className="text-sm font-medium text-[#0891B2]">{t("Register #1 — Open")}</span>
           </div>
         </div>
       </div>
@@ -301,7 +303,7 @@ export default function PointOfSale() {
                 <Icon className="w-5 h-5" style={{ color: k.color }} />
               </div>
               <div>
-                <p className="text-xs text-[#64748B] font-medium">{k.label}</p>
+                <p className="text-xs text-[#64748B] font-medium">{t(k.label)}</p>
                 <p className="text-lg font-bold text-[#0F172A]">{k.value}</p>
               </div>
             </div>
@@ -309,7 +311,7 @@ export default function PointOfSale() {
         })}
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading register...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading register...")}</div>}
 
       {!isLoading && (
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
@@ -319,7 +321,7 @@ export default function PointOfSale() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
               <Input
-                placeholder="Search name, SKU, description, category, or manufacturer..."
+                placeholder={t("Search name, SKU, description, category, or manufacturer...")}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 h-10 bg-[#F8FAFC] border-[#E2E8F0]"
@@ -336,7 +338,7 @@ export default function PointOfSale() {
                       : "bg-[#F8FAFC] text-[#64748B] hover:bg-[#E2E8F0] border border-[#E2E8F0]"
                   }`}
                 >
-                  {c}
+                  {t(c)}
                 </button>
               ))}
             </div>
@@ -360,13 +362,13 @@ export default function PointOfSale() {
                         {p.category}
                       </Badge>
                       {out ? (
-                        <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">Out — will go negative</Badge>
+                        <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">{t("Out — will go negative")}</Badge>
                       ) : isService ? (
-                        <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">Service</Badge>
+                        <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">{t("Service")}</Badge>
                       ) : p.stock <= 5 ? (
-                        <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Low: {p.stock}</Badge>
+                        <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Low")}: {p.stock}</Badge>
                       ) : (
-                        <span className="text-[10px] text-[#64748B] font-medium">{p.stock} in stock</span>
+                        <span className="text-[10px] text-[#64748B] font-medium">{p.stock} {t("in stock")}</span>
                       )}
                     </div>
                     <p className="text-sm font-semibold text-[#0F172A] leading-snug mb-1 line-clamp-2">{p.name}</p>
@@ -379,22 +381,22 @@ export default function PointOfSale() {
             {filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center py-16 text-[#64748B]">
                 <Package className="w-10 h-10 mb-3 opacity-40" />
-                <p className="text-sm">No products match your search</p>
+                <p className="text-sm">{t("No products match your search")}</p>
               </div>
             )}
           </div>
           {filtered.length > 0 && (
             <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#E2E8F0] text-sm">
               <p className="text-[#64748B] text-xs">
-                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} {t("of")} {filtered.length}
               </p>
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" className="h-7 text-xs border-[#E2E8F0]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                  Previous
+                  {t("Previous")}
                 </Button>
-                <span className="text-[#64748B] text-xs">Page {page} of {totalPages}</span>
+                <span className="text-[#64748B] text-xs">{t("Page")} {page} {t("of")} {totalPages}</span>
                 <Button variant="outline" size="sm" className="h-7 text-xs border-[#E2E8F0]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                  Next
+                  {t("Next")}
                 </Button>
               </div>
             </div>
@@ -407,14 +409,14 @@ export default function PointOfSale() {
           <div className="p-4 border-b border-[#E2E8F0] flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShoppingCart className="w-5 h-5 text-[#0891B2]" />
-              <h3 className="font-semibold text-[#0F172A]">Current Sale</h3>
+              <h3 className="font-semibold text-[#0F172A]">{t("Current Sale")}</h3>
               {cart.length > 0 && (
                 <Badge className="bg-[#0891B2] text-white">{cart.reduce((s, i) => s + i.qty, 0)}</Badge>
               )}
             </div>
             {cart.length > 0 && (
               <button onClick={clearCart} className="text-xs text-[#DC2626] font-medium hover:underline flex items-center gap-1">
-                <Trash2 className="w-3.5 h-3.5" /> Clear
+                <Trash2 className="w-3.5 h-3.5" /> {t("Clear")}
               </button>
             )}
           </div>
@@ -436,18 +438,18 @@ export default function PointOfSale() {
             {cart.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-[#64748B] py-12">
                 <ShoppingCart className="w-12 h-12 mb-3 opacity-30" />
-                <p className="text-sm font-medium">Cart is empty</p>
-                <p className="text-xs mt-1">Click products to add them</p>
+                <p className="text-sm font-medium">{t("Cart is empty")}</p>
+                <p className="text-xs mt-1">{t("Click products to add them")}</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {cart.map((item, index) => (
                   <div key={index} className="flex items-center gap-2 py-2 border-b border-[#F1F5F9] last:border-0">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[#0F172A] truncate">{item.name}{item.qty < 0 ? " (Return)" : ""}</p>
+                      <p className="text-sm font-medium text-[#0F172A] truncate">{item.name}{item.qty < 0 ? ` (${t("Return")})` : ""}</p>
                       <p className="text-xs text-[#64748B]">${item.price.toFixed(2)} / {item.unit}</p>
                       <input
-                        placeholder="Serial # (optional)"
+                        placeholder={t("Serial # (optional)")}
                         className="mt-1 h-6 w-full text-xs border-0 border-b border-dashed border-[#E2E8F0] bg-transparent px-0 focus:outline-none focus:border-[#0891B2]"
                         value={item.serial ?? ""}
                         onChange={(e) => setCart((prev) => prev.map((c, i) => (i === index ? { ...c, serial: e.target.value } : c)))}
@@ -479,21 +481,21 @@ export default function PointOfSale() {
             <div className="border-t border-[#E2E8F0] p-4 space-y-3">
               <div className="space-y-1.5 text-sm">
                 <div className="flex justify-between text-[#64748B]">
-                  <span>Subtotal</span>
+                  <span>{t("Subtotal")}</span>
                   <span className="font-medium text-[#0F172A]">${subtotal.toFixed(2)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between text-[#16A34A]">
-                    <span>Discount {discountType === "percent" ? `(${discount}%)` : ""}</span>
+                    <span>{t("Discount")} {discountType === "percent" ? `(${discount}%)` : ""}</span>
                     <span className="font-medium">-${discountAmount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-[#64748B]">
-                  <span>Tax (8.25%)</span>
+                  <span>{t("Tax (8.25%)")}</span>
                   <span className="font-medium text-[#0F172A]">${tax.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-[#E2E8F0]">
-                  <span className="font-semibold text-[#0F172A]">Total</span>
+                  <span className="font-semibold text-[#0F172A]">{t("Total")}</span>
                   <span className="text-xl font-bold text-[#0891B2]">${total.toFixed(2)}</span>
                 </div>
               </div>
@@ -504,14 +506,14 @@ export default function PointOfSale() {
                   className="h-9 gap-1.5 border-[#E2E8F0] text-[#0F172A] flex-1"
                   onClick={() => setDiscountOpen(true)}
                 >
-                  <Percent className="w-4 h-4" /> Discount
+                  <Percent className="w-4 h-4" /> {t("Discount")}
                 </Button>
                 <Button
                   className="h-12 gap-2 bg-[#0891B2] hover:bg-[#0E7490] text-white flex-[2]"
                   onClick={() => { setTenderLines([]); setTenderAmount(""); setPaymentOpen(true); }}
                 >
                   <CreditCard className="w-5 h-5" />
-                  Charge ${total.toFixed(2)}
+                  {t("Charge")} ${total.toFixed(2)}
                 </Button>
               </div>
             </div>
@@ -523,20 +525,20 @@ export default function PointOfSale() {
       {/* Recent Transactions */}
       <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
         <div className="p-4 border-b border-[#E2E8F0] flex items-center justify-between">
-          <h3 className="font-semibold text-[#0F172A]">Recent Transactions</h3>
-          <Badge className="bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]">Last 8</Badge>
+          <h3 className="font-semibold text-[#0F172A]">{t("Recent Transactions")}</h3>
+          <Badge className="bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]">{t("Last 8")}</Badge>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Date</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Customer</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64728B] uppercase">Items</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Subtotal</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Tax</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Total</th>
-                <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Payment</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64728B] uppercase">{t("Items")}</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Subtotal")}</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Tax")}</th>
+                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
+                <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Payment")}</th>
               </tr>
             </thead>
             <tbody>
@@ -554,7 +556,7 @@ export default function PointOfSale() {
                 </tr>
               ))}
               {transactions.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No transactions yet</td></tr>
+                <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{t("No transactions yet")}</td></tr>
               )}
             </tbody>
           </table>
@@ -564,25 +566,25 @@ export default function PointOfSale() {
       {/* Sales Reports (client request 2026-08-27): date-range qty sold + sales tax report */}
       <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
         <div className="p-4 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="font-semibold text-[#0F172A]">Sales Reports</h3>
+          <h3 className="font-semibold text-[#0F172A]">{t("Sales Reports")}</h3>
           <div className="flex items-center gap-2">
             <Input type="date" className="h-9 w-auto" value={reportStart} onChange={(e) => setReportStart(e.target.value)} />
-            <span className="text-[#64748B] text-sm">to</span>
+            <span className="text-[#64748B] text-sm">{t("to")}</span>
             <Input type="date" className="h-9 w-auto" value={reportEnd} onChange={(e) => setReportEnd(e.target.value)} />
           </div>
         </div>
-        {reportLoading && <div className="p-4 text-center text-[#64748B] text-sm">Loading report...</div>}
+        {reportLoading && <div className="p-4 text-center text-[#64748B] text-sm">{t("Loading report...")}</div>}
         {!reportLoading && report && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
             <div className="lg:col-span-2 p-4 border-b lg:border-b-0 lg:border-r border-[#E2E8F0]">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-3">Quantity Sold by Product</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-3">{t("Quantity Sold by Product")}</p>
               <div className="overflow-x-auto max-h-72 overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[#E2E8F0]">
-                      <th className="text-left py-2 text-xs font-semibold text-[#64748B] uppercase">Product</th>
-                      <th className="text-right py-2 text-xs font-semibold text-[#64748B] uppercase">Qty Sold</th>
-                      <th className="text-right py-2 text-xs font-semibold text-[#64748B] uppercase">Revenue</th>
+                      <th className="text-left py-2 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
+                      <th className="text-right py-2 text-xs font-semibold text-[#64748B] uppercase">{t("Qty Sold")}</th>
+                      <th className="text-right py-2 text-xs font-semibold text-[#64748B] uppercase">{t("Revenue")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -594,18 +596,18 @@ export default function PointOfSale() {
                       </tr>
                     ))}
                     {report.qtyByProduct.length === 0 && (
-                      <tr><td colSpan={3} className="py-6 text-center text-[#64748B]">No sales in this date range</td></tr>
+                      <tr><td colSpan={3} className="py-6 text-center text-[#64748B]">{t("No sales in this date range")}</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
             <div className="p-4 space-y-3">
-              <p className="text-xs font-semibold text-[#64748B] uppercase">Sales Tax Report</p>
-              <div className="flex justify-between text-sm"><span className="text-[#64748B]">Orders</span><span className="font-medium text-[#0F172A]">{report.taxSummary.orderCount}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-[#64748B]">Taxable Sales</span><span className="font-medium text-[#0F172A]">${report.taxSummary.taxableSales.toFixed(2)}</span></div>
-              <div className="flex justify-between text-sm"><span className="text-[#64748B]">Tax Collected</span><span className="font-medium text-[#0F172A]">${report.taxSummary.taxCollected.toFixed(2)}</span></div>
-              <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">Total Sales</span><span className="font-bold text-[#0891B2]">${report.taxSummary.totalSales.toFixed(2)}</span></div>
+              <p className="text-xs font-semibold text-[#64748B] uppercase">{t("Sales Tax Report")}</p>
+              <div className="flex justify-between text-sm"><span className="text-[#64748B]">{t("Orders")}</span><span className="font-medium text-[#0F172A]">{report.taxSummary.orderCount}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-[#64748B]">{t("Taxable Sales")}</span><span className="font-medium text-[#0F172A]">${report.taxSummary.taxableSales.toFixed(2)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-[#64748B]">{t("Tax Collected")}</span><span className="font-medium text-[#0F172A]">${report.taxSummary.taxCollected.toFixed(2)}</span></div>
+              <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">{t("Total Sales")}</span><span className="font-bold text-[#0891B2]">${report.taxSummary.totalSales.toFixed(2)}</span></div>
             </div>
           </div>
         )}
@@ -615,12 +617,12 @@ export default function PointOfSale() {
       <Dialog open={customerOpen} onOpenChange={setCustomerOpen}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Attach Customer</DialogTitle>
+            <DialogTitle>{t("Attach Customer")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-              <Input placeholder="Search customers..." className="pl-9" autoFocus value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
+              <Input placeholder={t("Search customers...")} className="pl-9" autoFocus value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
             </div>
             <div className="space-y-1 max-h-60 overflow-y-auto">
               {filteredCustomers.map((name) => (
@@ -652,7 +654,7 @@ export default function PointOfSale() {
       <Dialog open={discountOpen} onOpenChange={setDiscountOpen}>
         <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Apply Discount</DialogTitle>
+            <DialogTitle>{t("Apply Discount")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-2">
@@ -660,17 +662,17 @@ export default function PointOfSale() {
                 onClick={() => setDiscountType("percent")}
                 className={`py-2.5 rounded-lg border text-sm font-medium ${discountType === "percent" ? "border-[#0891B2] bg-[#0891B2]/10 text-[#0891B2]" : "border-[#E2E8F0] text-[#64748B]"}`}
               >
-                Percentage %
+                {t("Percentage %")}
               </button>
               <button
                 onClick={() => setDiscountType("amount")}
                 className={`py-2.5 rounded-lg border text-sm font-medium ${discountType === "amount" ? "border-[#0891B2] bg-[#0891B2]/10 text-[#0891B2]" : "border-[#E2E8F0] text-[#64748B]"}`}
               >
-                Dollar $
+                {t("Dollar $")}
               </button>
             </div>
             <div>
-              <Label>{discountType === "percent" ? "Percent off (%)" : "Amount off ($)"}</Label>
+              <Label>{discountType === "percent" ? t("Percent off (%)") : t("Amount off ($)")}</Label>
               <Input
                 type="number"
                 value={discount || ""}
@@ -680,8 +682,8 @@ export default function PointOfSale() {
               />
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => { setDiscount(0); setDiscountOpen(false); }}>Clear</Button>
-              <Button className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => setDiscountOpen(false)}>Apply</Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setDiscount(0); setDiscountOpen(false); }}>{t("Clear")}</Button>
+              <Button className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => setDiscountOpen(false)}>{t("Apply")}</Button>
             </div>
           </div>
         </DialogContent>
@@ -691,24 +693,24 @@ export default function PointOfSale() {
       <Dialog open={paymentOpen} onOpenChange={setPaymentOpen}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Take Payment</DialogTitle>
+            <DialogTitle>{t("Take Payment")}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="bg-[#F8FAFC] rounded-xl p-4 text-center">
-              <p className="text-sm text-[#64748B] font-medium">{remainingTender > 0.01 ? "Remaining Due" : "Amount Due"}</p>
+              <p className="text-sm text-[#64748B] font-medium">{remainingTender > 0.01 ? t("Remaining Due") : t("Amount Due")}</p>
               <p className="text-3xl font-bold text-[#0891B2] mt-1">${Math.max(remainingTender, 0).toFixed(2)}</p>
-              <p className="text-xs text-[#64748B] mt-1">{cart.reduce((s, i) => s + i.qty, 0)} items · {customerName} · Total ${total.toFixed(2)}</p>
+              <p className="text-xs text-[#64748B] mt-1">{cart.reduce((s, i) => s + i.qty, 0)} {t("items")} · {customerName} · {t("Total")} ${total.toFixed(2)}</p>
             </div>
 
             {/* Client request 2026-09-03: split tender — combine cash/card/ACH/check, or several
                 cards, on one sale. Each line commits (and charges, for Card) individually. */}
             {tenderLines.length > 0 && (
               <div className="space-y-1.5">
-                {tenderLines.map((t, i) => (
+                {tenderLines.map((tenderLine, i) => (
                   <div key={i} className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm">
-                    <span className="font-medium text-[#0F172A]">{t.method}</span>
+                    <span className="font-medium text-[#0F172A]">{tenderLine.method}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[#0F172A]">${t.amount.toFixed(2)}</span>
+                      <span className="text-[#0F172A]">${tenderLine.amount.toFixed(2)}</span>
                       <button onClick={() => removeTender(i)} className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1 rounded">
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -720,7 +722,7 @@ export default function PointOfSale() {
 
             {remainingTender > 0.01 && (
               <div>
-                <Label className="mb-2 block">Add Payment</Label>
+                <Label className="mb-2 block">{t("Add Payment")}</Label>
                 <div className="grid grid-cols-4 gap-2 mb-2">
                   {([
                     { key: "Cash", icon: Banknote, label: "Cash" },
@@ -740,7 +742,7 @@ export default function PointOfSale() {
                         }`}
                       >
                         <Icon className="w-5 h-5" />
-                        <span className="text-xs font-medium">{m.label}</span>
+                        <span className="text-xs font-medium">{t(m.label)}</span>
                       </button>
                     );
                   })}
@@ -748,20 +750,20 @@ export default function PointOfSale() {
                 {tenderMethod === "Card" ? (
                   <CardPaymentForm
                     amount={remainingTender}
-                    submitLabel={`Add Card Tender · $${remainingTender.toFixed(2)}`}
+                    submitLabel={`${t("Add Card Tender")} · $${remainingTender.toFixed(2)}`}
                     onCharge={async (opaqueData) => addCardTender(remainingTender, opaqueData)}
                   />
                 ) : (
                   <div className="flex gap-2">
                     <Input
                       type="number"
-                      placeholder={`Up to $${remainingTender.toFixed(2)}`}
+                      placeholder={`${t("Up to")} $${remainingTender.toFixed(2)}`}
                       className="flex-1"
                       value={tenderAmount}
                       onChange={(e) => setTenderAmount(e.target.value)}
                     />
-                    <Button variant="outline" className="border-[#E2E8F0]" onClick={addCashTender}>Add</Button>
-                    <Button variant="outline" className="border-[#E2E8F0]" onClick={() => setTenderAmount(remainingTender.toFixed(2))}>Full</Button>
+                    <Button variant="outline" className="border-[#E2E8F0]" onClick={addCashTender}>{t("Add")}</Button>
+                    <Button variant="outline" className="border-[#E2E8F0]" onClick={() => setTenderAmount(remainingTender.toFixed(2))}>{t("Full")}</Button>
                   </div>
                 )}
               </div>
@@ -773,7 +775,7 @@ export default function PointOfSale() {
               onClick={completeSale}
             >
               <CheckCircle2 className="w-5 h-5" />
-              Complete Sale · ${total.toFixed(2)}
+              {t("Complete Sale")} · ${total.toFixed(2)}
             </Button>
           </div>
         </DialogContent>
@@ -786,20 +788,20 @@ export default function PointOfSale() {
             <div className="w-16 h-16 rounded-full bg-[#16A34A]/10 flex items-center justify-center mx-auto mb-4">
               <CheckCircle2 className="w-9 h-9 text-[#16A34A]" />
             </div>
-            <h2 className="text-xl font-bold text-[#0F172A]">Sale Complete</h2>
-            <p className="text-sm text-[#64748B] mt-1">Receipt {completedSale?.number}</p>
+            <h2 className="text-xl font-bold text-[#0F172A]">{t("Sale Complete")}</h2>
+            <p className="text-sm text-[#64748B] mt-1">{t("Receipt")} {completedSale?.number}</p>
             <div className="bg-[#F8FAFC] rounded-xl p-4 mt-4 space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-[#64748B]">Items</span><span className="font-medium text-[#0F172A]">{completedSale?.items}</span></div>
-              <div className="flex justify-between"><span className="text-[#64748B]">Payment</span><span className="font-medium text-[#0F172A]">{completedSale?.payment}</span></div>
-              <div className="flex justify-between pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">Total</span><span className="font-bold text-[#0891B2]">${completedSale?.total.toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-[#64748B]">{t("Items")}</span><span className="font-medium text-[#0F172A]">{completedSale?.items}</span></div>
+              <div className="flex justify-between"><span className="text-[#64748B]">{t("Payment")}</span><span className="font-medium text-[#0F172A]">{completedSale?.payment}</span></div>
+              <div className="flex justify-between pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">{t("Total")}</span><span className="font-bold text-[#0891B2]">${completedSale?.total.toFixed(2)}</span></div>
             </div>
-            <p className="text-xs text-[#64748B] mt-3">Inventory levels updated automatically.</p>
+            <p className="text-xs text-[#64748B] mt-3">{t("Inventory levels updated automatically.")}</p>
             <div className="flex gap-2 mt-5">
               <Button variant="outline" className="flex-1 gap-2" onClick={() => setReceiptOpen(false)}>
-                <Printer className="w-4 h-4" /> Print
+                <Printer className="w-4 h-4" /> {t("Print")}
               </Button>
               <Button className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2" onClick={() => setReceiptOpen(false)}>
-                New Sale <ArrowRight className="w-4 h-4" />
+                {t("New Sale")} <ArrowRight className="w-4 h-4" />
               </Button>
             </div>
           </div>

@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { useLanguage } from "@/lib/language-context";
 
 const features = [
   { icon: Users, title: "Customer CRM", desc: "Full profiles, equipment history, purchase tracking, and one-tap communication" },
@@ -29,6 +30,7 @@ const integrations = [
 
 export default function SalesPortal() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -45,30 +47,30 @@ export default function SalesPortal() {
             </div>
           </div>
           <h2 className="text-4xl lg:text-5xl font-bold mb-4 max-w-2xl">
-            One login. One app. Everything in one place.
+            {t("One login. One app. Everything in one place.")}
           </h2>
           <p className="text-lg text-white/80 mb-8 max-w-xl">
-            The first business operating system built exclusively for pool supply, repair, and service companies.
+            {t("The first business operating system built exclusively for pool supply, repair, and service companies.")}
           </p>
           <div className="flex flex-wrap gap-3">
             <Button
               className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-12 px-6 gap-2"
               onClick={() => navigate("/signup")}
             >
-              Start Free Trial <ArrowRight className="w-4 h-4" />
+              {t("Start Free Trial")} <ArrowRight className="w-4 h-4" />
             </Button>
             <Button
               variant="outline"
               className="h-12 px-6 border-white/30 text-white hover:bg-white/10"
               onClick={() => navigate("/login")}
             >
-              Sign In
+              {t("Sign In")}
             </Button>
           </div>
           <div className="flex items-center gap-6 mt-8 text-sm text-white/70">
-            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-[#67E8F9]" /> 14-day free trial</span>
-            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-[#67E8F9]" /> No credit card required</span>
-            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-[#67E8F9]" /> Cancel anytime</span>
+            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-[#67E8F9]" /> {t("14-day free trial")}</span>
+            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-[#67E8F9]" /> {t("No credit card required")}</span>
+            <span className="flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4 text-[#67E8F9]" /> {t("Cancel anytime")}</span>
           </div>
         </div>
       </div>
@@ -77,7 +79,7 @@ export default function SalesPortal() {
       <div className="bg-[#0891B2] py-4">
         <div className="max-w-6xl mx-auto px-6 text-center">
           <p className="text-white font-medium text-lg">
-            Built by a tradesman. Built for the trades.
+            {t("Built by a tradesman. Built for the trades.")}
           </p>
         </div>
       </div>
@@ -86,12 +88,12 @@ export default function SalesPortal() {
       <div className="max-w-6xl mx-auto px-6 py-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
-            <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] mb-4">The Problem</Badge>
+            <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] mb-4">{t("The Problem")}</Badge>
             <h3 className="text-3xl font-bold text-[#0F172A] mb-4">
-              Running a pool business shouldn't require five different logins
+              {t("Running a pool business shouldn't require five different logins")}
             </h3>
             <p className="text-[#64748B] mb-6">
-              Pool businesses at the $1M–$5M level are running on friction. Owners log into separate tools for scheduling, inventory, payroll, CRM, fleet tracking, and accounting. None of them talk to each other.
+              {t("Pool businesses at the $1M–$5M level are running on friction. Owners log into separate tools for scheduling, inventory, payroll, CRM, fleet tracking, and accounting. None of them talk to each other.")}
             </p>
             <div className="space-y-3">
               {[
@@ -106,7 +108,7 @@ export default function SalesPortal() {
                   <div className="w-5 h-5 rounded-full bg-[#DC2626]/10 flex items-center justify-center shrink-0">
                     <div className="w-2 h-2 rounded-full bg-[#DC2626]" />
                   </div>
-                  <span className="text-sm">{item}</span>
+                  <span className="text-sm">{t(item)}</span>
                 </div>
               ))}
             </div>
@@ -118,7 +120,7 @@ export default function SalesPortal() {
               </div>
               <div>
                 <p className="font-bold">Clear Pool CRM</p>
-                <p className="text-xs text-white/60">All modules, one screen</p>
+                <p className="text-xs text-white/60">{t("All modules, one screen")}</p>
               </div>
             </div>
             <div className="space-y-3">
@@ -127,7 +129,7 @@ export default function SalesPortal() {
                 return (
                   <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors cursor-pointer">
                     <Icon className="w-5 h-5 text-[#67E8F9] shrink-0" />
-                    <span className="text-sm font-medium">{f.title}</span>
+                    <span className="text-sm font-medium">{t(f.title)}</span>
                     <CheckCircle2 className="w-4 h-4 text-[#16A34A] ml-auto shrink-0" />
                   </div>
                 );
@@ -141,10 +143,10 @@ export default function SalesPortal() {
       <div className="bg-white py-16">
         <div className="max-w-6xl mx-auto px-6">
           <div className="text-center mb-12">
-            <Badge className="bg-[#0891B2]/10 text-[#0891B2] mb-3">Platform Modules</Badge>
-            <h3 className="text-3xl font-bold text-[#0F172A] mb-2">Everything your pool business needs</h3>
+            <Badge className="bg-[#0891B2]/10 text-[#0891B2] mb-3">{t("Platform Modules")}</Badge>
+            <h3 className="text-3xl font-bold text-[#0F172A] mb-2">{t("Everything your pool business needs")}</h3>
             <p className="text-[#64748B] max-w-xl mx-auto">
-              Not a generic CRM with pool settings. Every feature is designed around how pool businesses actually operate.
+              {t("Not a generic CRM with pool settings. Every feature is designed around how pool businesses actually operate.")}
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -156,8 +158,8 @@ export default function SalesPortal() {
                     <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center mb-3">
                       <Icon className="w-5 h-5 text-[#0891B2]" />
                     </div>
-                    <h4 className="font-semibold text-[#0F172A] mb-1">{f.title}</h4>
-                    <p className="text-sm text-[#64748B]">{f.desc}</p>
+                    <h4 className="font-semibold text-[#0F172A] mb-1">{t(f.title)}</h4>
+                    <p className="text-sm text-[#64748B]">{t(f.desc)}</p>
                   </CardContent>
                 </Card>
               );
@@ -169,9 +171,9 @@ export default function SalesPortal() {
       {/* Integrations */}
       <div className="max-w-6xl mx-auto px-6 py-16">
         <div className="text-center mb-10">
-          <Badge className="bg-[#16A34A]/10 text-[#16A34A] mb-3">Connected</Badge>
-          <h3 className="text-3xl font-bold text-[#0F172A] mb-2">Works with the tools you already use</h3>
-          <p className="text-[#64748B]">Each client connects their own account — fully isolated per tenant.</p>
+          <Badge className="bg-[#16A34A]/10 text-[#16A34A] mb-3">{t("Connected")}</Badge>
+          <h3 className="text-3xl font-bold text-[#0F172A] mb-2">{t("Works with the tools you already use")}</h3>
+          <p className="text-[#64748B]">{t("Each client connects their own account — fully isolated per tenant.")}</p>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           {integrations.map((int, i) => {
@@ -182,7 +184,7 @@ export default function SalesPortal() {
                   <Icon className="w-6 h-6 text-[#0891B2]" />
                 </div>
                 <p className="font-medium text-sm text-[#0F172A]">{int.name}</p>
-                <p className="text-xs text-[#64748B] mt-1">{int.status}</p>
+                <p className="text-xs text-[#64748B] mt-1">{t(int.status)}</p>
               </div>
             );
           })}
@@ -193,8 +195,8 @@ export default function SalesPortal() {
       <div className="bg-white py-16">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-10">
-            <h3 className="text-3xl font-bold text-[#0F172A] mb-2">Simple pricing</h3>
-            <p className="text-[#64748B]">Start with a 14-day free trial. No credit card required.</p>
+            <h3 className="text-3xl font-bold text-[#0F172A] mb-2">{t("Simple pricing")}</h3>
+            <p className="text-[#64748B]">{t("Start with a 14-day free trial. No credit card required.")}</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
@@ -205,14 +207,14 @@ export default function SalesPortal() {
               <div key={i} className={`rounded-xl border p-6 ${plan.popular ? "border-[#0891B2] ring-2 ring-[#0891B2] bg-[#0891B2]/5" : "border-[#E2E8F0]"}`}>
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-semibold text-[#0F172A]">{plan.name}</h4>
-                  {plan.popular && <Badge className="bg-[#0891B2] text-white">Most Popular</Badge>}
+                  {plan.popular && <Badge className="bg-[#0891B2] text-white">{t("Most Popular")}</Badge>}
                 </div>
-                <p className="text-3xl font-bold text-[#0F172A]">${plan.price}<span className="text-sm font-normal text-[#64748B]">/mo</span></p>
-                <p className="text-sm text-[#64748B] mt-1 mb-4">{plan.desc}</p>
+                <p className="text-3xl font-bold text-[#0F172A]">${plan.price}<span className="text-sm font-normal text-[#64748B]">{t("/mo")}</span></p>
+                <p className="text-sm text-[#64748B] mt-1 mb-4">{t(plan.desc)}</p>
                 <ul className="space-y-2 mb-6">
                   {plan.features.map((f, j) => (
                     <li key={j} className="flex items-center gap-2 text-sm text-[#0F172A]">
-                      <CheckCircle2 className="w-4 h-4 text-[#16A34A]" /> {f}
+                      <CheckCircle2 className="w-4 h-4 text-[#16A34A]" /> {t(f)}
                     </li>
                   ))}
                 </ul>
@@ -220,7 +222,7 @@ export default function SalesPortal() {
                   className={`w-full h-10 ${plan.popular ? "bg-[#0891B2] hover:bg-[#0E7490] text-white" : "bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0]"}`}
                   onClick={() => navigate("/signup")}
                 >
-                  {plan.popular ? "Start Free Trial" : "Select Plan"}
+                  {plan.popular ? t("Start Free Trial") : t("Select Plan")}
                 </Button>
               </div>
             ))}
@@ -232,30 +234,30 @@ export default function SalesPortal() {
       <div className="bg-[#0C2A3A] py-16">
         <div className="max-w-2xl mx-auto px-6 text-center">
           <h3 className="text-3xl font-bold text-white mb-4">
-            Ready to stop logging into five different apps?
+            {t("Ready to stop logging into five different apps?")}
           </h3>
           <p className="text-white/70 mb-8">
-            Join pool business owners who are replacing their fragmented stack with one purpose-built platform.
+            {t("Join pool business owners who are replacing their fragmented stack with one purpose-built platform.")}
           </p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button
               className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-12 px-8 gap-2"
               onClick={() => navigate("/signup")}
             >
-              Start Free Trial <ArrowRight className="w-4 h-4" />
+              {t("Start Free Trial")} <ArrowRight className="w-4 h-4" />
             </Button>
             <Button
               variant="outline"
               className="h-12 px-8 border-white/30 text-white hover:bg-white/10"
               onClick={() => navigate("/login")}
             >
-              Sign In
+              {t("Sign In")}
             </Button>
           </div>
           <div className="flex items-center justify-center gap-6 mt-8 text-sm text-white/50">
-            <span className="flex items-center gap-1.5"><Star className="w-4 h-4 text-[#F59E0B]" /> Built by a pool pro</span>
-            <span className="flex items-center gap-1.5"><Shield className="w-4 h-4 text-[#67E8F9]" /> Secure & isolated</span>
-            <span className="flex items-center gap-1.5"><Zap className="w-4 h-4 text-[#67E8F9]" /> 14-day trial</span>
+            <span className="flex items-center gap-1.5"><Star className="w-4 h-4 text-[#F59E0B]" /> {t("Built by a pool pro")}</span>
+            <span className="flex items-center gap-1.5"><Shield className="w-4 h-4 text-[#67E8F9]" /> {t("Secure & isolated")}</span>
+            <span className="flex items-center gap-1.5"><Zap className="w-4 h-4 text-[#67E8F9]" /> {t("14-day trial")}</span>
           </div>
         </div>
       </div>
@@ -273,11 +275,11 @@ export default function SalesPortal() {
             </div>
           </div>
           <p className="text-sm text-white/50">
-            Built by a tradesman. Built for the trades.
+            {t("Built by a tradesman. Built for the trades.")}
           </p>
           <div className="flex items-center gap-4 text-sm text-white/50">
-            <button onClick={() => navigate("/login")} className="hover:text-white transition-colors">Sign In</button>
-            <button onClick={() => navigate("/signup")} className="hover:text-white transition-colors">Sign Up</button>
+            <button onClick={() => navigate("/login")} className="hover:text-white transition-colors">{t("Sign In")}</button>
+            <button onClick={() => navigate("/signup")} className="hover:text-white transition-colors">{t("Sign Up")}</button>
           </div>
         </div>
       </footer>

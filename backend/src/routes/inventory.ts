@@ -313,15 +313,27 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post<{ Body: { supplierId: string; number: string; locationId?: string | null } }>("/purchase-orders", async (req) => {
-    const { supplierId, number, locationId } = req.body;
+  type PoLineItemInput = { description: string; sku: string | null; quantity: number; unitCost: number };
+
+  app.post<{ Body: { supplierId: string; number: string; locationId?: string | null; lineItems?: PoLineItemInput[] } }>("/purchase-orders", async (req) => {
+    const { supplierId, number, locationId, lineItems } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
+      const itemCount = lineItems?.length ?? 0;
+      const total = (lineItems ?? []).reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
       const [row] = await tx`
-        insert into purchase_orders (tenant_id, number, supplier_id, status, location_id)
-        values (${tenant.id}, ${number}, ${supplierId}, 'Draft', ${locationId ?? null})
+        insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total)
+        values (${tenant.id}, ${number}, ${supplierId}, 'Pending', ${locationId ?? null}, ${itemCount}, ${total})
         returning *
       `;
+      if (lineItems && lineItems.length > 0) {
+        for (const li of lineItems) {
+          await tx`
+            insert into purchase_order_line_items (tenant_id, po_id, description, sku, quantity, unit_cost, amount)
+            values (${tenant.id}, ${row.id}, ${li.description}, ${li.sku ?? null}, ${li.quantity}, ${li.unitCost}, ${li.quantity * li.unitCost})
+          `;
+        }
+      }
       return row;
     });
   });
@@ -329,18 +341,45 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   // Client request 2026-09-03: PO list had no way to view/edit an existing order.
   app.patch<{
     Params: { id: string };
-    Body: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null; locationId?: string | null };
+    Body: { number: string; supplierId: string; status: string; receivedDate: string | null; locationId?: string | null };
   }>("/purchase-orders/:id", async (req) => {
     const { id } = req.params;
-    const { number, supplierId, status, itemCount, total, receivedDate, locationId } = req.body;
+    const { number, supplierId, status, receivedDate, locationId } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`
         update purchase_orders
         set number = ${number}, supplier_id = ${supplierId}, status = ${status},
-            item_count = ${itemCount}, total = ${total}, received_date = ${receivedDate}, location_id = ${locationId ?? null}
+            received_date = ${receivedDate}, location_id = ${locationId ?? null}
         where id = ${id}
         returning *
       `;
+      return row;
+    });
+  });
+
+  // Client feedback 2026-09-11: "I cannot add any products" -- product line items for a PO,
+  // mirroring the job_line_items / estimate_line_items replace-all pattern. Recomputes the
+  // parent PO's item_count/total from the saved lines so the list/detail totals stay honest.
+  app.get<{ Params: { id: string } }>("/purchase-orders/:id/line-items", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`select * from purchase_order_line_items where po_id = ${id} order by description`);
+  });
+
+  app.patch<{ Params: { id: string }; Body: { lineItems: PoLineItemInput[] } }>("/purchase-orders/:id/line-items", async (req) => {
+    const { id } = req.params;
+    const { lineItems } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      await tx`delete from purchase_order_line_items where po_id = ${id}`;
+      for (const li of lineItems) {
+        await tx`
+          insert into purchase_order_line_items (tenant_id, po_id, description, sku, quantity, unit_cost, amount)
+          values (${tenant.id}, ${id}, ${li.description}, ${li.sku ?? null}, ${li.quantity}, ${li.unitCost}, ${li.quantity * li.unitCost})
+        `;
+      }
+      const itemCount = lineItems.length;
+      const total = lineItems.reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
+      const [row] = await tx`update purchase_orders set item_count = ${itemCount}, total = ${total} where id = ${id} returning *`;
       return row;
     });
   });

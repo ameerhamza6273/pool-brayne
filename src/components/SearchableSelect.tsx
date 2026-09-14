@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { useLanguage } from "@/lib/language-context";
 
 export type SearchableSelectOption = { value: string; label: string; sublabel?: string };
 
@@ -33,9 +34,13 @@ export function SearchableSelect({
   emptyText?: string;
   className?: string;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = options.find((o) => o.value === value);
+  const effectivePlaceholder = placeholder === "Select..." ? t("Select...") : placeholder;
+  const effectiveSearchPlaceholder = searchPlaceholder === "Search..." ? t("Search...") : searchPlaceholder;
+  const effectiveEmptyText = emptyText === "No results." ? t("No results.") : emptyText;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -56,15 +61,15 @@ export function SearchableSelect({
           aria-expanded={open}
           className={cn("w-full justify-between font-normal", !selected && "text-muted-foreground", className)}
         >
-          <span className="truncate">{selected ? selected.label : placeholder}</span>
+          <span className="truncate">{selected ? selected.label : effectivePlaceholder}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
         <Command shouldFilter={false}>
-          <CommandInput placeholder={searchPlaceholder} value={query} onValueChange={setQuery} />
+          <CommandInput placeholder={effectiveSearchPlaceholder} value={query} onValueChange={setQuery} />
           <CommandList>
-            <CommandEmpty>{emptyText}</CommandEmpty>
+            <CommandEmpty>{effectiveEmptyText}</CommandEmpty>
             <CommandGroup>
               {visible.map((o) => (
                 <CommandItem
@@ -84,7 +89,7 @@ export function SearchableSelect({
               ))}
               {hiddenCount > 0 && (
                 <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                  +{hiddenCount} more — keep typing to narrow down
+                  +{hiddenCount} {t("more — keep typing to narrow down")}
                 </p>
               )}
             </CommandGroup>

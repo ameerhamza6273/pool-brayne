@@ -1,47 +1,43 @@
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { useLanguage } from "@/lib/language-context";
-import type { LineItemInput } from "@/lib/api/invoicing";
-import type { ItemWithStock } from "@/lib/api/inventory";
+import type { ItemWithStock, PoLineItemInput } from "@/lib/api/inventory";
 
-export type DraftLineItem = LineItemInput;
+const emptyLine = (): PoLineItemInput => ({ description: "", sku: "", quantity: 1, unitCost: 0 });
 
-const emptyLine = (): DraftLineItem => ({ description: "", sku: "", itemType: "material", quantity: 1, cost: 0, rate: 0, notes: "" });
-
-export function newDraftLineItem() {
+export function newPoLineItem() {
   return emptyLine();
 }
 
-export default function LineItemsEditor({
+// Client feedback 2026-09-11: "I cannot add any products" to a PO -- a product picker + editable
+// line items, mirroring LineItemsEditor's pattern but purchasing-side (one unit cost, no
+// separate customer price).
+export default function PoLineItemsEditor({
   items,
   onChange,
   inventoryItems,
 }: {
-  items: DraftLineItem[];
-  onChange: (items: DraftLineItem[]) => void;
+  items: PoLineItemInput[];
+  onChange: (items: PoLineItemInput[]) => void;
   inventoryItems: ItemWithStock[];
 }) {
   const { t } = useLanguage();
-  const update = (index: number, patch: Partial<DraftLineItem>) => {
+  const update = (index: number, patch: Partial<PoLineItemInput>) => {
     onChange(items.map((li, i) => (i === index ? { ...li, ...patch } : li)));
   };
 
   const applyInventoryPick = (index: number, itemId: string) => {
     const picked = inventoryItems.find((i) => i.id === itemId);
     if (!picked) return;
-    // Client sample estimate PDF (2026-09-06): line items show a subtitle under the description
-    // with model/part detail (e.g. "260K BTU Natural Gas, Versaflo, Copper Hx... — JNDJXIQ260NK")
-    // -- pre-fill it from the inventory item's long description, still freely editable.
-    update(index, { description: picked.name, sku: picked.sku, cost: picked.unit_cost, rate: picked.price ?? picked.unit_cost, notes: picked.long_description ?? "" });
+    update(index, { description: picked.name, sku: picked.sku, unitCost: picked.unit_cost });
   };
 
   const addLine = () => onChange([...items, emptyLine()]);
   const removeLine = (index: number) => onChange(items.filter((_, i) => i !== index));
 
-  const subtotal = items.reduce((sum, li) => sum + li.quantity * li.rate, 0);
+  const total = items.reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
 
   return (
     <div className="space-y-3">
@@ -49,13 +45,6 @@ export default function LineItemsEditor({
         {items.map((li, idx) => (
           <div key={idx} className="border border-[#E2E8F0] rounded-lg p-3 space-y-2 bg-[#F8FAFC]">
             <div className="flex items-center gap-2">
-              <Select value={li.itemType ?? "material"} onValueChange={(v) => update(idx, { itemType: v as "material" | "labor" })}>
-                <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="material">{t("Material")}</SelectItem>
-                  <SelectItem value="labor">{t("Labor")}</SelectItem>
-                </SelectContent>
-              </Select>
               {inventoryItems.length > 0 && (
                 <div className="flex-1">
                   <SearchableSelect
@@ -67,9 +56,6 @@ export default function LineItemsEditor({
                     emptyText={t("No matching items.")}
                     options={inventoryItems.map((inv) => ({
                       value: inv.id,
-                      // Client SMS 2026-09-04 (staff, "Michael"): "typing our item number,
-                      // nothing was populating" -- item_number wasn't in the searchable text at
-                      // all before, only SKU/name/description were.
                       label: `${inv.item_number ?? inv.sku} · ${inv.sku} — ${inv.name}`,
                       sublabel: [inv.long_description, inv.manufacturer].filter(Boolean).join(" · ") || undefined,
                     }))}
@@ -81,13 +67,7 @@ export default function LineItemsEditor({
               </Button>
             </div>
             <Input placeholder={t("Description")} value={li.description} onChange={(e) => update(idx, { description: e.target.value })} className="h-8 text-sm" />
-            <Input
-              placeholder={t("Detail line (optional) — model #, part #, specs shown under the description")}
-              value={li.notes ?? ""}
-              onChange={(e) => update(idx, { notes: e.target.value })}
-              className="h-8 text-xs text-[#64748B]"
-            />
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <div>
                 <label className="text-[10px] text-[#64748B]">{t("SKU")}</label>
                 <Input value={li.sku ?? ""} onChange={(e) => update(idx, { sku: e.target.value })} className="h-8 text-sm" />
@@ -97,23 +77,19 @@ export default function LineItemsEditor({
                 <Input type="number" value={li.quantity} onChange={(e) => update(idx, { quantity: parseFloat(e.target.value) || 0 })} className="h-8 text-sm" />
               </div>
               <div>
-                <label className="text-[10px] text-[#64748B]">{t("Cost (internal)")}</label>
-                <Input type="number" value={li.cost ?? 0} onChange={(e) => update(idx, { cost: parseFloat(e.target.value) || 0 })} className="h-8 text-sm" />
-              </div>
-              <div>
-                <label className="text-[10px] text-[#64748B]">{t("Price")}</label>
-                <Input type="number" value={li.rate} onChange={(e) => update(idx, { rate: parseFloat(e.target.value) || 0 })} className="h-8 text-sm" />
+                <label className="text-[10px] text-[#64748B]">{t("Unit Cost")}</label>
+                <Input type="number" value={li.unitCost} onChange={(e) => update(idx, { unitCost: parseFloat(e.target.value) || 0 })} className="h-8 text-sm" />
               </div>
             </div>
-            <p className="text-right text-xs font-medium text-[#0F172A]">{t("Amount")}: ${(li.quantity * li.rate).toFixed(2)}</p>
+            <p className="text-right text-xs font-medium text-[#0F172A]">{t("Amount")}: ${(li.quantity * li.unitCost).toFixed(2)}</p>
           </div>
         ))}
       </div>
       <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 border-[#E2E8F0]" onClick={addLine}>
-        <Plus className="w-3.5 h-3.5" /> {t("Add Line Item")}
+        <Plus className="w-3.5 h-3.5" /> {t("Add Product")}
       </Button>
       {items.length > 0 && (
-        <p className="text-right text-sm font-semibold text-[#0F172A]">{t("Line Items Subtotal")}: ${subtotal.toFixed(2)}</p>
+        <p className="text-right text-sm font-semibold text-[#0F172A]">{t("PO Total")}: ${total.toFixed(2)}</p>
       )}
     </div>
   );

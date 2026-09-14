@@ -28,14 +28,14 @@ export default async function formTemplatesRoutes(app: FastifyInstance) {
   });
 
   app.post<{
-    Body: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[] };
+    Body: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[]; required?: boolean };
   }>("/", async (req) => {
-    const { name, description, appliesTo, customerVisible, fields } = req.body;
+    const { name, description, appliesTo, customerVisible, fields, required } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into form_templates (tenant_id, name, description, applies_to, customer_visible, fields)
-        values (${tenant.id}, ${name}, ${description}, ${appliesTo}, ${customerVisible}, ${tx.json(fields)})
+        insert into form_templates (tenant_id, name, description, applies_to, customer_visible, fields, required)
+        values (${tenant.id}, ${name}, ${description}, ${appliesTo}, ${customerVisible}, ${tx.json(fields)}, ${required ?? false})
         returning *
       `;
       return row;
@@ -44,15 +44,15 @@ export default async function formTemplatesRoutes(app: FastifyInstance) {
 
   app.patch<{
     Params: { id: string };
-    Body: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[] };
+    Body: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[]; required?: boolean };
   }>("/:id", async (req) => {
     const { id } = req.params;
-    const { name, description, appliesTo, customerVisible, fields } = req.body;
+    const { name, description, appliesTo, customerVisible, fields, required } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`
         update form_templates set
           name = ${name}, description = ${description}, applies_to = ${appliesTo},
-          customer_visible = ${customerVisible}, fields = ${tx.json(fields)}
+          customer_visible = ${customerVisible}, fields = ${tx.json(fields)}, required = ${required ?? false}
         where id = ${id}
         returning *
       `;

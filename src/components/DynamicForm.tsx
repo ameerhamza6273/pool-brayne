@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useLanguage } from "@/lib/language-context";
 import type { FormTemplate } from "@/lib/api/formTemplates";
 
 // Client SMS 2026-09-06: "something he can create his own forms... need to be able to edit,
@@ -20,6 +21,7 @@ export default function DynamicForm({
   onSave: (data: Record<string, unknown>) => Promise<void>;
   onUploadPhoto?: (file: File) => Promise<string>;
 }) {
+  const { t } = useLanguage();
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -59,8 +61,8 @@ export default function DynamicForm({
   return (
     <Card className="border-[#E2E8F0] shadow-sm">
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold text-[#0F172A]">{template.name}</CardTitle>
-        {template.description && <p className="text-xs text-[#64748B]">{template.description}</p>}
+        <CardTitle className="text-sm font-semibold text-[#0F172A]">{t(template.name)}</CardTitle>
+        {template.description && <p className="text-xs text-[#64748B]">{t(template.description)}</p>}
       </CardHeader>
       <CardContent className="pt-0 space-y-4">
         {checkboxFields.length > 0 && (
@@ -77,7 +79,7 @@ export default function DynamicForm({
                   }`}
                 >
                   {checked ? <CheckCircle2 className="w-4 h-4 text-[#16A34A] shrink-0" /> : <Circle className="w-4 h-4 text-[#CBD5E1] shrink-0" />}
-                  <span className={`text-sm ${checked ? "text-[#0F172A] font-medium" : "text-[#64748B]"}`}>{f.label}</span>
+                  <span className={`text-sm ${checked ? "text-[#0F172A] font-medium" : "text-[#64748B]"}`}>{t(f.label)}</span>
                 </button>
               );
             })}
@@ -86,16 +88,16 @@ export default function DynamicForm({
 
         {otherFields.map((f) => (
           <div key={f.id}>
-            <label className="text-xs font-medium text-[#0F172A]">{f.label}</label>
-            {f.helpText && <p className="text-[10px] text-[#94A3B8] mb-1">{f.helpText}</p>}
+            <label className="text-xs font-medium text-[#0F172A]">{t(f.label)}</label>
+            {f.helpText && <p className="text-[10px] text-[#94A3B8] mb-1">{t(f.helpText)}</p>}
             <div className="mt-1">
               {f.type === "text" && <Input value={(values[f.id] as string) ?? ""} onChange={(e) => setValue(f.id, e.target.value)} className="h-9" />}
               {f.type === "number" && <Input type="number" value={(values[f.id] as string) ?? ""} onChange={(e) => setValue(f.id, e.target.value)} className="h-9" />}
               {f.type === "textarea" && <Textarea value={(values[f.id] as string) ?? ""} onChange={(e) => setValue(f.id, e.target.value)} rows={3} className="text-sm" />}
               {f.type === "select" && (
                 <Select value={(values[f.id] as string) ?? undefined} onValueChange={(v) => setValue(f.id, v)}>
-                  <SelectTrigger className="h-9"><SelectValue placeholder="Select..." /></SelectTrigger>
-                  <SelectContent>{(f.options ?? []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="h-9"><SelectValue placeholder={t("Select...")} /></SelectTrigger>
+                  <SelectContent>{(f.options ?? []).map((o) => <SelectItem key={o} value={o}>{t(o)}</SelectItem>)}</SelectContent>
                 </Select>
               )}
               {f.type === "yesno" && (
@@ -107,7 +109,7 @@ export default function DynamicForm({
                       onClick={() => setValue(f.id, opt)}
                       className={`h-9 px-4 rounded-lg border text-sm font-medium ${values[f.id] === opt ? "bg-[#0891B2] text-white border-[#0891B2]" : "border-[#E2E8F0] text-[#64748B]"}`}
                     >
-                      {opt}
+                      {t(opt)}
                     </button>
                   ))}
                 </div>
@@ -117,11 +119,11 @@ export default function DynamicForm({
                   {onUploadPhoto ? (
                     <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#E2E8F0] text-sm text-[#0F172A] cursor-pointer hover:bg-[#F8FAFC] w-fit">
                       <Upload className="w-3.5 h-3.5" />
-                      {uploadingField === f.id ? "Uploading..." : "Add Photo"}
+                      {uploadingField === f.id ? t("Uploading...") : t("Add Photo")}
                       <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(f.id, e)} disabled={uploadingField === f.id} />
                     </label>
                   ) : (
-                    <p className="text-xs text-[#94A3B8]">Photo upload not available here.</p>
+                    <p className="text-xs text-[#94A3B8]">{t("Photo upload not available here.")}</p>
                   )}
                   {((values[f.id] as string[] | undefined) ?? []).length > 0 && (
                     <div className="grid grid-cols-4 gap-2">
@@ -146,7 +148,7 @@ export default function DynamicForm({
 
         <div className="flex items-center justify-between pt-2">
           {checkboxFields.length > 0 && (
-            <p className="text-xs text-[#64748B]">{completedCount} of {checkboxFields.length} items completed</p>
+            <p className="text-xs text-[#64748B]">{completedCount} {t("of")} {checkboxFields.length} {t("items completed")}</p>
           )}
           <Button
             size="sm"
@@ -154,7 +156,7 @@ export default function DynamicForm({
             onClick={handleSave}
             disabled={saving}
           >
-            <CheckCircle2 className="w-4 h-4" /> {saved ? "Saved!" : saving ? "Saving..." : "Save Form"}
+            <CheckCircle2 className="w-4 h-4" /> {saved ? t("Saved!") : saving ? t("Saving...") : t("Save Form")}
           </Button>
         </div>
       </CardContent>

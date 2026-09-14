@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { invoicingApi } from "@/lib/api/invoicing";
 import CardPaymentForm from "@/components/CardPaymentForm";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string; address: string | null } | null };
@@ -28,6 +29,7 @@ const statusColors: Record<string, string> = {
 export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
@@ -58,14 +60,14 @@ export default function InvoiceDetail() {
   }, [loadInvoice]);
 
   if (isLoading) {
-    return <div className="text-center py-20 text-[#64748B]">Loading invoice...</div>;
+    return <div className="text-center py-20 text-[#64748B]">{t("Loading invoice...")}</div>;
   }
 
   if (!invoice) {
     return (
       <div className="text-center py-20">
-        <p className="text-[#64748B]">Invoice not found</p>
-        <Button onClick={() => navigate("/invoicing")} className="mt-4 bg-[#0891B2] text-white">Back to Invoicing</Button>
+        <p className="text-[#64748B]">{t("Invoice not found")}</p>
+        <Button onClick={() => navigate("/invoicing")} className="mt-4 bg-[#0891B2] text-white">{t("Back to Invoicing")}</Button>
       </div>
     );
   }
@@ -124,7 +126,7 @@ export default function InvoiceDetail() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{invoice.number}</h1>
-            <Badge className={`${statusColors[invoice.status]} text-[10px] px-1.5 py-0`}>{invoice.status}</Badge>
+            <Badge className={`${statusColors[invoice.status]} text-[10px] px-1.5 py-0`}>{t(invoice.status)}</Badge>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -132,16 +134,16 @@ export default function InvoiceDetail() {
             <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#64748B]">
-                  <Ban className="w-4 h-4" /> Write Off
+                  <Ban className="w-4 h-4" /> {t("Write Off")}
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-md">
-                <DialogHeader><DialogTitle>Write Off Invoice (Bad Debt)</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{t("Write Off Invoice (Bad Debt)")}</DialogTitle></DialogHeader>
                 <div className="space-y-3 pt-2">
-                  <p className="text-sm text-[#64748B]">This marks the ${total.toFixed(2)} balance as uncollectible bad debt. This can't be undone from here.</p>
-                  <Textarea placeholder="Reason (e.g. customer unreachable, bankruptcy, disputed...)" value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} rows={3} />
+                  <p className="text-sm text-[#64748B]">{t("This marks the")} ${total.toFixed(2)} {t("balance as uncollectible bad debt. This can't be undone from here.")}</p>
+                  <Textarea placeholder={t("Reason (e.g. customer unreachable, bankruptcy, disputed...)")} value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} rows={3} />
                   <Button className="w-full bg-[#DC2626] hover:bg-[#B91C1C] text-white" onClick={handleWriteOff} disabled={writingOff || !writeOffReason.trim()}>
-                    {writingOff ? "Writing off..." : "Confirm Write-Off"}
+                    {writingOff ? t("Writing off...") : t("Confirm Write-Off")}
                   </Button>
                 </div>
               </DialogContent>
@@ -151,14 +153,14 @@ export default function InvoiceDetail() {
           <Dialog open={payOpen} onOpenChange={setPayOpen}>
             <DialogTrigger asChild>
               <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9">
-                <CreditCard className="w-4 h-4" /> Collect Payment
+                <CreditCard className="w-4 h-4" /> {t("Collect Payment")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Collect Payment</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Collect Payment")}</DialogTitle></DialogHeader>
               <Tabs defaultValue="card">
                 <TabsList className="w-full">
-                  <TabsTrigger value="card" className="flex-1">Card</TabsTrigger>
+                  <TabsTrigger value="card" className="flex-1">{t("Card")}</TabsTrigger>
                   <TabsTrigger value="ach" className="flex-1">ACH</TabsTrigger>
                 </TabsList>
                 <TabsContent value="card" className="space-y-4 mt-4">
@@ -169,12 +171,12 @@ export default function InvoiceDetail() {
                 </TabsContent>
                 <TabsContent value="ach" className="space-y-4 mt-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Bank Account</label>
+                    <label className="text-sm font-medium">{t("Bank Account")}</label>
                     <div className="h-10 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center px-3 text-sm text-[#64748B]">
                       **** **** **** 9876
                     </div>
                   </div>
-                  <Button className="w-full bg-[#16A34A] text-white" onClick={() => handleCollectPayment("ACH")}>Pay ${total.toFixed(2)} via ACH</Button>
+                  <Button className="w-full bg-[#16A34A] text-white" onClick={() => handleCollectPayment("ACH")}>{t("Pay")} ${total.toFixed(2)} {t("via ACH")}</Button>
                 </TabsContent>
               </Tabs>
             </DialogContent>
@@ -186,23 +188,23 @@ export default function InvoiceDetail() {
       {/* Action Bar */}
       <div className="flex flex-wrap gap-2">
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]">
-          <Mail className="w-4 h-4 text-[#0891B2]" /> Send via Email
+          <Mail className="w-4 h-4 text-[#0891B2]" /> {t("Send via Email")}
         </Button>
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]">
-          <MessageSquare className="w-4 h-4 text-[#0891B2]" /> Send via SMS
+          <MessageSquare className="w-4 h-4 text-[#0891B2]" /> {t("Send via SMS")}
         </Button>
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => window.print()}>
-          <Download className="w-4 h-4 text-[#0891B2]" /> Download PDF
+          <Download className="w-4 h-4 text-[#0891B2]" /> {t("Download PDF")}
         </Button>
         <div className="ml-auto flex items-center gap-2">
           {invoice.qbo_invoice_id ? (
             <>
               <BadgeCheck className="w-4 h-4 text-[#16A34A]" />
-              <span className="text-xs text-[#64748B]">Synced to QuickBooks</span>
+              <span className="text-xs text-[#64748B]">{t("Synced to QuickBooks")}</span>
             </>
           ) : (
             <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0] text-[#0F172A]" onClick={handleSyncToQuickbooks} disabled={qboSyncing}>
-              <BadgeCheck className="w-4 h-4 text-[#0891B2]" /> {qboSyncing ? "Syncing..." : "Sync to QuickBooks"}
+              <BadgeCheck className="w-4 h-4 text-[#0891B2]" /> {qboSyncing ? t("Syncing...") : t("Sync to QuickBooks")}
             </Button>
           )}
         </div>
@@ -231,7 +233,7 @@ export default function InvoiceDetail() {
               <h3 className="text-2xl font-bold text-[#0F172A]">INVOICE</h3>
               <p className="text-sm text-[#64748B]">{invoice.number}</p>
               <div className="mt-2">
-                <Badge className={`${statusColors[invoice.status]} text-[10px] px-2 py-0.5`}>{invoice.status}</Badge>
+                <Badge className={`${statusColors[invoice.status]} text-[10px] px-2 py-0.5`}>{t(invoice.status)}</Badge>
               </div>
             </div>
           </div>
@@ -239,28 +241,28 @@ export default function InvoiceDetail() {
           {/* Bill To */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 p-4 rounded-lg bg-[#F8FAFC]">
             <div>
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Bill To</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Bill To")}</p>
               <p className="font-medium text-[#0F172A]">{invoice.customers?.name ?? "—"}</p>
               <p className="text-sm text-[#64748B]">{invoice.customers?.address ?? "Austin, TX"}</p>
             </div>
             <div className="sm:text-right">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Invoice Details</p>
-              <p className="text-sm text-[#0F172A]">Issue Date: <span className="text-[#64748B]">{invoice.issue_date}</span></p>
-              <p className="text-sm text-[#0F172A]">Due Date: <span className="text-[#64748B]">{invoice.due_date}</span></p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Invoice Details")}</p>
+              <p className="text-sm text-[#0F172A]">{t("Issue Date:")} <span className="text-[#64748B]">{invoice.issue_date}</span></p>
+              <p className="text-sm text-[#0F172A]">{t("Due Date:")} <span className="text-[#64748B]">{invoice.due_date}</span></p>
             </div>
           </div>
 
           {/* Job Description */}
           {invoice.job_description && (
             <div className="mb-6 border border-[#E2E8F0] rounded-lg p-4">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">Job Description</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Job Description")}</p>
               <p className="text-sm text-[#0F172A] whitespace-pre-wrap">{invoice.job_description}</p>
             </div>
           )}
 
           {invoice.status === "Written Off" && invoice.write_off_reason && (
             <div className="mb-6 border border-[#E2E8F0] rounded-lg p-4 bg-[#64748B]/5 print:hidden">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1 flex items-center gap-1.5"><Ban className="w-3.5 h-3.5" /> Written Off (Bad Debt) — {invoice.write_off_date}</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1 flex items-center gap-1.5"><Ban className="w-3.5 h-3.5" /> {t("Written Off (Bad Debt)")} — {invoice.write_off_date}</p>
               <p className="text-sm text-[#0F172A]">{invoice.write_off_reason}</p>
             </div>
           )}
@@ -270,10 +272,10 @@ export default function InvoiceDetail() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0]">
-                  <th className="text-left py-3 text-xs font-semibold text-[#64748B] uppercase">Description</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Qty</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Price</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
+                  <th className="text-left py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
+                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Qty")}</th>
+                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Price")}</th>
+                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -282,7 +284,7 @@ export default function InvoiceDetail() {
                     <td className="py-3 text-[#0F172A]">
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
-                      {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Labor</Badge>}
+                      {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
                       {li.notes && <p className="text-xs text-[#94A3B8]">{li.notes}</p>}
                     </td>
                     <td className="text-right py-3 text-[#64748B]">{li.quantity}</td>
@@ -296,7 +298,7 @@ export default function InvoiceDetail() {
 
           <div className="mb-6 flex items-center justify-end gap-2">
             <Label htmlFor="cc-toggle" className="text-xs text-[#64748B] flex items-center gap-1.5">
-              <CreditCard className="w-3.5 h-3.5" /> Allow CC Payment
+              <CreditCard className="w-3.5 h-3.5" /> {t("Allow CC Payment")}
             </Label>
             <Switch id="cc-toggle" defaultChecked />
           </div>
@@ -305,27 +307,27 @@ export default function InvoiceDetail() {
           <div className="flex justify-end">
             <div className="w-full sm:w-64 space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Parts &amp; Materials</span>
+                <span className="text-[#64748B]">{t("Parts & Materials")}</span>
                 <span className="text-[#0F172A]">${materialsSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Labor</span>
+                <span className="text-[#64748B]">{t("Labor")}</span>
                 <span className="text-[#0F172A]">${laborSubtotal.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Tax (8.25%)</span>
+                <span className="text-[#64748B]">{t("Tax (8.25%)")}</span>
                 <span className="text-[#0F172A]">${tax.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-lg font-bold pt-2 border-t border-[#E2E8F0]">
-                <span className="text-[#0F172A]">Total</span>
+                <span className="text-[#0F172A]">{t("Total")}</span>
                 <span className="text-[#0891B2]">${total.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]">
-                <span className="text-[#64748B]">Down Payment</span>
+                <span className="text-[#64748B]">{t("Down Payment")}</span>
                 <span className="text-[#0F172A]">${downPayment.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm font-semibold">
-                <span className="text-[#0F172A]">Remaining Balance</span>
+                <span className="text-[#0F172A]">{t("Remaining Balance")}</span>
                 <span className="text-[#0F172A]">${remainingBalance.toFixed(2)}</span>
               </div>
             </div>
@@ -334,13 +336,13 @@ export default function InvoiceDetail() {
           {/* Internal cost/margin — staff only, excluded from Download PDF (window.print). */}
           {totalCost > 0 && (
             <div className="print:hidden mt-8 border border-dashed border-[#E2E8F0] rounded-lg p-4 bg-[#F8FAFC]">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-2">Internal Costs (Staff Only — not shown to customer)</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-2">{t("Internal Costs (Staff Only — not shown to customer)")}</p>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Total Cost</span>
+                <span className="text-[#64748B]">{t("Total Cost")}</span>
                 <span className="text-[#0F172A]">${totalCost.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">Margin</span>
+                <span className="text-[#64748B]">{t("Margin")}</span>
                 <span className="text-[#16A34A] font-medium">${(subtotal - totalCost).toFixed(2)}</span>
               </div>
             </div>

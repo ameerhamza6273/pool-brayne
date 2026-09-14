@@ -14,6 +14,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, Legend, LineChart, Line,
 } from "recharts";
 import { dashboardApi } from "@/lib/api/dashboard";
+import { useLanguage } from "@/lib/language-context";
 import RouteMap from "@/components/RouteMap";
 import RemindersCard from "@/components/RemindersCard";
 import ShoppingList from "@/components/ShoppingList";
@@ -82,6 +83,7 @@ const inRange = (dateStr: string | null, start: Date, end: Date) => {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [range, setRange] = useState("This Month");
   const [rangeOpen, setRangeOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -134,10 +136,10 @@ export default function Dashboard() {
   const newCustomersLastPeriod = customers.filter((c) => inRange(c.customer_since, prevStart, prevEnd)).length;
 
   const kpis = [
-    { label: `Revenue (${range})`, value: `$${revenueThisPeriod.toLocaleString()}`, change: pctChange(revenueThisPeriod, revenueLastPeriod), icon: DollarSign, up: revenueThisPeriod >= revenueLastPeriod, path: "/invoicing" },
-    { label: "Jobs Completed", value: jobsThisPeriod.toString(), change: pctChange(jobsThisPeriod, jobsLastPeriod), icon: ClipboardCheck, up: jobsThisPeriod >= jobsLastPeriod, path: "/jobs" },
-    { label: "Outstanding Invoices", value: `$${outstandingTotal.toLocaleString()}`, sub: `${outstandingInvoices.length} invoices`, change: 0, icon: FileText, up: false, path: "/invoicing" },
-    { label: "New Customers", value: newCustomersThisPeriod.toString(), change: pctChange(newCustomersThisPeriod, newCustomersLastPeriod), icon: UserPlus, up: newCustomersThisPeriod >= newCustomersLastPeriod, path: "/customers" },
+    { label: `${t("Revenue")} (${t(range)})`, value: `$${revenueThisPeriod.toLocaleString()}`, change: pctChange(revenueThisPeriod, revenueLastPeriod), icon: DollarSign, up: revenueThisPeriod >= revenueLastPeriod, path: "/invoicing" },
+    { label: t("Jobs Completed"), value: jobsThisPeriod.toString(), change: pctChange(jobsThisPeriod, jobsLastPeriod), icon: ClipboardCheck, up: jobsThisPeriod >= jobsLastPeriod, path: "/jobs" },
+    { label: t("Outstanding Invoices"), value: `$${outstandingTotal.toLocaleString()}`, sub: `${outstandingInvoices.length} ${t("invoices")}`, change: 0, icon: FileText, up: false, path: "/invoicing" },
+    { label: t("New Customers"), value: newCustomersThisPeriod.toString(), change: pctChange(newCustomersThisPeriod, newCustomersLastPeriod), icon: UserPlus, up: newCustomersThisPeriod >= newCustomersLastPeriod, path: "/customers" },
   ];
 
   const last6Months = Array.from({ length: 6 }, (_, i) => new Date(now.getFullYear(), now.getMonth() - 5 + i, 1));
@@ -225,8 +227,8 @@ export default function Dashboard() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Dashboard</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Overview of your pool business</p>
+          <h1 className="text-2xl font-bold text-[#0F172A]">{t("Dashboard")}</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">{t("Overview of your pool business")}</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -234,7 +236,7 @@ export default function Dashboard() {
               onClick={() => setRangeOpen(!rangeOpen)}
               className="flex items-center gap-2 px-3 py-2 h-10 rounded-lg bg-white border border-[#E2E8F0] text-sm font-medium text-[#0F172A] hover:bg-[#F8FAFC]"
             >
-              {range}
+              {t(range)}
               <ChevronDown className="w-4 h-4 text-[#64748B]" />
             </button>
             {rangeOpen && (
@@ -245,7 +247,7 @@ export default function Dashboard() {
                     onClick={() => { setRange(r); setRangeOpen(false); }}
                     className={`w-full text-left px-3 py-2 text-sm hover:bg-[#F8FAFC] ${range === r ? "text-[#0891B2] font-medium bg-[#0891B2]/5" : "text-[#0F172A]"}`}
                   >
-                    {r}
+                    {t(r)}
                   </button>
                 ))}
               </div>
@@ -253,12 +255,12 @@ export default function Dashboard() {
           </div>
           <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => window.print()}>
             <Download className="w-4 h-4" />
-            <span className="hidden sm:inline">Export PDF</span>
+            <span className="hidden sm:inline">{t("Export PDF")}</span>
           </Button>
         </div>
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading dashboard...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading dashboard...")}</div>}
 
       {!isLoading && (
       <>
@@ -280,7 +282,7 @@ export default function Dashboard() {
                   <div className={`flex items-center gap-1 mt-2 text-sm font-medium ${kpi.up ? "text-[#16A34A]" : "text-[#DC2626]"}`}>
                     {kpi.up ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
                     {Math.abs(kpi.change)}%
-                    <span className="text-xs text-[#64748B] font-normal">vs last period</span>
+                    <span className="text-xs text-[#64748B] font-normal">{t("vs last period")}</span>
                   </div>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0">
@@ -296,7 +298,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Revenue Trend */}
         <div className="lg:col-span-2 bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-          <h3 className="font-semibold text-[#0F172A] mb-4">Revenue Trend</h3>
+          <h3 className="font-semibold text-[#0F172A] mb-4">{t("Revenue Trend")}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={revenueByMonth}>
@@ -310,7 +312,7 @@ export default function Dashboard() {
                 <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#64748B" }} />
                 <YAxis tick={{ fontSize: 12, fill: "#64748B" }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
-                  formatter={(value: number) => [`$${value.toLocaleString()}`, "Revenue"]}
+                  formatter={(value: number) => [`$${value.toLocaleString()}`, t("Revenue")]}
                   contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }}
                 />
                 <Area type="monotone" dataKey="revenue" stroke="#0891B2" strokeWidth={2} fill="url(#revGradient)" />
@@ -321,7 +323,7 @@ export default function Dashboard() {
 
         {/* Revenue by Service */}
         <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-          <h3 className="font-semibold text-[#0F172A] mb-4">Revenue by Service</h3>
+          <h3 className="font-semibold text-[#0F172A] mb-4">{t("Revenue by Service")}</h3>
           <div className="h-56">
             {revenueByService.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
@@ -336,7 +338,7 @@ export default function Dashboard() {
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="h-full flex items-center justify-center text-sm text-[#64748B]">No job revenue yet</div>
+              <div className="h-full flex items-center justify-center text-sm text-[#64748B]">{t("No job revenue yet")}</div>
             )}
           </div>
         </div>
@@ -346,7 +348,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Jobs per Week */}
         <div className="lg:col-span-2 bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-          <h3 className="font-semibold text-[#0F172A] mb-4">Jobs Scheduled Per Week (last 8 weeks)</h3>
+          <h3 className="font-semibold text-[#0F172A] mb-4">{t("Jobs Scheduled Per Week (last 8 weeks)")}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={jobsPerWeek}>
@@ -362,7 +364,7 @@ export default function Dashboard() {
 
         {/* Aged Receivables */}
         <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-          <h3 className="font-semibold text-[#0F172A] mb-4">Aged Receivables</h3>
+          <h3 className="font-semibold text-[#0F172A] mb-4">{t("Aged Receivables")}</h3>
           <div className="space-y-3">
             {agedReceivables.map((ar) => (
               <div key={ar.bucket} className="flex items-center justify-between">
@@ -382,13 +384,13 @@ export default function Dashboard() {
                       style={{ width: `${(ar.amount / maxBucket) * 100}%` }}
                     />
                   </div>
-                  <p className="text-xs text-[#64748B] mt-0.5">{ar.count} invoices</p>
+                  <p className="text-xs text-[#64748B] mt-0.5">{ar.count} {t("invoices")}</p>
                 </div>
               </div>
             ))}
           </div>
           <div className="mt-4 pt-3 border-t border-[#E2E8F0] flex items-center justify-between">
-            <span className="text-sm font-medium text-[#0F172A]">Total Outstanding</span>
+            <span className="text-sm font-medium text-[#0F172A]">{t("Total Outstanding")}</span>
             <span className="text-lg font-bold text-[#0F172A]">${outstandingTotal.toLocaleString()}</span>
           </div>
         </div>
@@ -398,15 +400,15 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Tech Performance */}
         <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-          <h3 className="font-semibold text-[#0F172A] mb-4">Technician Performance</h3>
+          <h3 className="font-semibold text-[#0F172A] mb-4">{t("Technician Performance")}</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0]">
-                  <th className="text-left py-2 px-2 text-xs font-medium text-[#64748B] uppercase">Tech</th>
-                  <th className="text-right py-2 px-2 text-xs font-medium text-[#64748B] uppercase">Completed Jobs</th>
-                  <th className="text-right py-2 px-2 text-xs font-medium text-[#64748B] uppercase">On-Time %</th>
-                  <th className="text-right py-2 px-2 text-xs font-medium text-[#64748B] uppercase">Revenue</th>
+                  <th className="text-left py-2 px-2 text-xs font-medium text-[#64748B] uppercase">{t("Tech")}</th>
+                  <th className="text-right py-2 px-2 text-xs font-medium text-[#64748B] uppercase">{t("Completed Jobs")}</th>
+                  <th className="text-right py-2 px-2 text-xs font-medium text-[#64748B] uppercase">{t("On-Time %")}</th>
+                  <th className="text-right py-2 px-2 text-xs font-medium text-[#64748B] uppercase">{t("Revenue")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -426,7 +428,7 @@ export default function Dashboard() {
                   </tr>
                 ))}
                 {techPerformance.length === 0 && (
-                  <tr><td colSpan={4} className="py-6 text-center text-[#64748B]">No completed jobs yet</td></tr>
+                  <tr><td colSpan={4} className="py-6 text-center text-[#64748B]">{t("No completed jobs yet")}</td></tr>
                 )}
               </tbody>
             </table>
@@ -436,8 +438,8 @@ export default function Dashboard() {
         {/* Inventory Alerts */}
         <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <h3 className="font-semibold text-[#0F172A]">Inventory Alerts</h3>
-            <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] hover:bg-[#F59E0B]/10">{inventoryAlerts.length} items</Badge>
+            <h3 className="font-semibold text-[#0F172A]">{t("Inventory Alerts")}</h3>
+            <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] hover:bg-[#F59E0B]/10">{inventoryAlerts.length} {t("items")}</Badge>
           </div>
           <div className="space-y-3">
             {inventoryAlerts.map((alert) => (
@@ -454,12 +456,12 @@ export default function Dashboard() {
                   <p className={`text-sm font-bold ${alert.current === 0 ? "text-[#DC2626]" : "text-[#F59E0B]"}`}>
                     {alert.current} / {alert.threshold}
                   </p>
-                  <p className="text-xs text-[#64748B]">qty / threshold</p>
+                  <p className="text-xs text-[#64748B]">{t("qty / threshold")}</p>
                 </div>
               </button>
             ))}
             {inventoryAlerts.length === 0 && (
-              <p className="text-center text-[#64748B] py-4">No low-stock items</p>
+              <p className="text-center text-[#64748B] py-4">{t("No low-stock items")}</p>
             )}
           </div>
         </div>
@@ -484,22 +486,22 @@ export default function Dashboard() {
       <Tabs defaultValue="variance" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="variance" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <BarChart3 className="w-4 h-4" /> Inventory Variance
+            <BarChart3 className="w-4 h-4" /> {t("Inventory Variance")}
           </TabsTrigger>
           <TabsTrigger value="top" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Award className="w-4 h-4" /> Top Sellers
+            <Award className="w-4 h-4" /> {t("Top Sellers")}
           </TabsTrigger>
           <TabsTrigger value="retention" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Repeat className="w-4 h-4" /> New Customers
+            <Repeat className="w-4 h-4" /> {t("New Customers")}
           </TabsTrigger>
           <TabsTrigger value="seasonal" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <CalendarDays className="w-4 h-4" /> Seasonal Trends
+            <CalendarDays className="w-4 h-4" /> {t("Seasonal Trends")}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="variance" className="mt-4">
           <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-            <h3 className="font-semibold text-[#0F172A] mb-4">Inventory Variance (Expected vs Actual)</h3>
+            <h3 className="font-semibold text-[#0F172A] mb-4">{t("Inventory Variance (Expected vs Actual)")}</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={variance}>
@@ -508,8 +510,8 @@ export default function Dashboard() {
                   <YAxis tick={{ fontSize: 12, fill: "#64748B" }} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }} />
                   <Legend />
-                  <Bar dataKey="expected" fill="#0891B2" radius={[4, 4, 0, 0]} name="Expected" />
-                  <Bar dataKey="actual" fill="#67E8F9" radius={[4, 4, 0, 0]} name="Actual" />
+                  <Bar dataKey="expected" fill="#0891B2" radius={[4, 4, 0, 0]} name={t("Expected")} />
+                  <Bar dataKey="actual" fill="#67E8F9" radius={[4, 4, 0, 0]} name={t("Actual")} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -518,14 +520,14 @@ export default function Dashboard() {
 
         <TabsContent value="top" className="mt-4">
           <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-            <h3 className="font-semibold text-[#0F172A] mb-4">Top Selling Products (POS)</h3>
+            <h3 className="font-semibold text-[#0F172A] mb-4">{t("Top Selling Products (POS)")}</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Units Sold</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Revenue</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Units Sold")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Revenue")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -537,7 +539,7 @@ export default function Dashboard() {
                     </tr>
                   ))}
                   {topSellers.length === 0 && (
-                    <tr><td colSpan={3} className="py-6 text-center text-[#64748B]">No POS sales yet</td></tr>
+                    <tr><td colSpan={3} className="py-6 text-center text-[#64748B]">{t("No POS sales yet")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -547,7 +549,7 @@ export default function Dashboard() {
 
         <TabsContent value="retention" className="mt-4">
           <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-            <h3 className="font-semibold text-[#0F172A] mb-4">New Customers by Month (last 6 months)</h3>
+            <h3 className="font-semibold text-[#0F172A] mb-4">{t("New Customers by Month (last 6 months)")}</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={last6MonthsCustomers}>
@@ -556,7 +558,7 @@ export default function Dashboard() {
                   <YAxis tick={{ fontSize: 12, fill: "#64748B" }} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }} />
                   <Legend />
-                  <Line type="monotone" dataKey="new" stroke="#0891B2" strokeWidth={2} dot={{ r: 4 }} name="New Customers" />
+                  <Line type="monotone" dataKey="new" stroke="#0891B2" strokeWidth={2} dot={{ r: 4 }} name={t("New Customers")} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -565,7 +567,7 @@ export default function Dashboard() {
 
         <TabsContent value="seasonal" className="mt-4">
           <div className="bg-white rounded-xl p-5 border border-[#E2E8F0] shadow-sm">
-            <h3 className="font-semibold text-[#0F172A] mb-4">Seasonal Trends — Full Year</h3>
+            <h3 className="font-semibold text-[#0F172A] mb-4">{t("Seasonal Trends — Full Year")}</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={seasonalTrends}>
@@ -585,15 +587,15 @@ export default function Dashboard() {
                   <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 12, fill: "#64748B" }} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }} />
                   <Legend />
-                  <Area yAxisId="left" type="monotone" dataKey="revenue" stroke="#0891B2" strokeWidth={2} fill="url(#seaRev)" name="Revenue" />
-                  <Area yAxisId="right" type="monotone" dataKey="jobs" stroke="#16A34A" strokeWidth={2} fill="url(#seaJobs)" name="Jobs" />
+                  <Area yAxisId="left" type="monotone" dataKey="revenue" stroke="#0891B2" strokeWidth={2} fill="url(#seaRev)" name={t("Revenue")} />
+                  <Area yAxisId="right" type="monotone" dataKey="jobs" stroke="#16A34A" strokeWidth={2} fill="url(#seaJobs)" name={t("Jobs")} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
               {seasonalTrends.map((s) => (
                 <Badge key={s.month} className="bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0] text-[10px] px-2 py-1">
-                  {s.month}: {s.label}
+                  {s.month}: {t(s.label)}
                 </Badge>
               ))}
             </div>

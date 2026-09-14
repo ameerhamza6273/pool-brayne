@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formTemplatesApi, type FormTemplate, type FormField, type FormFieldType } from "@/lib/api/formTemplates";
+import { useLanguage } from "@/lib/language-context";
 import { jobTypes } from "@/lib/data";
 
 const fieldTypeLabels: Record<FormFieldType, string> = {
@@ -27,11 +28,12 @@ const emptyField = (): FormField => ({ id: `field_${Date.now()}_${Math.random().
 // to a job happens on JobDetail (any template can be added to any job, plus each template can
 // optionally suggest itself for a job type via `appliesTo`).
 export default function FormBuilder() {
+  const { t: translate } = useLanguage();
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<FormTemplate | null>(null);
-  const [draft, setDraft] = useState({ name: "", description: "", appliesTo: "any", customerVisible: false });
+  const [draft, setDraft] = useState({ name: "", description: "", appliesTo: "any", customerVisible: false, required: false });
   const [fields, setFields] = useState<FormField[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -47,14 +49,14 @@ export default function FormBuilder() {
 
   const openNew = () => {
     setEditing(null);
-    setDraft({ name: "", description: "", appliesTo: "any", customerVisible: false });
+    setDraft({ name: "", description: "", appliesTo: "any", customerVisible: false, required: false });
     setFields([emptyField()]);
     setOpen(true);
   };
 
   const openEdit = (t: FormTemplate) => {
     setEditing(t);
-    setDraft({ name: t.name, description: t.description ?? "", appliesTo: t.applies_to ?? "any", customerVisible: t.customer_visible });
+    setDraft({ name: t.name, description: t.description ?? "", appliesTo: t.applies_to ?? "any", customerVisible: t.customer_visible, required: t.required });
     setFields(t.fields.length > 0 ? t.fields : [emptyField()]);
     setOpen(true);
   };
@@ -72,6 +74,7 @@ export default function FormBuilder() {
       description: draft.description || null,
       appliesTo: draft.appliesTo === "any" ? null : draft.appliesTo,
       customerVisible: draft.customerVisible,
+      required: draft.required,
       fields: cleanFields,
     };
     try {
@@ -93,48 +96,56 @@ export default function FormBuilder() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Form Builder</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Create and edit your own service forms — tag them to any job.</p>
+          <h1 className="text-2xl font-bold text-[#0F172A]">{translate("Form Builder")}</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">{translate("Create and edit your own service forms — tag them to any job.")}</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10" onClick={openNew}>
-              <Plus className="w-4 h-4" /> New Form
+              <Plus className="w-4 h-4" /> {translate("New Form")}
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl lg:max-w-3xl w-[90vw] max-h-[85vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>{editing ? "Edit Form" : "New Form"}</DialogTitle></DialogHeader>
+            <DialogHeader><DialogTitle>{editing ? translate("Edit Form") : translate("New Form")}</DialogTitle></DialogHeader>
             <div className="space-y-4 pt-2">
-              <div><Label>Form Name</Label><Input className="mt-1" placeholder="e.g. Salt System Inspection" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} /></div>
-              <div><Label>Description (optional)</Label><Input className="mt-1" value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} /></div>
+              <div><Label>{translate("Form Name")}</Label><Input className="mt-1" placeholder={translate("e.g. Salt System Inspection")} value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} /></div>
+              <div><Label>{translate("Description (optional)")}</Label><Input className="mt-1" value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} /></div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Suggest for Job Type</Label>
+                  <Label>{translate("Suggest for Job Type")}</Label>
                   <Select value={draft.appliesTo} onValueChange={(v) => setDraft((p) => ({ ...p, appliesTo: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="any">Any job type</SelectItem>
-                      {jobTypes.map((t) => <SelectItem key={t.id} value={t.label}>{t.label}</SelectItem>)}
+                      <SelectItem value="any">{translate("Any job type")}</SelectItem>
+                      {jobTypes.map((jt) => <SelectItem key={jt.id} value={jt.label}>{translate(jt.label)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="flex items-center gap-2 mt-6">
                   <Switch id="customer-visible" checked={draft.customerVisible} onCheckedChange={(v) => setDraft((p) => ({ ...p, customerVisible: v }))} />
-                  <Label htmlFor="customer-visible" className="cursor-pointer">Customers can view submitted copies</Label>
+                  <Label htmlFor="customer-visible" className="cursor-pointer">{translate("Customers can view submitted copies")}</Label>
                 </div>
               </div>
 
+              {/* Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted
+                  into the job" -- a required form must be submitted before that job can be
+                  marked Completed (enforced in Field.tsx / JobDetail.tsx). */}
+              <div className="flex items-center gap-2">
+                <Switch id="required" checked={draft.required} onCheckedChange={(v) => setDraft((p) => ({ ...p, required: v }))} />
+                <Label htmlFor="required" className="cursor-pointer">{translate("Required — job can't be marked Completed until this form is submitted")}</Label>
+              </div>
+
               <div className="border-t border-[#E2E8F0] pt-4">
-                <Label>Fields</Label>
+                <Label>{translate("Fields")}</Label>
                 <div className="space-y-2 mt-2">
                   {fields.map((f, idx) => (
                     <div key={f.id} className="border border-[#E2E8F0] rounded-lg p-3 space-y-2 bg-[#F8FAFC]">
                       <div className="flex items-center gap-2">
-                        <Input placeholder="Field label" className="h-8 text-sm flex-1" value={f.label} onChange={(e) => updateField(idx, { label: e.target.value })} />
+                        <Input placeholder={translate("Field label")} className="h-8 text-sm flex-1" value={f.label} onChange={(e) => updateField(idx, { label: e.target.value })} />
                         <Select value={f.type} onValueChange={(v) => updateField(idx, { type: v as FormFieldType })}>
                           <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {(Object.keys(fieldTypeLabels) as FormFieldType[]).map((t) => <SelectItem key={t} value={t}>{fieldTypeLabels[t]}</SelectItem>)}
+                            {(Object.keys(fieldTypeLabels) as FormFieldType[]).map((ft) => <SelectItem key={ft} value={ft}>{translate(fieldTypeLabels[ft])}</SelectItem>)}
                           </SelectContent>
                         </Select>
                         <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-[#DC2626] shrink-0" onClick={() => setFields((prev) => prev.filter((_, i) => i !== idx))}>
@@ -143,14 +154,14 @@ export default function FormBuilder() {
                       </div>
                       {f.type === "select" && (
                         <Input
-                          placeholder="Options, comma separated (e.g. Truck Supply, Customer Supply)"
+                          placeholder={translate("Options, comma separated (e.g. Truck Supply, Customer Supply)")}
                           className="h-8 text-xs"
                           value={(f.options ?? []).join(", ")}
                           onChange={(e) => updateField(idx, { options: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
                         />
                       )}
                       <Input
-                        placeholder="Help text (optional, e.g. 'Ideal range: 7.2-7.8')"
+                        placeholder={translate("Help text (optional, e.g. 'Ideal range: 7.2-7.8')")}
                         className="h-8 text-xs"
                         value={f.helpText ?? ""}
                         onChange={(e) => updateField(idx, { helpText: e.target.value })}
@@ -159,19 +170,19 @@ export default function FormBuilder() {
                   ))}
                 </div>
                 <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 border-[#E2E8F0] mt-2" onClick={() => setFields((prev) => [...prev, emptyField()])}>
-                  <Plus className="w-3.5 h-3.5" /> Add Field
+                  <Plus className="w-3.5 h-3.5" /> {translate("Add Field")}
                 </Button>
               </div>
 
               <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSave} disabled={saving}>
-                {saving ? "Saving..." : editing ? "Save Changes" : "Create Form"}
+                {saving ? translate("Saving...") : editing ? translate("Save Changes") : translate("Create Form")}
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading forms...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{translate("Loading forms...")}</div>}
 
       {!isLoading && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -184,7 +195,7 @@ export default function FormBuilder() {
                   </div>
                   <div>
                     <p className="font-semibold text-[#0F172A]">{t.name}</p>
-                    <p className="text-xs text-[#64748B]">{t.fields.length} field{t.fields.length === 1 ? "" : "s"}</p>
+                    <p className="text-xs text-[#64748B]">{t.fields.length} {t.fields.length === 1 ? translate("field") : translate("fields")}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -195,15 +206,16 @@ export default function FormBuilder() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                {t.applies_to && <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{t.applies_to}</Badge>}
+                {t.applies_to && <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{translate(t.applies_to)}</Badge>}
                 <Badge className={`text-[10px] px-1.5 py-0 gap-1 ${t.customer_visible ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
                   {t.customer_visible ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
-                  {t.customer_visible ? "Customer visible" : "Internal only"}
+                  {t.customer_visible ? translate("Customer visible") : translate("Internal only")}
                 </Badge>
+                {t.required && <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">{translate("Required")}</Badge>}
               </div>
             </div>
           ))}
-          {templates.length === 0 && <div className="col-span-full text-center py-12 text-[#64748B]">No forms yet — create your first one.</div>}
+          {templates.length === 0 && <div className="col-span-full text-center py-12 text-[#64748B]">{translate("No forms yet — create your first one.")}</div>}
         </div>
       )}
     </div>

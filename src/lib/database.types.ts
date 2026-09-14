@@ -1473,6 +1473,54 @@ export type Database = {
           },
         ]
       }
+      purchase_order_line_items: {
+        Row: {
+          id: string
+          tenant_id: string
+          po_id: string
+          description: string
+          sku: string | null
+          quantity: number
+          unit_cost: number
+          amount: number
+        }
+        Insert: {
+          id?: string
+          tenant_id: string
+          po_id: string
+          description: string
+          sku?: string | null
+          quantity?: number
+          unit_cost?: number
+          amount?: number
+        }
+        Update: {
+          id?: string
+          tenant_id?: string
+          po_id?: string
+          description?: string
+          sku?: string | null
+          quantity?: number
+          unit_cost?: number
+          amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_line_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_line_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recurring_billing: {
         Row: {
           amount: number

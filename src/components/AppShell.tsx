@@ -5,7 +5,8 @@ import {
   Search, ChevronDown, ChevronRight, Menu, MoreHorizontal, X, Droplets, Phone, ScanLine, ClipboardList, Calendar, Copy,
   BookUser, BarChart3, ListChecks, Handshake, Boxes, Briefcase, Database, BookOpen, Factory, FileStack, Wand2,
 } from "lucide-react";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
+import { useLanguage } from "@/lib/language-context";
 import NotificationsPanel from "@/components/NotificationsPanel";
 import LanguageToggle from "@/components/LanguageToggle";
 
@@ -104,7 +105,17 @@ const mobileTabs = [
 export default function AppShell() {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, role } = useAuth();
+  const { t } = useLanguage();
+  // Client feedback 2026-09-11: technician/contractor accounts should only see the Field page --
+  // ProtectedRoute (App.tsx) already bounces any other URL to /field, this just keeps the nav
+  // honest about it instead of showing links that would immediately redirect away.
+  const fieldOnly = isFieldOnlyRole(role);
+  const visibleNavSections: (NavLink | NavGroup)[] = fieldOnly ? [{ path: "/field", label: "Technician Field", icon: Phone }] : navSections;
+  const visibleFlatNavLinks: NavLink[] = fieldOnly ? [{ path: "/field", label: "Technician Field", icon: Phone }] : flatNavLinks;
+  // Keep a "More" tab even field-only so Log Out stays reachable on mobile (its nav grid will
+  // just be empty since visibleFlatNavLinks is already field-only).
+  const visibleMobileTabs = fieldOnly ? [{ path: "/field", label: "Field", icon: Phone }, { path: "more", label: "More", icon: MoreHorizontal }] : mobileTabs;
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   // Groups default open ("(collapsible fields)" per the client's spec — collapsible, not
@@ -143,7 +154,7 @@ export default function AppShell() {
         </div>
 
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto sidebar-scroll">
-          {navSections.map((entry) => {
+          {visibleNavSections.map((entry) => {
             if (!isGroup(entry)) {
               const Icon = entry.icon;
               const active = isActive(entry.path);
@@ -156,7 +167,7 @@ export default function AppShell() {
                   }`}
                 >
                   <Icon className="w-5 h-5 shrink-0" />
-                  <span>{entry.label}</span>
+                  <span>{t(entry.label)}</span>
                 </Link>
               );
             }
@@ -172,7 +183,7 @@ export default function AppShell() {
                     }`}
                   >
                     <GroupIcon className="w-5 h-5 shrink-0" />
-                    <span className="flex-1 text-left">{entry.label}</span>
+                    <span className="flex-1 text-left">{t(entry.label)}</span>
                     {open ? <ChevronDown className="w-3.5 h-3.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 shrink-0" />}
                   </button>
                 </CollapsibleTrigger>
@@ -189,7 +200,7 @@ export default function AppShell() {
                         }`}
                       >
                         <Icon className="w-4 h-4 shrink-0" />
-                        <span>{item.label}</span>
+                        <span>{t(item.label)}</span>
                       </Link>
                     );
                   })}
@@ -214,8 +225,9 @@ export default function AppShell() {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => navigate("/settings")}>Company Settings</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/onboarding")}>New Tenant</DropdownMenuItem>
+              {!fieldOnly && <DropdownMenuItem onClick={() => navigate("/settings")}>{t("Company Settings")}</DropdownMenuItem>}
+              {!fieldOnly && <DropdownMenuItem onClick={() => navigate("/onboarding")}>{t("New Tenant")}</DropdownMenuItem>}
+              <DropdownMenuItem onClick={() => signOut()}>{t("Log out")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -232,7 +244,7 @@ export default function AppShell() {
           <div className="flex-1 max-w-md relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
             <Input
-              placeholder="Search customers, jobs, invoices..."
+              placeholder={t("Search customers, jobs, invoices...")}
               className="pl-9 h-9 bg-[#F8FAFC] border-[#E2E8F0] text-sm"
             />
           </div>
@@ -249,9 +261,9 @@ export default function AppShell() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => navigate("/settings")}>Profile</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => navigate("/settings")}>Settings</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => signOut()}>Log out</DropdownMenuItem>
+                {!fieldOnly && <DropdownMenuItem onClick={() => navigate("/settings")}>{t("Profile")}</DropdownMenuItem>}
+                {!fieldOnly && <DropdownMenuItem onClick={() => navigate("/settings")}>{t("Settings")}</DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => signOut()}>{t("Log out")}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -278,7 +290,7 @@ export default function AppShell() {
                   </div>
                 </div>
                 <nav className="py-4 px-3 space-y-1 overflow-y-auto max-h-[calc(100vh-6rem)] sidebar-scroll">
-                  {flatNavLinks.map((item) => {
+                  {visibleFlatNavLinks.map((item) => {
                     const Icon = item.icon;
                     const active = isActive(item.path);
                     return (
@@ -291,7 +303,7 @@ export default function AppShell() {
                         }`}
                       >
                         <Icon className="w-5 h-5 shrink-0" />
-                        <span>{item.label}</span>
+                        <span>{t(item.label)}</span>
                       </Link>
                     );
                   })}
@@ -321,7 +333,7 @@ export default function AppShell() {
 
         {/* Mobile Bottom Tab Bar */}
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#E2E8F0] z-50 flex justify-around items-center h-16 px-2">
-          {mobileTabs.map((tab) => {
+          {visibleMobileTabs.map((tab) => {
             const Icon = tab.icon;
             const active = tab.path === "more" ? false : isActive(tab.path);
             if (tab.path === "more") {
@@ -330,18 +342,18 @@ export default function AppShell() {
                   <SheetTrigger asChild>
                     <button className={`flex flex-col items-center gap-0.5 py-2 px-3 rounded-lg ${active ? "text-[#0891B2]" : "text-[#64748B]"}`}>
                       <Icon className="w-5 h-5" />
-                      <span className="text-[10px] font-medium">{tab.label}</span>
+                      <span className="text-[10px] font-medium">{t(tab.label)}</span>
                     </button>
                   </SheetTrigger>
                   <SheetContent side="bottom" className="h-[70vh] rounded-t-xl">
                     <div className="flex items-center justify-between py-2">
-                      <h3 className="font-semibold text-lg">More</h3>
+                      <h3 className="font-semibold text-lg">{t("More")}</h3>
                       <button onClick={() => setMobileMoreOpen(false)}>
                         <X className="w-5 h-5 text-[#64748B]" />
                       </button>
                     </div>
                     <div className="grid grid-cols-2 gap-3 mt-4">
-                      {flatNavLinks.filter((n) => !mobileTabs.some((m) => m.path === n.path)).map((item) => {
+                      {visibleFlatNavLinks.filter((n) => !visibleMobileTabs.some((m) => m.path === n.path)).map((item) => {
                         const ItemIcon = item.icon;
                         return (
                           <Link
@@ -351,14 +363,14 @@ export default function AppShell() {
                             className="flex flex-col items-center gap-2 p-4 rounded-xl bg-[#F8FAFC] hover:bg-[#E2E8F0] transition-colors"
                           >
                             <ItemIcon className="w-6 h-6 text-[#0891B2]" />
-                            <span className="text-sm font-medium text-[#0F172A]">{item.label}</span>
+                            <span className="text-sm font-medium text-[#0F172A]">{t(item.label)}</span>
                           </Link>
                         );
                       })}
                     </div>
                     <div className="mt-6 pt-4 border-t border-[#E2E8F0]">
                       <button onClick={() => signOut()} className="w-full py-3 text-[#DC2626] font-medium text-sm">
-                        Log Out
+                        {t("Log Out")}
                       </button>
                     </div>
                   </SheetContent>
@@ -372,7 +384,7 @@ export default function AppShell() {
                 className={`flex flex-col items-center gap-0.5 py-2 px-3 rounded-lg ${active ? "text-[#0891B2]" : "text-[#64748B]"}`}
               >
                 <Icon className="w-5 h-5" />
-                <span className="text-[10px] font-medium">{tab.label}</span>
+                <span className="text-[10px] font-medium">{t(tab.label)}</span>
               </Link>
             );
           })}

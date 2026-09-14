@@ -1,5 +1,6 @@
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useLanguage } from "@/lib/language-context";
 import type { CategoryTaxonomyRow } from "@/lib/api/inventory";
 
 // Client's configuration_categories.xlsx (2026-09-05, 351 rows): a 4-level product taxonomy
@@ -20,6 +21,7 @@ export default function CategoryPicker({
   subSubSubcategory: string;
   onChange: (next: { category?: string; subcategory?: string; subSubcategory?: string; subSubSubcategory?: string }) => void;
 }) {
+  const { t } = useLanguage();
   const categories = [...new Set(taxonomy.map((t) => t.category))].sort();
   const subcategories = [...new Set(taxonomy.filter((t) => t.category === category && t.subcategory).map((t) => t.subcategory as string))].sort();
   const subSubcategories = [...new Set(taxonomy.filter((t) => t.category === category && t.subcategory === subcategory && t.sub_subcategory).map((t) => t.sub_subcategory as string))].sort();
@@ -28,35 +30,35 @@ export default function CategoryPicker({
   return (
     <div className="grid grid-cols-2 gap-3">
       <div>
-        <Label className="text-xs">Category</Label>
+        <Label className="text-xs">{t("Category")}</Label>
         <Select value={category || undefined} onValueChange={(v) => onChange({ category: v, subcategory: "", subSubcategory: "", subSubSubcategory: "" })}>
-          <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Select category" /></SelectTrigger>
+          <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select category")} /></SelectTrigger>
           <SelectContent>{categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
         </Select>
       </div>
       {subcategories.length > 0 && (
         <div>
-          <Label className="text-xs">Subcategory</Label>
+          <Label className="text-xs">{t("Subcategory")}</Label>
           <Select value={subcategory || undefined} onValueChange={(v) => onChange({ subcategory: v, subSubcategory: "", subSubSubcategory: "" })}>
-            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Select subcategory" /></SelectTrigger>
+            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select subcategory")} /></SelectTrigger>
             <SelectContent>{subcategories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
         </div>
       )}
       {subSubcategories.length > 0 && (
         <div>
-          <Label className="text-xs">Sub-subcategory</Label>
+          <Label className="text-xs">{t("Sub-subcategory")}</Label>
           <Select value={subSubcategory || undefined} onValueChange={(v) => onChange({ subSubcategory: v, subSubSubcategory: "" })}>
-            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select")} /></SelectTrigger>
             <SelectContent>{subSubcategories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
         </div>
       )}
       {subSubSubcategories.length > 0 && (
         <div>
-          <Label className="text-xs">Sub-sub-subcategory</Label>
+          <Label className="text-xs">{t("Sub-sub-subcategory")}</Label>
           <Select value={subSubSubcategory || undefined} onValueChange={(v) => onChange({ subSubSubcategory: v })}>
-            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder="Select" /></SelectTrigger>
+            <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select")} /></SelectTrigger>
             <SelectContent>{subSubSubcategories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
           </Select>
         </div>

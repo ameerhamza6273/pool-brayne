@@ -8,12 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useNavigate } from "react-router-dom";
-import { jobsApi } from "@/lib/api/jobs";
+import { jobsApi, type JobLineItem, type JobForm } from "@/lib/api/jobs";
 import { customersApi } from "@/lib/api/customers";
 import { invoicingApi } from "@/lib/api/invoicing";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
+import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
+import { libraryApi, type LibraryDocument } from "@/lib/api/library";
+import DynamicForm from "@/components/DynamicForm";
+import DocumentsSection, { type DocumentAttachment } from "@/components/DocumentsSection";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Job = Database["public"]["Tables"]["jobs"]["Row"] & { customers: { name: string; address: string | null } | null };
@@ -32,7 +37,9 @@ const statusSteps = [
 
 export default function Field() {
   const navigate = useNavigate();
-  const { profileId, tenantId, user } = useAuth();
+  const { profileId, tenantId, user, role } = useAuth();
+  const { t } = useLanguage();
+  const fieldOnly = isFieldOnlyRole(role);
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -44,6 +51,16 @@ export default function Field() {
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [partsUsed, setPartsUsed] = useState<Record<string, number>>({});
   const [partsSearch, setPartsSearch] = useState("");
+
+  // Client feedback 2026-09-11: Field view was missing the job's line items, its forms, and its
+  // documents -- techs only ever work from this page, not the desktop JobDetail.
+  const [jobLineItems, setJobLineItems] = useState<JobLineItem[]>([]);
+  const [jobForms, setJobForms] = useState<JobForm[]>([]);
+  const [allTemplates, setAllTemplates] = useState<FormTemplate[]>([]);
+  const [jobDocuments, setJobDocuments] = useState<DocumentAttachment[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocument[]>([]);
+  const [formError, setFormError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -64,6 +81,8 @@ export default function Field() {
 
   useEffect(() => {
     inventoryApi.summary().then((data) => setInventoryItems(data.items));
+    formTemplatesApi.list().then(setAllTemplates);
+    libraryApi.list().then(setLibraryDocuments);
   }, []);
 
   const currentJob = myJobs.find((j) => j.id === activeJobId) ?? null;
@@ -75,11 +94,15 @@ export default function Field() {
     setNotes("");
     setSignatureUrl(null);
     setPartsUsed({});
+    setFormError("");
     jobsApi.getAttachments(job.id).then((attachments) => {
       setPhotos(attachments.filter((a) => a.type === "photo").map((a) => ({ id: a.id, url: a.url })));
       const sig = attachments.find((a) => a.type === "signature");
       setSignatureUrl(sig?.url ?? null);
+      setJobDocuments(attachments.filter((a) => a.type === "document"));
     });
+    jobsApi.getLineItems(job.id).then(setJobLineItems);
+    jobsApi.getForms(job.id).then(setJobForms);
   };
 
   const uploadAttachment = async (jobId: string, file: Blob, filename: string, type: "photo" | "signature") => {
@@ -146,10 +169,60 @@ export default function Field() {
     });
   };
 
+  // Client feedback 2026-09-11: forms weren't reachable here at all (Field techs never see
+  // desktop JobDetail) -- same suggested-templates rule as JobDetail: any template with no
+  // applies_to, or matching this job's type.
+  const suggestedTemplates = currentJob ? allTemplates.filter((t) => t.applies_to === currentJob.type || t.applies_to === null) : [];
+  const missingRequiredTemplates = suggestedTemplates.filter((t) => t.required && !jobForms.some((f) => f.template_id === t.id));
+
+  const handleSaveForm = async (template: FormTemplate, data: Record<string, unknown>) => {
+    if (!currentJob) return;
+    const notesField = template.fields.find((f) => /notes/i.test(f.id) || /notes/i.test(f.label));
+    const formNotes = notesField ? (data[notesField.id] as string | undefined) ?? null : null;
+    await jobsApi.saveForm(currentJob.id, template.name, data, formNotes, template.id);
+    jobsApi.getForms(currentJob.id).then(setJobForms);
+    setFormError("");
+  };
+
+  const handleFormPhotoUpload = async (file: File): Promise<string> => {
+    if (!currentJob || !tenantId) throw new Error("Not ready");
+    const path = `${tenantId}/${currentJob.id}/forms/${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+    if (error) throw error;
+    const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+    return data.publicUrl;
+  };
+
+  const handleUploadDocument = async (file: File, label: string) => {
+    if (!currentJob || !tenantId) return;
+    setDocsUploading(true);
+    try {
+      const path = `${tenantId}/${currentJob.id}/document-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      await jobsApi.addAttachment(currentJob.id, { type: "document", url: data.publicUrl, label, filename: file.name });
+      jobsApi.getAttachments(currentJob.id).then((docs) => setJobDocuments(docs.filter((a) => a.type === "document")));
+    } finally {
+      setDocsUploading(false);
+    }
+  };
+
+  const handleAttachLibraryDocument = async (doc: LibraryDocument) => {
+    if (!currentJob) return;
+    await jobsApi.addAttachment(currentJob.id, { type: "document", url: doc.url, label: doc.name, filename: doc.filename });
+    jobsApi.getAttachments(currentJob.id).then((docs) => setJobDocuments(docs.filter((a) => a.type === "document")));
+  };
+
   const advanceStatus = async () => {
     if (!currentJob) return;
     const next = statusSteps[currentStepIdx + 1];
     if (!next) return;
+
+    if (next.id === "completed" && missingRequiredTemplates.length > 0) {
+      setFormError(`Submit the required form${missingRequiredTemplates.length > 1 ? "s" : ""} first: ${missingRequiredTemplates.map((t) => t.name).join(", ")}`);
+      return;
+    }
 
     if (next.id === "en_route") {
       await jobsApi.update(currentJob.id, { status: "In Progress", stage: "in_progress", en_route_at: new Date().toISOString() });
@@ -204,30 +277,37 @@ export default function Field() {
     <div className="space-y-4 max-w-lg mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate("/jobs")} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <h1 className="text-xl font-bold text-[#0F172A]">My Day</h1>
+        {!fieldOnly && (
+          <button onClick={() => navigate("/jobs")} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+        )}
+        <h1 className="text-xl font-bold text-[#0F172A]">{t("My Day")}</h1>
         <div className="ml-auto flex items-center gap-3">
           {/* Client request 2026-09-03: "On the phone app be able to toggle between admin and
-              tech view" — jumps straight to the full desktop-style Dashboard/nav. */}
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="text-xs font-medium text-[#0891B2] border border-[#0891B2]/30 rounded-md px-2 py-1 hover:bg-[#0891B2]/10"
-          >
-            Admin View
-          </button>
+              tech view" — jumps straight to the full desktop-style Dashboard/nav. Client feedback
+              2026-09-11: technician/contractor role accounts are field-only now (ProtectedRoute
+              bounces them back), so this toggle only makes sense for admin/manager roles who are
+              previewing the field view themselves. */}
+          {!fieldOnly && (
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="text-xs font-medium text-[#0891B2] border border-[#0891B2]/30 rounded-md px-2 py-1 hover:bg-[#0891B2]/10"
+            >
+              {t("Admin View")}
+            </button>
+          )}
           <div className="flex items-center gap-1 text-sm text-[#64748B]">
             <Clock className="w-4 h-4" />
-            <span>{myJobs.length} jobs</span>
+            <span>{myJobs.length} {t("jobs")}</span>
           </div>
         </div>
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading your jobs...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading your jobs...")}</div>}
 
       {!isLoading && myJobs.length === 0 && (
-        <div className="text-center py-12 text-[#64748B]">No active jobs assigned to you</div>
+        <div className="text-center py-12 text-[#64748B]">{t("No active jobs assigned to you")}</div>
       )}
 
       {/* Job List - Compact */}
@@ -313,13 +393,13 @@ export default function Field() {
 
             {/* Job Description */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-1">Description</p>
-              <p className="text-sm text-[#64748B]">{currentJob.description || "No description"}</p>
+              <p className="text-sm font-medium text-[#0F172A] mb-1">{t("Description")}</p>
+              <p className="text-sm text-[#64748B]">{currentJob.description || t("No description")}</p>
             </div>
 
             {/* Job Total */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">Job Value</p>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Job Value")}</p>
               <div className="flex items-center justify-between p-2 rounded-lg bg-[#F8FAFC]">
                 <div className="flex items-center gap-2">
                   <Wrench className="w-4 h-4 text-[#0891B2]" />
@@ -329,11 +409,31 @@ export default function Field() {
               </div>
             </div>
 
+            {/* Line Items — client feedback 2026-09-11: "Show all items in the job / estimate
+                for the job they are doing for that day." job_line_items already carries over an
+                estimate's items on convert-to-job, so this is the merged, single source. */}
+            {jobLineItems.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Job Items")}</p>
+                <div className="rounded-lg border border-[#E2E8F0] divide-y divide-[#F1F5F9]">
+                  {jobLineItems.map((li) => (
+                    <div key={li.id} className="flex items-center justify-between px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm text-[#0F172A] truncate">{li.description}</p>
+                        <p className="text-xs text-[#64748B]">{li.quantity} × ${li.rate.toFixed(2)}{li.sku ? ` · ${li.sku}` : ""}</p>
+                      </div>
+                      <span className="text-sm font-medium text-[#0F172A] shrink-0">${li.amount.toFixed(2)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Parts Used */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">Parts Used</p>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Parts Used")}</p>
               <Input
-                placeholder="Search parts by name, SKU, or description..."
+                placeholder={t("Search parts by name, SKU, or description...")}
                 className="mb-2 h-9 text-sm"
                 value={partsSearch}
                 onChange={(e) => setPartsSearch(e.target.value)}
@@ -375,14 +475,43 @@ export default function Field() {
                   </div>
                 ))}
                 {!partsSearch.trim() && Object.values(partsUsed).every((q) => !q) && (
-                  <p className="px-3 py-3 text-sm text-[#64748B]">Search above to find a part.</p>
+                  <p className="px-3 py-3 text-sm text-[#64748B]">{t("Search above to find a part.")}</p>
                 )}
               </div>
             </div>
 
+            {/* Forms — client feedback 2026-09-11: forms only ever showed on desktop JobDetail,
+                which a technician never opens; same suggested-template rule reused here. */}
+            {suggestedTemplates.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Forms")}</p>
+                <div className="space-y-3">
+                  {suggestedTemplates.map((tpl) => (
+                    <div key={tpl.id} className="relative">
+                      {tpl.required && !jobForms.some((f) => f.template_id === tpl.id) && (
+                        <Badge className="absolute -top-2 right-2 z-10 bg-[#DC2626] text-white text-[10px] px-1.5 py-0">{t("Required")}</Badge>
+                      )}
+                      <DynamicForm template={tpl} onSave={(data) => handleSaveForm(tpl, data)} onUploadPhoto={handleFormPhotoUpload} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Documents — client feedback 2026-09-11: "Show documents (still need a document
+                section... these are pdfs for estimates showing scope of work)." Read/attach only
+                here; techs pick from the Library instead of re-uploading a scope-of-work PDF. */}
+            <DocumentsSection
+              documents={jobDocuments}
+              onUpload={handleUploadDocument}
+              uploading={docsUploading}
+              libraryDocuments={libraryDocuments}
+              onAttachExisting={handleAttachLibraryDocument}
+            />
+
             {/* Photos */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">Photos</p>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Photos")}</p>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -409,18 +538,18 @@ export default function Field() {
 
             {/* Notes */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">Job Notes</p>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Job Notes")}</p>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add notes about this job... (saved to customer record on completion)"
+                placeholder={t("Add notes about this job... (saved to customer record on completion)")}
                 className="w-full h-20 p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
               />
             </div>
 
             {/* Signature */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">Customer Signature</p>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Customer Signature")}</p>
               {signatureUrl ? (
                 <div className="h-24 rounded-lg border-2 border-[#16A34A] bg-[#16A34A]/5 flex items-center justify-center gap-4">
                   <img src={signatureUrl} alt="Signature" className="h-16" />
@@ -428,7 +557,7 @@ export default function Field() {
                     onClick={() => setSignatureUrl(null)}
                     className="text-xs font-medium text-[#0891B2] hover:underline"
                   >
-                    Redo
+                    {t("Redo")}
                   </button>
                 </div>
               ) : (
@@ -445,10 +574,10 @@ export default function Field() {
                   />
                   <div className="flex gap-2">
                     <Button variant="outline" size="sm" className="gap-1.5" onClick={clearSignatureCanvas}>
-                      <Eraser className="w-3.5 h-3.5" /> Clear
+                      <Eraser className="w-3.5 h-3.5" /> {t("Clear")}
                     </Button>
                     <Button size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5" onClick={saveSignature}>
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Save Signature
+                      <CheckCircle2 className="w-3.5 h-3.5" /> {t("Save Signature")}
                     </Button>
                   </div>
                 </div>
@@ -457,6 +586,7 @@ export default function Field() {
 
             {/* Action Buttons */}
             <div className="space-y-2">
+              {formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
               {jobStatus !== "completed" && (
                 <Button
                   className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold gap-2"
@@ -465,7 +595,7 @@ export default function Field() {
                   {currentStepIdx < 0 ? (
                     <>
                       <Navigation className="w-5 h-5" />
-                      Start Job — Navigate to Site
+                      {t("Start Job — Navigate to Site")}
                     </>
                   ) : (
                     <>
@@ -473,7 +603,7 @@ export default function Field() {
                         const Icon = statusSteps[currentStepIdx]?.icon || CheckCircle2;
                         return <Icon className="w-5 h-5" />;
                       })()}
-                      {statusSteps[currentStepIdx]?.action || "Complete Job"}
+                      {t(statusSteps[currentStepIdx]?.action || "Complete Job")}
                     </>
                   )}
                 </Button>
@@ -486,7 +616,7 @@ export default function Field() {
                   onClick={generateInvoice}
                 >
                   <DollarSign className="w-5 h-5" />
-                  {generatingInvoice ? "Generating..." : "Generate Invoice & Collect Payment"}
+                  {generatingInvoice ? t("Generating...") : t("Generate Invoice & Collect Payment")}
                 </Button>
               )}
             </div>

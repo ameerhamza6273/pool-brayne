@@ -10,6 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { campaignsApi } from "@/lib/api/campaigns";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Automation = Database["public"]["Tables"]["automations"]["Row"];
@@ -33,6 +34,7 @@ const campaignStatusColors: Record<string, string> = {
 };
 
 export default function Campaigns() {
+  const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(true);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [seasonalCampaigns, setSeasonalCampaigns] = useState<SeasonalCampaign[]>([]);
@@ -94,28 +96,28 @@ export default function Campaigns() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0F172A]">Campaigns & Follow-Up</h1>
+        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Campaigns & Follow-Up")}</h1>
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading campaigns...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading campaigns...")}</div>}
 
       {!isLoading && (
       <Tabs defaultValue="automations" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="automations" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Zap className="w-4 h-4" /> Automations
+            <Zap className="w-4 h-4" /> {t("Automations")}
           </TabsTrigger>
           <TabsTrigger value="seasonal" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Calendar className="w-4 h-4" /> Seasonal
+            <Calendar className="w-4 h-4" /> {t("Seasonal")}
           </TabsTrigger>
           <TabsTrigger value="sms" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <MessageSquare className="w-4 h-4" /> SMS Inbox
+            <MessageSquare className="w-4 h-4" /> {t("SMS Inbox")}
           </TabsTrigger>
           <TabsTrigger value="reviews" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Star className="w-4 h-4" /> Reviews
+            <Star className="w-4 h-4" /> {t("Reviews")}
           </TabsTrigger>
           <TabsTrigger value="performance" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <BarChart3 className="w-4 h-4" /> Performance
+            <BarChart3 className="w-4 h-4" /> {t("Performance")}
           </TabsTrigger>
         </TabsList>
 
@@ -142,15 +144,15 @@ export default function Campaigns() {
                     <p className="text-sm text-[#64748B] mb-3">{a.description}</p>
                     <div className="flex items-center gap-4 text-sm">
                       <div>
-                        <p className="text-xs text-[#64748B]">Channel</p>
+                        <p className="text-xs text-[#64748B]">{t("Channel")}</p>
                         <p className="font-medium text-[#0F172A]">{a.channel}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-[#64748B]">Enrolled</p>
+                        <p className="text-xs text-[#64748B]">{t("Enrolled")}</p>
                         <p className="font-medium text-[#0F172A]">{a.enrolled_count}</p>
                       </div>
                       <div>
-                        <p className="text-xs text-[#64748B]">Conversion</p>
+                        <p className="text-xs text-[#64748B]">{t("Conversion")}</p>
                         <p className="font-medium text-[#16A34A]">{a.conversion_rate}</p>
                       </div>
                     </div>
@@ -167,15 +169,15 @@ export default function Campaigns() {
             <Dialog open={campaignOpen} onOpenChange={setCampaignOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
-                  <Plus className="w-4 h-4" /> New Campaign
+                  <Plus className="w-4 h-4" /> {t("New Campaign")}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>New Campaign</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{t("New Campaign")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div><Label>Name</Label><Input className="mt-1" placeholder="Campaign name" value={newCampaign.name} onChange={(e) => setNewCampaign((p) => ({ ...p, name: e.target.value }))} /></div>
-                  <div><Label>Audience</Label><Input className="mt-1" type="number" placeholder="Number of customers" value={newCampaign.audience} onChange={(e) => setNewCampaign((p) => ({ ...p, audience: e.target.value }))} /></div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateCampaign}>Create Campaign</Button>
+                  <div><Label>{t("Name")}</Label><Input className="mt-1" placeholder={t("Campaign name")} value={newCampaign.name} onChange={(e) => setNewCampaign((p) => ({ ...p, name: e.target.value }))} /></div>
+                  <div><Label>{t("Audience")}</Label><Input className="mt-1" type="number" placeholder={t("Number of customers")} value={newCampaign.audience} onChange={(e) => setNewCampaign((p) => ({ ...p, audience: e.target.value }))} /></div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateCampaign}>{t("Create Campaign")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -186,33 +188,33 @@ export default function Campaigns() {
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-semibold text-[#0F172A]">{c.name}</h3>
-                    <Badge className={`${campaignStatusColors[c.status]} text-[10px] px-1.5 py-0`}>{c.status}</Badge>
+                    <Badge className={`${campaignStatusColors[c.status]} text-[10px] px-1.5 py-0`}>{t(c.status)}</Badge>
                   </div>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-[#64748B]">Audience</span>
+                      <span className="text-[#64748B]">{t("Audience")}</span>
                       <span className="font-medium text-[#0F172A]">{c.audience_size}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-[#64748B]">Scheduled</span>
+                      <span className="text-[#64748B]">{t("Scheduled")}</span>
                       <span className="font-medium text-[#0F172A]">{c.scheduled_date}</span>
                     </div>
                     {c.sent_date && (
                       <>
                         <div className="flex justify-between">
-                          <span className="text-[#64748B]">Sent</span>
+                          <span className="text-[#64748B]">{t("Sent")}</span>
                           <span className="font-medium text-[#0F172A]">{c.sent_date}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#64748B]">Open Rate</span>
+                          <span className="text-[#64748B]">{t("Open Rate")}</span>
                           <span className="font-medium text-[#0891B2]">{c.open_rate}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#64748B]">Bookings</span>
+                          <span className="text-[#64748B]">{t("Bookings")}</span>
                           <span className="font-medium text-[#16A34A]">{c.bookings}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-[#64748B]">Revenue</span>
+                          <span className="text-[#64748B]">{t("Revenue")}</span>
                           <span className="font-medium text-[#16A34A]">${c.revenue?.toLocaleString()}</span>
                         </div>
                       </>
@@ -228,7 +230,7 @@ export default function Campaigns() {
         <TabsContent value="sms" className="mt-4">
           <div className="bg-[#0891B2] rounded-t-xl p-3 text-white flex items-center gap-2">
             <MessageSquare className="w-4 h-4" />
-            <span className="text-sm font-medium">Customers reply inside Clear Pool CRM — not to a technician's personal phone.</span>
+            <span className="text-sm font-medium">{t("Customers reply inside Clear Pool CRM — not to a technician's personal phone.")}</span>
           </div>
           <div className="bg-white rounded-b-xl border border-[#E2E8F0] border-t-0 shadow-sm grid grid-cols-1 lg:grid-cols-3 h-[500px]">
             {/* Conversation List */}
@@ -236,7 +238,7 @@ export default function Campaigns() {
               <div className="p-3 border-b border-[#E2E8F0]">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-                  <Input placeholder="Search conversations..." className="pl-9 h-9 bg-[#F8FAFC] border-[#E2E8F0]" />
+                  <Input placeholder={t("Search conversations...")} className="pl-9 h-9 bg-[#F8FAFC] border-[#E2E8F0]" />
                 </div>
               </div>
               {smsConversations.map((conv) => {
@@ -269,7 +271,7 @@ export default function Campaigns() {
                 </div>
                 <div>
                   <p className="font-medium text-sm text-[#0F172A]">{activeConv.customers?.name ?? "—"}</p>
-                  <p className="text-xs text-[#64748B]">SMS Conversation</p>
+                  <p className="text-xs text-[#64748B]">{t("SMS Conversation")}</p>
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -290,7 +292,7 @@ export default function Campaigns() {
               </div>
               <div className="p-3 border-t border-[#E2E8F0] flex items-center gap-2">
                 <Input
-                  placeholder="Type a message..."
+                  placeholder={t("Type a message...")}
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   className="flex-1 h-10 bg-[#F8FAFC] border-[#E2E8F0]"
@@ -338,7 +340,7 @@ export default function Campaigns() {
                       <div className="mt-2 flex items-center gap-2 text-xs text-[#64748B]">
                         <span>{r.review_date}</span>
                         <span>&middot;</span>
-                        <span className="text-[#0891B2]">Response: {r.response}</span>
+                        <span className="text-[#0891B2]">{t("Response:")} {r.response}</span>
                       </div>
                     </div>
                   </div>
@@ -351,7 +353,7 @@ export default function Campaigns() {
         {/* Performance */}
         <TabsContent value="performance" className="mt-4 space-y-4">
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-5">
-            <h3 className="font-semibold text-[#0F172A] mb-4">Campaign Performance</h3>
+            <h3 className="font-semibold text-[#0F172A] mb-4">{t("Campaign Performance")}</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={performanceChartData}>
@@ -359,9 +361,9 @@ export default function Campaigns() {
                   <XAxis dataKey="campaign" tick={{ fontSize: 12, fill: "#64748B" }} />
                   <YAxis tick={{ fontSize: 12, fill: "#64748B" }} />
                   <Tooltip contentStyle={{ borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 13 }} />
-                  <Bar dataKey="openRate" name="Open Rate" fill="#0891B2" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="replyRate" name="Reply Rate" fill="#67E8F9" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="bookings" name="Bookings" fill="#16A34A" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="openRate" name={t("Open Rate")} fill="#0891B2" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="replyRate" name={t("Reply Rate")} fill="#67E8F9" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="bookings" name={t("Bookings")} fill="#16A34A" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -371,12 +373,12 @@ export default function Campaigns() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Campaign</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Audience</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Open Rate</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Reply Rate</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Bookings</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Revenue</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Campaign")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Audience")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Open Rate")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Reply Rate")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Bookings")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Revenue")}</th>
                   </tr>
                 </thead>
                 <tbody>

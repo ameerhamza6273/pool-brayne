@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import JsBarcode from "jsbarcode";
-import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt } from "lucide-react";
+import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -12,11 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import CategoryPicker from "@/components/CategoryPicker";
+import PoLineItemsEditor, { newPoLineItem } from "@/components/PoLineItemsEditor";
 import { inventoryApi } from "@/lib/api/inventory";
+import { useLanguage } from "@/lib/language-context";
 import { invoicingApi, type VendorBill } from "@/lib/api/invoicing";
 import { reportsApi, type VendorBillDueRow } from "@/lib/api/reports";
 import type { Database } from "@/lib/database.types";
-import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff, SupplierLocation, CategoryTaxonomyRow } from "@/lib/api/inventory";
+import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff, SupplierLocation, CategoryTaxonomyRow, PoLineItemInput } from "@/lib/api/inventory";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
@@ -30,9 +32,13 @@ const statusColors: Record<string, string> = {
 };
 
 const poStatusColors: Record<string, string> = {
+  "Pending": "bg-[#F59E0B]/10 text-[#F59E0B]",
+  "Sent": "bg-[#0891B2]/10 text-[#0891B2]",
+  "Received": "bg-[#16A34A]/10 text-[#16A34A]",
+  // Backward-compat for any PO row written by pre-2026-09-11 code before the status vocabulary
+  // migrated from Draft/Ordered to Pending/Sent.
   "Draft": "bg-[#F59E0B]/10 text-[#F59E0B]",
   "Ordered": "bg-[#0891B2]/10 text-[#0891B2]",
-  "Received": "bg-[#16A34A]/10 text-[#16A34A]",
 };
 
 const vendorBillStatusColors: Record<string, string> = {
@@ -129,6 +135,7 @@ const printZebraLabels = (
 };
 
 export default function Inventory() {
+  const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -179,6 +186,9 @@ export default function Inventory() {
   const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001`, locationId: "" });
   const [poError, setPoError] = useState("");
   const [newPoLocations, setNewPoLocations] = useState<SupplierLocation[]>([]);
+  const [newPoLineItems, setNewPoLineItems] = useState<PoLineItemInput[]>([]);
+  const [poDetailLineItems, setPoDetailLineItems] = useState<PoLineItemInput[]>([]);
+  const [vendorSearch, setVendorSearch] = useState("");
   const [newSupplier, setNewSupplier] = useState({ name: "", contact: "", phone: "", leadTime: "", address: "" });
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
@@ -312,9 +322,15 @@ export default function Inventory() {
       return;
     }
     setPoError("");
-    await inventoryApi.createPurchaseOrder({ supplierId: newPo.supplierId, number: newPo.number, locationId: newPo.locationId || null });
+    await inventoryApi.createPurchaseOrder({
+      supplierId: newPo.supplierId,
+      number: newPo.number,
+      locationId: newPo.locationId || null,
+      lineItems: newPoLineItems.filter((li) => li.description.trim()),
+    });
     setNewPo({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(purchaseOrders.length + 2).padStart(3, "0")}`, locationId: "" });
     setNewPoLocations([]);
+    setNewPoLineItems([]);
     setPoOpen(false);
     loadInventory();
   };
@@ -386,18 +402,19 @@ export default function Inventory() {
 
   // Client request 2026-09-03: PO list needed a view/edit option.
   const [poDetail, setPoDetail] = useState<PurchaseOrder | null>(null);
-  const [poDetailDraft, setPoDetailDraft] = useState({ number: "", supplierId: "", status: "Draft", itemCount: "", total: "", receivedDate: "" });
+  const [poDetailDraft, setPoDetailDraft] = useState({ number: "", supplierId: "", status: "Pending", receivedDate: "" });
 
-  const openPoDetail = (po: PurchaseOrder) => {
+  const openPoDetail = async (po: PurchaseOrder) => {
     setPoDetail(po);
     setPoDetailDraft({
       number: po.number,
       supplierId: po.supplier_id ?? "",
       status: po.status,
-      itemCount: String(po.item_count),
-      total: String(po.total),
       receivedDate: po.received_date ?? "",
     });
+    setPoDetailLineItems([]);
+    const lines = await inventoryApi.getPurchaseOrderLineItems(po.id);
+    setPoDetailLineItems(lines.map((li) => ({ description: li.description, sku: li.sku, quantity: li.quantity, unitCost: li.unit_cost })));
   };
 
   const handleSavePoDetail = async () => {
@@ -406,10 +423,9 @@ export default function Inventory() {
       number: poDetailDraft.number,
       supplierId: poDetailDraft.supplierId,
       status: poDetailDraft.status,
-      itemCount: parseInt(poDetailDraft.itemCount, 10) || 0,
-      total: parseFloat(poDetailDraft.total) || 0,
       receivedDate: poDetailDraft.receivedDate || null,
     });
+    await inventoryApi.savePurchaseOrderLineItems(poDetail.id, poDetailLineItems.filter((li) => li.description.trim()));
     setPoDetail(null);
     loadInventory();
   };
@@ -528,19 +544,19 @@ export default function Inventory() {
         {dynamicCategories.filter((c) => c !== "All").map((c) => <option key={c} value={c} />)}
       </datalist>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0F172A]">Inventory</h1>
+        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Inventory")}</h1>
         <div className="flex items-center gap-2">
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
               <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
-                <Plus className="w-4 h-4" /> Add Product
+                <Plus className="w-4 h-4" /> {t("Add Product")}
               </Button>
             </DialogTrigger>
             <DialogContent className="max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Add Product</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Add Product")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
-                <div><Label>Name</Label><Input className="mt-1" placeholder="Product name" value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} /></div>
-                <div><Label>SKU</Label><Input className="mt-1" placeholder="SKU-123" value={newProduct.sku} onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))} /></div>
+                <div><Label>{t("Name")}</Label><Input className="mt-1" placeholder={t("Product name")} value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} /></div>
+                <div><Label>{t("SKU")}</Label><Input className="mt-1" placeholder="SKU-123" value={newProduct.sku} onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))} /></div>
                 {categoryTaxonomy.length > 0 ? (
                   <CategoryPicker
                     taxonomy={categoryTaxonomy}
@@ -551,25 +567,25 @@ export default function Inventory() {
                     onChange={(next) => setNewProduct((p) => ({ ...p, ...next }))}
                   />
                 ) : (
-                  <div><Label>Category</Label><Input className="mt-1" placeholder="e.g. Chemicals" list="inventory-categories" value={newProduct.category} onChange={(e) => setNewProduct((p) => ({ ...p, category: e.target.value }))} /></div>
+                  <div><Label>{t("Category")}</Label><Input className="mt-1" placeholder={t("e.g. Chemicals")} list="inventory-categories" value={newProduct.category} onChange={(e) => setNewProduct((p) => ({ ...p, category: e.target.value }))} /></div>
                 )}
                 <div className="grid grid-cols-2 gap-4">
-                  <div><Label>Cost (internal)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
-                  <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.price} onChange={(e) => setNewProduct((p) => ({ ...p, price: e.target.value }))} /></div>
+                  <div><Label>{t("Cost (internal)")}</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.unitCost} onChange={(e) => setNewProduct((p) => ({ ...p, unitCost: e.target.value }))} /></div>
+                  <div><Label>{t("Price (customer-facing)")}</Label><Input className="mt-1" type="number" placeholder="0.00" value={newProduct.price} onChange={(e) => setNewProduct((p) => ({ ...p, price: e.target.value }))} /></div>
                 </div>
-                <div><Label>Short Description</Label><Input className="mt-1" placeholder="One-line summary" value={newProduct.shortDescription} onChange={(e) => setNewProduct((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
-                <div><Label>Long Description</Label><Input className="mt-1" placeholder="Full details" value={newProduct.longDescription} onChange={(e) => setNewProduct((p) => ({ ...p, longDescription: e.target.value }))} /></div>
+                <div><Label>{t("Short Description")}</Label><Input className="mt-1" placeholder={t("One-line summary")} value={newProduct.shortDescription} onChange={(e) => setNewProduct((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
+                <div><Label>{t("Long Description")}</Label><Input className="mt-1" placeholder={t("Full details")} value={newProduct.longDescription} onChange={(e) => setNewProduct((p) => ({ ...p, longDescription: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><Label>Department</Label><Input className="mt-1" placeholder="e.g. Pool Care" value={newProduct.department} onChange={(e) => setNewProduct((p) => ({ ...p, department: e.target.value }))} /></div>
-                  <div><Label>Sub-department</Label><Input className="mt-1" placeholder="e.g. Sanitizers" value={newProduct.subDepartment} onChange={(e) => setNewProduct((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
+                  <div><Label>{t("Department")}</Label><Input className="mt-1" placeholder={t("e.g. Pool Care")} value={newProduct.department} onChange={(e) => setNewProduct((p) => ({ ...p, department: e.target.value }))} /></div>
+                  <div><Label>{t("Sub-department")}</Label><Input className="mt-1" placeholder={t("e.g. Sanitizers")} value={newProduct.subDepartment} onChange={(e) => setNewProduct((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
                 </div>
-                <div><Label>Manufacturer</Label><Input className="mt-1" placeholder="e.g. Pentair" value={newProduct.manufacturer} onChange={(e) => setNewProduct((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
+                <div><Label>{t("Manufacturer")}</Label><Input className="mt-1" placeholder={t("e.g. Pentair")} value={newProduct.manufacturer} onChange={(e) => setNewProduct((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
                 <div>
-                  <Label>Reorder Threshold</Label>
+                  <Label>{t("Reorder Threshold")}</Label>
                   <Input className="mt-1" type="number" placeholder="0" value={newProduct.reorderThreshold} onChange={(e) => setNewProduct((p) => ({ ...p, reorderThreshold: e.target.value }))} />
-                  <p className="text-xs text-[#64748B] mt-1">Shows as "Low Stock" once total quantity drops to this number or below.</p>
+                  <p className="text-xs text-[#64748B] mt-1">{t('Shows as "Low Stock" once total quantity drops to this number or below.')}</p>
                 </div>
-                <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>Save Product</Button>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>{t("Save Product")}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -590,7 +606,7 @@ export default function Inventory() {
                 <Icon className={`w-5 h-5 ${kpi.color}`} />
               </div>
               <div>
-                <p className="text-xs text-[#64748B]">{kpi.label}</p>
+                <p className="text-xs text-[#64748B]">{t(kpi.label)}</p>
                 <p className="text-lg font-bold text-[#0F172A]">{kpi.value}</p>
               </div>
             </div>
@@ -598,28 +614,28 @@ export default function Inventory() {
         })}
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading inventory...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading inventory...")}</div>}
 
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
           <TabsTrigger value="catalog" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Package className="w-4 h-4" /> Catalog
+            <Package className="w-4 h-4" /> {t("Catalog")}
           </TabsTrigger>
           <TabsTrigger value="suppliers" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Truck className="w-4 h-4" /> Vendors
+            <Truck className="w-4 h-4" /> {t("Vendors")}
           </TabsTrigger>
           <TabsTrigger value="purchase" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <ShoppingCart className="w-4 h-4" /> Purchase Orders
+            <ShoppingCart className="w-4 h-4" /> {t("Purchase Orders")}
           </TabsTrigger>
           <TabsTrigger value="vendor-bills" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Receipt className="w-4 h-4" /> Vendor Bills
+            <Receipt className="w-4 h-4" /> {t("Vendor Bills")}
           </TabsTrigger>
           <TabsTrigger value="variance" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <BarChart3 className="w-4 h-4" /> Variance
+            <BarChart3 className="w-4 h-4" /> {t("Variance")}
           </TabsTrigger>
           <TabsTrigger value="writeoffs" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <ClipboardX className="w-4 h-4" /> Write-Offs
+            <ClipboardX className="w-4 h-4" /> {t("Write-Offs")}
           </TabsTrigger>
         </TabsList>
 
@@ -627,47 +643,47 @@ export default function Inventory() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-              <Input placeholder="Search name, SKU, description, category, or manufacturer..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+              <Input placeholder={t("Search name, SKU, description, category, or manufacturer...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
             </div>
             <div className="flex gap-2">
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue placeholder="Category" /></SelectTrigger>
-                <SelectContent className="max-h-72">{dynamicCategories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Category")} /></SelectTrigger>
+                <SelectContent className="max-h-72">{dynamicCategories.map(c => <SelectItem key={c} value={c}>{c === "All" ? t("All") : c}</SelectItem>)}</SelectContent>
               </Select>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintLabels}>
-                <Tag className="w-4 h-4" /> Print Labels{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+                <Tag className="w-4 h-4" /> {t("Print Labels")}{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
               </Button>
               <Select value={barcodeSource} onValueChange={(v) => setBarcodeSource(v as "sku" | "itemNumber")}>
                 <SelectTrigger className="h-10 w-32 bg-white border-[#E2E8F0]"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="sku">Barcode: SKU</SelectItem>
-                  <SelectItem value="itemNumber">Barcode: Item #</SelectItem>
+                  <SelectItem value="sku">{t("Barcode: SKU")}</SelectItem>
+                  <SelectItem value="itemNumber">{t("Barcode: Item #")}</SelectItem>
                 </SelectContent>
               </Select>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={handlePrintZebraLabels}>
-                <Barcode className="w-4 h-4" /> Zebra Barcode{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
+                <Barcode className="w-4 h-4" /> {t("Zebra Barcode")}{selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}
               </Button>
             </div>
           </div>
-          <p className="text-xs text-[#64748B]">Products consumed on a job are automatically deducted at close. Select rows below to print only those price labels (Avery 5160 sheet), otherwise all filtered products print.</p>
+          <p className="text-xs text-[#64748B]">{t("Products consumed on a job are automatically deducted at close. Select rows below to print only those price labels (Avery 5160 sheet), otherwise all filtered products print.")}</p>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                     <th className="w-8 py-3 px-4"></th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Item #</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">SKU</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Category</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Manufacturer</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Store</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vehicles</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Total</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Reorder</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Cost</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Price</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Item #")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("SKU")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Category")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Manufacturer")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Store")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vehicles")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Reorder")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Cost")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Price")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">QBO</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
@@ -702,19 +718,19 @@ export default function Inventory() {
                       <td className="text-right py-3 px-4 text-[#0F172A]">${p.unit_cost.toFixed(2)}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{p.price !== null ? `$${p.price.toFixed(2)}` : "—"}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{p.status}</Badge>
+                        <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{t(p.status)}</Badge>
                       </td>
                       <td className="text-center py-3 px-4">
                         <button
                           className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]"
-                          title={(p.qbo_accounts as QboAccounts | null)?.income ? "QBO accounts mapped" : "Map QBO accounts"}
+                          title={(p.qbo_accounts as QboAccounts | null)?.income ? t("QBO accounts mapped") : t("Map QBO accounts")}
                           onClick={() => openQboDialog(p)}
                         >
                           <Landmark className={`w-4 h-4 ${(p.qbo_accounts as QboAccounts | null)?.income ? "text-[#16A34A]" : ""}`} />
                         </button>
                       </td>
                       <td className="text-center py-3 px-4">
-                        <button className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]" title="Edit Product" onClick={() => openEditProduct(p)}>
+                        <button className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]" title={t("Edit Product")} onClick={() => openEditProduct(p)}>
                           <Pencil className="w-4 h-4" />
                         </button>
                       </td>
@@ -726,15 +742,15 @@ export default function Inventory() {
             {filtered.length > 0 && (
               <div className="flex items-center justify-between px-4 py-3 border-t border-[#E2E8F0] text-sm">
                 <p className="text-[#64748B]">
-                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+                  {t("Showing")} {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} {t("of")} {filtered.length}
                 </p>
                 <div className="flex items-center gap-2">
                   <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                    Previous
+                    {t("Previous")}
                   </Button>
-                  <span className="text-[#64748B] text-xs">Page {page} of {totalPages}</span>
+                  <span className="text-[#64748B] text-xs">{t("Page")} {page} {t("of")} {totalPages}</span>
                   <Button variant="outline" size="sm" className="h-8 border-[#E2E8F0]" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                    Next
+                    {t("Next")}
                   </Button>
                 </div>
               </div>
@@ -743,21 +759,25 @@ export default function Inventory() {
         </TabsContent>
 
         <TabsContent value="suppliers" className="mt-4 space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+              <Input placeholder={t("Search vendor, contact, address, or phone...")} value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+            </div>
             <Dialog open={supplierOpen} onOpenChange={setSupplierOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10" onClick={openAddSupplier}>
-                  <Plus className="w-4 h-4" /> Add Vendor
+                  <Plus className="w-4 h-4" /> {t("Add Vendor")}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{editSupplier ? "Edit Vendor" : "Add Vendor"}</DialogTitle></DialogHeader>
+              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{editSupplier ? t("Edit Vendor") : t("Add Vendor")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div><Label>Name</Label><Input className="mt-1" value={newSupplier.name} onChange={(e) => setNewSupplier((p) => ({ ...p, name: e.target.value }))} /></div>
-                  <div><Label>Contact</Label><Input className="mt-1" value={newSupplier.contact} onChange={(e) => setNewSupplier((p) => ({ ...p, contact: e.target.value }))} /></div>
-                  <div><Label>Phone</Label><Input className="mt-1" value={newSupplier.phone} onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))} /></div>
-                  <div><Label>Address</Label><Input className="mt-1" value={newSupplier.address} onChange={(e) => setNewSupplier((p) => ({ ...p, address: e.target.value }))} /></div>
-                  <div><Label>Lead Time</Label><Input className="mt-1" placeholder="3-5 days" value={newSupplier.leadTime} onChange={(e) => setNewSupplier((p) => ({ ...p, leadTime: e.target.value }))} /></div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveSupplier}>{editSupplier ? "Save Changes" : "Add Vendor"}</Button>
+                  <div><Label>{t("Name")}</Label><Input className="mt-1" value={newSupplier.name} onChange={(e) => setNewSupplier((p) => ({ ...p, name: e.target.value }))} /></div>
+                  <div><Label>{t("Contact")}</Label><Input className="mt-1" value={newSupplier.contact} onChange={(e) => setNewSupplier((p) => ({ ...p, contact: e.target.value }))} /></div>
+                  <div><Label>{t("Phone")}</Label><Input className="mt-1" value={newSupplier.phone} onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))} /></div>
+                  <div><Label>{t("Address")}</Label><Input className="mt-1" value={newSupplier.address} onChange={(e) => setNewSupplier((p) => ({ ...p, address: e.target.value }))} /></div>
+                  <div><Label>{t("Lead Time")}</Label><Input className="mt-1" placeholder={t("3-5 days")} value={newSupplier.leadTime} onChange={(e) => setNewSupplier((p) => ({ ...p, leadTime: e.target.value }))} /></div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveSupplier}>{editSupplier ? t("Save Changes") : t("Add Vendor")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -767,16 +787,21 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vendor</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Address</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Contact</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Phone</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Lead Time</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vendor")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Address")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Contact")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Phone")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Lead Time")}</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {suppliers.map((s) => (
+                  {suppliers.filter((s) => {
+                    const q = vendorSearch.toLowerCase();
+                    if (!q) return true;
+                    const address = (s as Supplier & { address: string | null }).address;
+                    return [s.name, s.contact, s.phone, address].filter(Boolean).some((f) => (f as string).toLowerCase().includes(q));
+                  }).map((s) => (
                     <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A] cursor-pointer" onClick={() => openEditSupplier(s)}>{s.name}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{(s as Supplier & { address: string | null }).address}</td>
@@ -784,9 +809,9 @@ export default function Inventory() {
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.phone}</td>
                       <td className="text-right py-3 px-4"><Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{s.lead_time}</Badge></td>
                       <td className="text-right py-3 px-4">
-                        <button className="text-xs text-[#0891B2] font-medium hover:underline mr-3" onClick={() => openSupplierLocations(s)}>Locations</button>
-                        <button onClick={() => openEditSupplier(s)} title="Edit Vendor"><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></button>
-                        <button onClick={() => handleDeleteSupplier(s)} title="Delete Vendor" className="ml-2"><Trash2 className="w-3.5 h-3.5 text-[#DC2626] inline" /></button>
+                        <button className="text-xs text-[#0891B2] font-medium hover:underline mr-3" onClick={() => openSupplierLocations(s)}>{t("Locations")}</button>
+                        <button onClick={() => openEditSupplier(s)} title={t("Edit Vendor")}><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></button>
+                        <button onClick={() => handleDeleteSupplier(s)} title={t("Delete Vendor")} className="ml-2"><Trash2 className="w-3.5 h-3.5 text-[#DC2626] inline" /></button>
                       </td>
                     </tr>
                   ))}
@@ -798,7 +823,7 @@ export default function Inventory() {
           {/* Client PDF 2026-09-05: "some vendors have multiple locations we put from". */}
           <Dialog open={!!locationsSupplier} onOpenChange={(open) => !open && setLocationsSupplier(null)}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{locationsSupplier?.name} — Locations</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{locationsSupplier?.name} — {t("Locations")}</DialogTitle></DialogHeader>
               <div className="space-y-3 pt-2">
                 {supplierLocations.map((loc) => (
                   <div key={loc.id} className="flex items-start justify-between p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
@@ -807,19 +832,19 @@ export default function Inventory() {
                       {loc.address && <p className="text-[#64748B]">{loc.address}</p>}
                       {(loc.contact_name || loc.phone) && <p className="text-[#64748B]">{[loc.contact_name, loc.phone].filter(Boolean).join(" · ")}</p>}
                     </div>
-                    <button onClick={() => handleRemoveLocation(loc.id)} className="text-[#DC2626] text-xs">Remove</button>
+                    <button onClick={() => handleRemoveLocation(loc.id)} className="text-[#DC2626] text-xs">{t("Remove")}</button>
                   </div>
                 ))}
-                {supplierLocations.length === 0 && <p className="text-sm text-[#64748B]">No additional locations yet.</p>}
+                {supplierLocations.length === 0 && <p className="text-sm text-[#64748B]">{t("No additional locations yet.")}</p>}
                 <div className="border-t border-[#E2E8F0] pt-3 space-y-2">
-                  <p className="text-xs font-semibold text-[#64748B] uppercase">Add Location</p>
-                  <Input placeholder="Label (e.g. Warehouse B)" value={newLocation.label} onChange={(e) => setNewLocation((p) => ({ ...p, label: e.target.value }))} />
-                  <Input placeholder="Address" value={newLocation.address} onChange={(e) => setNewLocation((p) => ({ ...p, address: e.target.value }))} />
+                  <p className="text-xs font-semibold text-[#64748B] uppercase">{t("Add Location")}</p>
+                  <Input placeholder={t("Label (e.g. Warehouse B)")} value={newLocation.label} onChange={(e) => setNewLocation((p) => ({ ...p, label: e.target.value }))} />
+                  <Input placeholder={t("Address")} value={newLocation.address} onChange={(e) => setNewLocation((p) => ({ ...p, address: e.target.value }))} />
                   <div className="grid grid-cols-2 gap-2">
-                    <Input placeholder="Contact Name" value={newLocation.contactName} onChange={(e) => setNewLocation((p) => ({ ...p, contactName: e.target.value }))} />
-                    <Input placeholder="Phone" value={newLocation.phone} onChange={(e) => setNewLocation((p) => ({ ...p, phone: e.target.value }))} />
+                    <Input placeholder={t("Contact Name")} value={newLocation.contactName} onChange={(e) => setNewLocation((p) => ({ ...p, contactName: e.target.value }))} />
+                    <Input placeholder={t("Phone")} value={newLocation.phone} onChange={(e) => setNewLocation((p) => ({ ...p, phone: e.target.value }))} />
                   </div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddLocation}>Add Location</Button>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddLocation}>{t("Add Location")}</Button>
                 </div>
               </div>
             </DialogContent>
@@ -830,68 +855,74 @@ export default function Inventory() {
           <div className="flex justify-end">
             <Dialog open={poOpen} onOpenChange={setPoOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> New PO</Button>
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("New PO")}</Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>New Purchase Order</DialogTitle></DialogHeader>
+              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div><Label>PO Number</Label><Input className="mt-1" placeholder="PO-2026-001" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} /></div>
-                  <div><Label>Vendor</Label>
+                  <div><Label>{t("PO Number")}</Label><Input className="mt-1" placeholder="PO-2026-001" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} /></div>
+                  <div><Label>{t("Vendor")}</Label>
                     <div className="mt-1">
                       <SearchableSelect
                         value={newPo.supplierId}
                         onChange={handlePoSupplierChange}
-                        placeholder="Select vendor"
-                        searchPlaceholder="Search vendors..."
+                        placeholder={t("Select vendor")}
+                        searchPlaceholder={t("Search vendors...")}
                         options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
                       />
                     </div>
                   </div>
                   {newPoLocations.length > 0 && (
-                    <div><Label>Order From (Location)</Label>
+                    <div><Label>{t("Order From (Location)")}</Label>
                       <Select value={newPo.locationId} onValueChange={(v) => setNewPo((p) => ({ ...p, locationId: v }))}>
-                        <SelectTrigger className="mt-1"><SelectValue placeholder="Default / main location" /></SelectTrigger>
+                        <SelectTrigger className="mt-1"><SelectValue placeholder={t("Default / main location")} /></SelectTrigger>
                         <SelectContent>{newPoLocations.map(l => <SelectItem key={l.id} value={l.id}>{l.label}</SelectItem>)}</SelectContent>
                       </Select>
                     </div>
                   )}
-                  {poError && <p className="text-sm text-[#DC2626]">{poError}</p>}
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreatePo}>Create PO</Button>
+                  <div><Label>{t("Products")}</Label>
+                    <div className="mt-1">
+                      <PoLineItemsEditor items={newPoLineItems} onChange={setNewPoLineItems} inventoryItems={items} />
+                    </div>
+                  </div>
+                  {poError && <p className="text-sm text-[#DC2626]">{t(poError)}</p>}
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreatePo}>{t("Create PO")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
           </div>
 
           <Dialog open={!!poDetail} onOpenChange={(open) => !open && setPoDetail(null)}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Purchase Order {poDetail?.number}</DialogTitle></DialogHeader>
+            <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{t("Purchase Order")} {poDetail?.number}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
-                <div><Label>PO Number</Label><Input className="mt-1" value={poDetailDraft.number} onChange={(e) => setPoDetailDraft((p) => ({ ...p, number: e.target.value }))} /></div>
-                <div><Label>Vendor</Label>
+                <div><Label>{t("PO Number")}</Label><Input className="mt-1" value={poDetailDraft.number} onChange={(e) => setPoDetailDraft((p) => ({ ...p, number: e.target.value }))} /></div>
+                <div><Label>{t("Vendor")}</Label>
                   <div className="mt-1">
                     <SearchableSelect
                       value={poDetailDraft.supplierId}
                       onChange={(v) => setPoDetailDraft((p) => ({ ...p, supplierId: v }))}
-                      placeholder="Select vendor"
-                      searchPlaceholder="Search vendors..."
+                      placeholder={t("Select vendor")}
+                      searchPlaceholder={t("Search vendors...")}
                       options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
                     />
                   </div>
                 </div>
-                <div><Label>Status</Label>
+                <div><Label>{t("Status")}</Label>
                   <Select value={poDetailDraft.status} onValueChange={(v) => setPoDetailDraft((p) => ({ ...p, status: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Draft">Draft</SelectItem>
-                      <SelectItem value="Ordered">Ordered</SelectItem>
-                      <SelectItem value="Received">Received</SelectItem>
+                      <SelectItem value="Pending">{t("Pending")}</SelectItem>
+                      <SelectItem value="Sent">{t("Sent")}</SelectItem>
+                      <SelectItem value="Received">{t("Received")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><Label>Item Count</Label><Input type="number" className="mt-1" value={poDetailDraft.itemCount} onChange={(e) => setPoDetailDraft((p) => ({ ...p, itemCount: e.target.value }))} /></div>
-                  <div><Label>Total ($)</Label><Input type="number" className="mt-1" value={poDetailDraft.total} onChange={(e) => setPoDetailDraft((p) => ({ ...p, total: e.target.value }))} /></div>
+                <div><Label>{t("Received Date")}</Label><Input type="date" className="mt-1" value={poDetailDraft.receivedDate} onChange={(e) => setPoDetailDraft((p) => ({ ...p, receivedDate: e.target.value }))} /></div>
+                <div><Label>{t("Products")}</Label>
+                  <div className="mt-1">
+                    <PoLineItemsEditor items={poDetailLineItems} onChange={setPoDetailLineItems} inventoryItems={items} />
+                  </div>
                 </div>
-                <div><Label>Received Date</Label><Input type="date" className="mt-1" value={poDetailDraft.receivedDate} onChange={(e) => setPoDetailDraft((p) => ({ ...p, receivedDate: e.target.value }))} /></div>
-                <Button className="w-full bg-[#0891B2] text-white" onClick={handleSavePoDetail}>Save Changes</Button>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleSavePoDetail}>{t("Save Changes")}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -900,13 +931,14 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">PO Number</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vendor</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Items</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Total</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Received</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("PO Number")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vendor")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Items")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Received")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -919,7 +951,12 @@ export default function Inventory() {
                       <td className="py-3 px-4 text-[#64748B]">{po.order_date}</td>
                       <td className="py-3 px-4 text-[#64748B]">{po.received_date || "—"}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${poStatusColors[po.status]} text-[10px] px-1.5 py-0`}>{po.status}</Badge>
+                        <Badge className={`${poStatusColors[po.status]} text-[10px] px-1.5 py-0`}>{t(po.status)}</Badge>
+                      </td>
+                      <td className="text-center py-3 px-4">
+                        <button className="p-1.5 rounded hover:bg-[#E2E8F0] text-[#0891B2]" title={t("View / Edit PO")} onClick={(e) => { e.stopPropagation(); openPoDetail(po); }}>
+                          <Eye className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -933,28 +970,28 @@ export default function Inventory() {
           <div className="flex justify-end">
             <Dialog open={newBillOpen} onOpenChange={setNewBillOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> New Vendor Bill</Button>
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("New Vendor Bill")}</Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Create New Vendor Bill</DialogTitle></DialogHeader>
+              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{t("Create New Vendor Bill")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div><Label>Vendor</Label>
+                  <div><Label>{t("Vendor")}</Label>
                     <div className="mt-1">
                       <SearchableSelect
                         value={newBill.supplierId}
                         onChange={(v) => setNewBill((p) => ({ ...p, supplierId: v }))}
-                        placeholder="Select vendor"
-                        searchPlaceholder="Search vendors..."
+                        placeholder={t("Select vendor")}
+                        searchPlaceholder={t("Search vendors...")}
                         options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
                       />
                     </div>
                   </div>
-                  <div><Label>Bill Number</Label><Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} /></div>
+                  <div><Label>{t("Bill Number")}</Label><Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} /></div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label>Issue Date</Label><Input type="date" className="mt-1" value={newBill.issueDate} onChange={(e) => setNewBill((p) => ({ ...p, issueDate: e.target.value }))} /></div>
-                    <div><Label>Due Date</Label><Input type="date" className="mt-1" value={newBill.dueDate} onChange={(e) => setNewBill((p) => ({ ...p, dueDate: e.target.value }))} /></div>
+                    <div><Label>{t("Issue Date")}</Label><Input type="date" className="mt-1" value={newBill.issueDate} onChange={(e) => setNewBill((p) => ({ ...p, issueDate: e.target.value }))} /></div>
+                    <div><Label>{t("Due Date")}</Label><Input type="date" className="mt-1" value={newBill.dueDate} onChange={(e) => setNewBill((p) => ({ ...p, dueDate: e.target.value }))} /></div>
                   </div>
-                  <div><Label>Amount</Label><Input type="number" className="mt-1" placeholder="0.00" value={newBill.amount} onChange={(e) => setNewBill((p) => ({ ...p, amount: e.target.value }))} /></div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateBill}>Create Vendor Bill</Button>
+                  <div><Label>{t("Amount")}</Label><Input type="number" className="mt-1" placeholder="0.00" value={newBill.amount} onChange={(e) => setNewBill((p) => ({ ...p, amount: e.target.value }))} /></div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateBill}>{t("Create Vendor Bill")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -962,13 +999,13 @@ export default function Inventory() {
 
           {vendorBillsDue.length > 0 && (
             <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-3">Vendor Bills Due</p>
+              <p className="text-xs font-semibold text-[#64748B] uppercase mb-3">{t("Vendor Bills Due")}</p>
               <div className="flex flex-wrap gap-3">
                 {vendorBillsDue.map((v) => (
                   <div key={v.supplier_id} className="flex items-center gap-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] px-3 py-2">
                     <span className="text-sm font-medium text-[#0F172A]">{v.supplier_name}</span>
                     <span className="text-sm font-bold text-[#DC2626]">${v.total_due.toLocaleString()}</span>
-                    <span className="text-xs text-[#64748B]">({v.bill_count} bill{v.bill_count === 1 ? "" : "s"})</span>
+                    <span className="text-xs text-[#64748B]">({v.bill_count} {v.bill_count === 1 ? t("bill") : t("bills")})</span>
                   </div>
                 ))}
               </div>
@@ -979,12 +1016,12 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Bill #</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vendor</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Issue Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Due Date</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Bill #")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vendor")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Due Date")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
@@ -997,19 +1034,19 @@ export default function Inventory() {
                       <td className="py-3 px-4 text-[#64748B]">{bill.due_date ?? "—"}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${bill.amount.toLocaleString()}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${vendorBillStatusColors[bill.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{bill.status}</Badge>
+                        <Badge className={`${vendorBillStatusColors[bill.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{t(bill.status)}</Badge>
                       </td>
                       <td className="text-center py-3 px-4">
                         {bill.status !== "Paid" && (
                           <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleMarkBillPaid(bill.id)}>
-                            Mark Paid
+                            {t("Mark Paid")}
                           </Button>
                         )}
                       </td>
                     </tr>
                   ))}
                   {vendorBills.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">No vendor bills yet</td></tr>
+                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{t("No vendor bills yet")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1023,11 +1060,11 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Expected</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Actual</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Variance %</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Flag</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Expected")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Actual")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Variance %")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Flag")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1040,7 +1077,7 @@ export default function Inventory() {
                         {v.variance_pct}%
                       </td>
                       <td className="text-center py-3 px-4">
-                        {v.flagged && <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">Flagged</Badge>}
+                        {v.flagged && <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Flagged")}</Badge>}
                       </td>
                     </tr>
                   ))}
@@ -1054,20 +1091,20 @@ export default function Inventory() {
           <div className="flex justify-end">
             <Dialog open={writeoffOpen} onOpenChange={setWriteoffOpen}>
               <DialogTrigger asChild>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> Write Off SKU</Button>
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("Write Off SKU")}</Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Write Off SKU</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{t("Write Off SKU")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
-                    <Label>Product</Label>
+                    <Label>{t("Product")}</Label>
                     <div className="mt-1">
                       <SearchableSelect
                         value={writeoffDraft.itemId}
                         onChange={(v) => setWriteoffDraft((p) => ({ ...p, itemId: v }))}
-                        placeholder="Select product"
-                        searchPlaceholder="Search item #, SKU, name, or description..."
-                        emptyText="No matching items."
+                        placeholder={t("Select product")}
+                        searchPlaceholder={t("Search item #, SKU, name, or description...")}
+                        emptyText={t("No matching items.")}
                         options={items.map((i) => ({
                           value: i.id,
                           label: `${i.item_number ?? i.sku} · ${i.sku} — ${i.name}`,
@@ -1077,23 +1114,23 @@ export default function Inventory() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label>Quantity</Label><Input type="number" className="mt-1" value={writeoffDraft.quantity} onChange={(e) => setWriteoffDraft((p) => ({ ...p, quantity: e.target.value }))} /></div>
+                    <div><Label>{t("Quantity")}</Label><Input type="number" className="mt-1" value={writeoffDraft.quantity} onChange={(e) => setWriteoffDraft((p) => ({ ...p, quantity: e.target.value }))} /></div>
                     <div>
-                      <Label>Reason</Label>
+                      <Label>{t("Reason")}</Label>
                       <Select value={writeoffDraft.reason} onValueChange={(v) => setWriteoffDraft((p) => ({ ...p, reason: v }))}>
                         <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Store Use">Store Use</SelectItem>
-                          <SelectItem value="Truck Use">Truck Use</SelectItem>
-                          <SelectItem value="Weekly Service Use">Weekly Service Use</SelectItem>
-                          <SelectItem value="Shrinkage">Shrinkage</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
+                          <SelectItem value="Store Use">{t("Store Use")}</SelectItem>
+                          <SelectItem value="Truck Use">{t("Truck Use")}</SelectItem>
+                          <SelectItem value="Weekly Service Use">{t("Weekly Service Use")}</SelectItem>
+                          <SelectItem value="Shrinkage">{t("Shrinkage")}</SelectItem>
+                          <SelectItem value="Other">{t("Other")}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
-                  <div><Label>Note (optional)</Label><Input className="mt-1" value={writeoffDraft.note} onChange={(e) => setWriteoffDraft((p) => ({ ...p, note: e.target.value }))} /></div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateWriteoff}>Save Write-Off</Button>
+                  <div><Label>{t("Note (optional)")}</Label><Input className="mt-1" value={writeoffDraft.note} onChange={(e) => setWriteoffDraft((p) => ({ ...p, note: e.target.value }))} /></div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateWriteoff}>{t("Save Write-Off")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -1103,11 +1140,11 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Product</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Qty</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Reason</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Note</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Qty")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Reason")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Note")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1115,13 +1152,13 @@ export default function Inventory() {
                     <tr key={w.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{w.inventory_items?.name ?? "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{w.quantity}</td>
-                      <td className="py-3 px-4"><Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px] px-1.5 py-0">{w.reason}</Badge></td>
+                      <td className="py-3 px-4"><Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px] px-1.5 py-0">{t(w.reason)}</Badge></td>
                       <td className="py-3 px-4 text-[#64748B]">{w.note ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{new Date(w.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))}
                   {writeoffs.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">No write-offs yet</td></tr>
+                    <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{t("No write-offs yet")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1134,9 +1171,9 @@ export default function Inventory() {
       {/* QBO account mapping (client request 2026-08-27): COGS/Income/Asset accounts per item */}
       <Dialog open={!!qboDialogItem} onOpenChange={(open) => !open && setQboDialogItem(null)}>
         <DialogContent className="max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>QuickBooks Accounts — {qboDialogItem?.name}</DialogTitle></DialogHeader>
-          {qboError && <p className="text-sm text-red-600">{qboError}</p>}
-          {!qboError && !qboAccountList && <p className="text-sm text-[#64748B]">Loading QuickBooks chart of accounts...</p>}
+          <DialogHeader><DialogTitle>{t("QuickBooks Accounts")} — {qboDialogItem?.name}</DialogTitle></DialogHeader>
+          {qboError && <p className="text-sm text-red-600">{t(qboError)}</p>}
+          {!qboError && !qboAccountList && <p className="text-sm text-[#64748B]">{t("Loading QuickBooks chart of accounts...")}</p>}
           {qboAccountList && (
             <div className="space-y-4 pt-2">
               {([
@@ -1145,7 +1182,7 @@ export default function Inventory() {
                 { key: "asset" as const, label: "Asset Account" },
               ]).map(({ key, label }) => (
                 <div key={key}>
-                  <Label>{label}</Label>
+                  <Label>{t(label)}</Label>
                   <Select
                     value={qboSelection[key]?.id ?? ""}
                     onValueChange={(v) => {
@@ -1153,7 +1190,7 @@ export default function Inventory() {
                       setQboSelection((p) => ({ ...p, [key]: account ? { id: account.id, name: account.name } : null }));
                     }}
                   >
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select account" /></SelectTrigger>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select account")} /></SelectTrigger>
                     <SelectContent>
                       {accountsByGroup(key).map((a) => (
                         <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
@@ -1162,7 +1199,7 @@ export default function Inventory() {
                   </Select>
                 </div>
               ))}
-              <Button className="w-full bg-[#0891B2] text-white" onClick={saveQboAccounts}>Save</Button>
+              <Button className="w-full bg-[#0891B2] text-white" onClick={saveQboAccounts}>{t("Save")}</Button>
             </div>
           )}
         </DialogContent>
@@ -1172,7 +1209,7 @@ export default function Inventory() {
           other field a real item carries (barcode, distributor, unit, taxable). */}
       <Dialog open={!!editProductItem} onOpenChange={(open) => !open && setEditProductItem(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Edit Product — {editProductItem?.name}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Edit Product")} — {editProductItem?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             {/* Client request 2026-09-04: "if stock runs out, be able to mark it Out; if it's
                 back, mark it In Stock" — status is computed live from real quantity everywhere
@@ -1186,8 +1223,8 @@ export default function Inventory() {
               return (
                 <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-3 bg-[#F8FAFC]">
                   <div className="flex items-center justify-between">
-                    <Label>Store Stock Quantity</Label>
-                    <Badge className={`${statusColors[previewStatus]} text-[10px] px-1.5 py-0`}>{previewStatus}</Badge>
+                    <Label>{t("Store Stock Quantity")}</Label>
+                    <Badge className={`${statusColors[previewStatus]} text-[10px] px-1.5 py-0`}>{t(previewStatus)}</Badge>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <Input
@@ -1197,7 +1234,7 @@ export default function Inventory() {
                     />
                     <div className="flex gap-2">
                       <Button type="button" size="sm" variant="outline" className="flex-1 border-[#E2E8F0]" onClick={() => setEditProductDraft((p) => ({ ...p, storeQuantity: "0" }))}>
-                        Mark Out
+                        {t("Mark Out")}
                       </Button>
                       <Button
                         type="button"
@@ -1206,18 +1243,18 @@ export default function Inventory() {
                         className="flex-1 border-[#E2E8F0]"
                         onClick={() => setEditProductDraft((p) => ({ ...p, storeQuantity: String(Math.max(threshold + 1, 1)) }))}
                       >
-                        Mark In Stock
+                        {t("Mark In Stock")}
                       </Button>
                     </div>
                   </div>
                   <p className="text-xs text-[#64748B]">
-                    Vehicle stock ({editProductItem.vehicleQty}) is managed separately and isn't editable here.
+                    {t("Vehicle stock")} ({editProductItem.vehicleQty}) {t("is managed separately and isn't editable here.")}
                   </p>
                 </div>
               );
             })()}
-            <div><Label>Name</Label><Input className="mt-1" value={editProductDraft.name} onChange={(e) => setEditProductDraft((p) => ({ ...p, name: e.target.value }))} /></div>
-            <div><Label>SKU</Label><Input className="mt-1" value={editProductDraft.sku} onChange={(e) => setEditProductDraft((p) => ({ ...p, sku: e.target.value }))} /></div>
+            <div><Label>{t("Name")}</Label><Input className="mt-1" value={editProductDraft.name} onChange={(e) => setEditProductDraft((p) => ({ ...p, name: e.target.value }))} /></div>
+            <div><Label>{t("SKU")}</Label><Input className="mt-1" value={editProductDraft.sku} onChange={(e) => setEditProductDraft((p) => ({ ...p, sku: e.target.value }))} /></div>
             {categoryTaxonomy.length > 0 ? (
               <CategoryPicker
                 taxonomy={categoryTaxonomy}
@@ -1228,34 +1265,34 @@ export default function Inventory() {
                 onChange={(next) => setEditProductDraft((p) => ({ ...p, ...next }))}
               />
             ) : (
-              <div><Label>Category</Label><Input className="mt-1" list="inventory-categories" value={editProductDraft.category} onChange={(e) => setEditProductDraft((p) => ({ ...p, category: e.target.value }))} /></div>
+              <div><Label>{t("Category")}</Label><Input className="mt-1" list="inventory-categories" value={editProductDraft.category} onChange={(e) => setEditProductDraft((p) => ({ ...p, category: e.target.value }))} /></div>
             )}
-            <div><Label>Unit</Label><Input className="mt-1" placeholder="ea" value={editProductDraft.unit} onChange={(e) => setEditProductDraft((p) => ({ ...p, unit: e.target.value }))} /></div>
+            <div><Label>{t("Unit")}</Label><Input className="mt-1" placeholder="ea" value={editProductDraft.unit} onChange={(e) => setEditProductDraft((p) => ({ ...p, unit: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Cost (internal)</Label><Input className="mt-1" type="number" value={editProductDraft.unitCost} onChange={(e) => setEditProductDraft((p) => ({ ...p, unitCost: e.target.value }))} /></div>
-              <div><Label>Price (customer-facing)</Label><Input className="mt-1" type="number" value={editProductDraft.price} onChange={(e) => setEditProductDraft((p) => ({ ...p, price: e.target.value }))} /></div>
+              <div><Label>{t("Cost (internal)")}</Label><Input className="mt-1" type="number" value={editProductDraft.unitCost} onChange={(e) => setEditProductDraft((p) => ({ ...p, unitCost: e.target.value }))} /></div>
+              <div><Label>{t("Price (customer-facing)")}</Label><Input className="mt-1" type="number" value={editProductDraft.price} onChange={(e) => setEditProductDraft((p) => ({ ...p, price: e.target.value }))} /></div>
             </div>
-            <div><Label>Short Description</Label><Input className="mt-1" value={editProductDraft.shortDescription} onChange={(e) => setEditProductDraft((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
-            <div><Label>Long Description</Label><Input className="mt-1" value={editProductDraft.longDescription} onChange={(e) => setEditProductDraft((p) => ({ ...p, longDescription: e.target.value }))} /></div>
+            <div><Label>{t("Short Description")}</Label><Input className="mt-1" value={editProductDraft.shortDescription} onChange={(e) => setEditProductDraft((p) => ({ ...p, shortDescription: e.target.value }))} /></div>
+            <div><Label>{t("Long Description")}</Label><Input className="mt-1" value={editProductDraft.longDescription} onChange={(e) => setEditProductDraft((p) => ({ ...p, longDescription: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Department</Label><Input className="mt-1" value={editProductDraft.department} onChange={(e) => setEditProductDraft((p) => ({ ...p, department: e.target.value }))} /></div>
-              <div><Label>Sub-department</Label><Input className="mt-1" value={editProductDraft.subDepartment} onChange={(e) => setEditProductDraft((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
+              <div><Label>{t("Department")}</Label><Input className="mt-1" value={editProductDraft.department} onChange={(e) => setEditProductDraft((p) => ({ ...p, department: e.target.value }))} /></div>
+              <div><Label>{t("Sub-department")}</Label><Input className="mt-1" value={editProductDraft.subDepartment} onChange={(e) => setEditProductDraft((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
             </div>
-            <div><Label>Manufacturer</Label><Input className="mt-1" value={editProductDraft.manufacturer} onChange={(e) => setEditProductDraft((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
+            <div><Label>{t("Manufacturer")}</Label><Input className="mt-1" value={editProductDraft.manufacturer} onChange={(e) => setEditProductDraft((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Barcode</Label><Input className="mt-1" value={editProductDraft.barcode} onChange={(e) => setEditProductDraft((p) => ({ ...p, barcode: e.target.value }))} /></div>
-              <div><Label>Default Distributor</Label><Input className="mt-1" value={editProductDraft.defaultDistributor} onChange={(e) => setEditProductDraft((p) => ({ ...p, defaultDistributor: e.target.value }))} /></div>
+              <div><Label>{t("Barcode")}</Label><Input className="mt-1" value={editProductDraft.barcode} onChange={(e) => setEditProductDraft((p) => ({ ...p, barcode: e.target.value }))} /></div>
+              <div><Label>{t("Default Distributor")}</Label><Input className="mt-1" value={editProductDraft.defaultDistributor} onChange={(e) => setEditProductDraft((p) => ({ ...p, defaultDistributor: e.target.value }))} /></div>
             </div>
             <div>
-              <Label>Reorder Threshold</Label>
+              <Label>{t("Reorder Threshold")}</Label>
               <Input className="mt-1" type="number" value={editProductDraft.reorderThreshold} onChange={(e) => setEditProductDraft((p) => ({ ...p, reorderThreshold: e.target.value }))} />
-              <p className="text-xs text-[#64748B] mt-1">Shows as "Low Stock" once total quantity drops to this number or below.</p>
+              <p className="text-xs text-[#64748B] mt-1">{t('Shows as "Low Stock" once total quantity drops to this number or below.')}</p>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2.5">
-              <Label className="cursor-pointer" htmlFor="edit-taxable">Taxable</Label>
+              <Label className="cursor-pointer" htmlFor="edit-taxable">{t("Taxable")}</Label>
               <Switch id="edit-taxable" checked={editProductDraft.taxable} onCheckedChange={(v) => setEditProductDraft((p) => ({ ...p, taxable: v }))} />
             </div>
-            <Button className="w-full bg-[#0891B2] text-white" onClick={saveEditProduct}>Save Changes</Button>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={saveEditProduct}>{t("Save Changes")}</Button>
           </div>
         </DialogContent>
       </Dialog>

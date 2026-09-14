@@ -16,6 +16,7 @@ import { profilesApi } from "@/lib/api/profiles";
 import { quickbooksApi } from "@/lib/api/quickbooks";
 import type { Database } from "@/lib/database.types";
 import { jobTypes, jobStatuses, estimateStatuses, cancellationReasons, callTypes, callSources, rescheduleTypes, contentCategories } from "@/lib/data";
+import { useLanguage } from "@/lib/language-context";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Integration = Database["public"]["Tables"]["integrations"]["Row"];
@@ -44,6 +45,7 @@ const iconMap: Record<string, React.ElementType> = {
 const staffRoles = ["owner", "manager", "technician", "contractor", "office_manager"];
 
 export default function Settings() {
+  const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(true);
   // Client SMS 2026-09-09: "able to add, edit, delete techs" -- there's no email service wired
   // (no SendGrid) for a real invite link, so an admin sets the new tech's password directly and
@@ -157,34 +159,34 @@ export default function Settings() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[#0F172A]">Settings</h1>
+        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Settings")}</h1>
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading settings...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading settings...")}</div>}
 
       {!isLoading && (
       <Tabs defaultValue={qboStatus ? "integrations" : "company"} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="company" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Globe className="w-4 h-4" /> Company
+            <Globe className="w-4 h-4" /> {t("Company")}
           </TabsTrigger>
           <TabsTrigger value="team" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Users className="w-4 h-4" /> Team
+            <Users className="w-4 h-4" /> {t("Team")}
           </TabsTrigger>
           <TabsTrigger value="integrations" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Shield className="w-4 h-4" /> Integrations
+            <Shield className="w-4 h-4" /> {t("Integrations")}
           </TabsTrigger>
           <TabsTrigger value="billing" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <CreditCard className="w-4 h-4" /> Billing
+            <CreditCard className="w-4 h-4" /> {t("Billing")}
           </TabsTrigger>
           <TabsTrigger value="notifications" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Bell className="w-4 h-4" /> Notifications
+            <Bell className="w-4 h-4" /> {t("Notifications")}
           </TabsTrigger>
           <TabsTrigger value="email" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Forward className="w-4 h-4" /> Email Forwarding
+            <Forward className="w-4 h-4" /> {t("Email Forwarding")}
           </TabsTrigger>
           <TabsTrigger value="jobs" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Wrench className="w-4 h-4" /> Job Settings
+            <Wrench className="w-4 h-4" /> {t("Job Settings")}
           </TabsTrigger>
         </TabsList>
 
@@ -198,22 +200,22 @@ export default function Settings() {
                 </div>
                 <div>
                   <Button variant="outline" className="h-9 border-[#E2E8F0] text-[#0F172A] gap-2">
-                    <Upload className="w-4 h-4" /> Upload Logo
+                    <Upload className="w-4 h-4" /> {t("Upload Logo")}
                   </Button>
-                  <p className="text-xs text-[#64748B] mt-1">Recommended: 200x200px PNG</p>
+                  <p className="text-xs text-[#64748B] mt-1">{t("Recommended: 200x200px PNG")}</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">Company Name</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Company Name")}</Label>
                   <Input value={tenantName} onChange={(e) => setTenantName(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">Phone</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Phone")}</Label>
                   <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div className="sm:col-span-2">
-                  <Label className="text-sm font-medium text-[#0F172A]">Address</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Address")}</Label>
                   <AddressAutocomplete
                     className="mt-1 h-10"
                     value={address}
@@ -227,49 +229,49 @@ export default function Settings() {
                   />
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">City</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("City")}</Label>
                   <Input value={city} onChange={(e) => setCity(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">State</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("State")}</Label>
                   <Input value={state} onChange={(e) => setState(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">Zip Code</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Zip Code")}</Label>
                   <Input value={zip} onChange={(e) => setZip(e.target.value)} className="mt-1 h-10" />
                 </div>
                 <div className="sm:col-span-2">
-                  <Label className="text-sm font-medium text-[#0F172A]">Invoice Business Name</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Invoice Business Name")}</Label>
                   <Input
                     value={invoiceBusinessName}
                     onChange={(e) => setInvoiceBusinessName(e.target.value)}
-                    placeholder="Same as Company Name if left blank"
+                    placeholder={t("Same as Company Name if left blank")}
                     className="mt-1 h-10"
                   />
-                  <p className="text-xs text-[#64748B] mt-1">Shown on invoices — use this if your legal/billing name is different from your Company Name above (e.g. a DBA).</p>
+                  <p className="text-xs text-[#64748B] mt-1">{t("Shown on invoices — use this if your legal/billing name is different from your Company Name above (e.g. a DBA).")}</p>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">Business Hours</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Business Hours")}</Label>
                   <Input defaultValue="Mon-Fri 7:00 AM - 6:00 PM" className="mt-1 h-10" />
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">Service Area</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Service Area")}</Label>
                   <Input defaultValue="Austin, Cedar Park, Round Rock, Pflugerville" className="mt-1 h-10" />
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">Payroll Week Starts On</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Payroll Week Starts On")}</Label>
                   <Select value={String(payrollWeekStartDay)} onValueChange={handleSavePayrollWeekStart}>
                     <SelectTrigger className="mt-1 h-10"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, i) => (
-                        <SelectItem key={i} value={String(i)}>{day}</SelectItem>
+                        <SelectItem key={i} value={String(i)}>{t(day)}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-[#64748B] mt-1">Controls which day the Timesheets weekly view starts on.</p>
+                  <p className="text-xs text-[#64748B] mt-1">{t("Controls which day the Timesheets weekly view starts on.")}</p>
                 </div>
               </div>
-              <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany}>Save Changes</Button>
+              <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany}>{t("Save Changes")}</Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -280,36 +282,36 @@ export default function Settings() {
             <Dialog open={newTechOpen} onOpenChange={(open) => { setNewTechOpen(open); if (!open) setTechError(""); }}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
-                  <Plus className="w-4 h-4" /> Add Tech
+                  <Plus className="w-4 h-4" /> {t("Add Tech")}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto">
-                <DialogHeader><DialogTitle>Add Tech</DialogTitle></DialogHeader>
+                <DialogHeader><DialogTitle>{t("Add Tech")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
-                    <Label>Name</Label>
+                    <Label>{t("Name")}</Label>
                     <Input className="mt-1" value={newTech.name} onChange={(e) => setNewTech((p) => ({ ...p, name: e.target.value }))} />
                   </div>
                   <div>
-                    <Label>Email</Label>
+                    <Label>{t("Email")}</Label>
                     <Input className="mt-1" type="email" placeholder="tech@poolsupplyatlanta.com" value={newTech.email} onChange={(e) => setNewTech((p) => ({ ...p, email: e.target.value }))} />
                   </div>
                   <div>
-                    <Label>Password</Label>
-                    <Input className="mt-1" type="text" placeholder="Set a password to hand to them" value={newTech.password} onChange={(e) => setNewTech((p) => ({ ...p, password: e.target.value }))} />
-                    <p className="text-xs text-[#64748B] mt-1">No email service is connected yet, so share this password with them directly.</p>
+                    <Label>{t("Password")}</Label>
+                    <Input className="mt-1" type="text" placeholder={t("Set a password to hand to them")} value={newTech.password} onChange={(e) => setNewTech((p) => ({ ...p, password: e.target.value }))} />
+                    <p className="text-xs text-[#64748B] mt-1">{t("No email service is connected yet, so share this password with them directly.")}</p>
                   </div>
                   <div>
-                    <Label>Role</Label>
+                    <Label>{t("Role")}</Label>
                     <Select value={newTech.role} onValueChange={(v) => setNewTech((p) => ({ ...p, role: v }))}>
                       <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {staffRoles.map((r) => <SelectItem key={r} value={r}>{formatRole(r)}</SelectItem>)}
+                        {staffRoles.map((r) => <SelectItem key={r} value={r}>{t(formatRole(r))}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
-                  {techError && <p className="text-sm text-[#DC2626]">{techError}</p>}
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddTech}>Add Tech</Button>
+                  {techError && <p className="text-sm text-[#DC2626]">{t(techError)}</p>}
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddTech}>{t("Add Tech")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -317,22 +319,22 @@ export default function Settings() {
 
           <Dialog open={!!editTech} onOpenChange={(open) => !open && setEditTech(null)}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Edit {editTech?.name}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Edit")} {editTech?.name}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
-                  <Label>Name</Label>
+                  <Label>{t("Name")}</Label>
                   <Input className="mt-1" value={editTechDraft.name} onChange={(e) => setEditTechDraft((p) => ({ ...p, name: e.target.value }))} />
                 </div>
                 <div>
-                  <Label>Role</Label>
+                  <Label>{t("Role")}</Label>
                   <Select value={editTechDraft.role} onValueChange={(v) => setEditTechDraft((p) => ({ ...p, role: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {staffRoles.map((r) => <SelectItem key={r} value={r}>{formatRole(r)}</SelectItem>)}
+                      {staffRoles.map((r) => <SelectItem key={r} value={r}>{t(formatRole(r))}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveTech}>Save Changes</Button>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveTech}>{t("Save Changes")}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -341,11 +343,11 @@ export default function Settings() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">User</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Email</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Role</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Type</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("User")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Email")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Role")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Type")}</th>
+                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
@@ -362,23 +364,23 @@ export default function Settings() {
                       </td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{u.email}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${roleColors[formatRole(u.role)] || "bg-[#E2E8F0] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{formatRole(u.role)}</Badge>
+                        <Badge className={`${roleColors[formatRole(u.role)] || "bg-[#E2E8F0] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{t(formatRole(u.role))}</Badge>
                       </td>
                       <td className="text-center py-3 px-4">
                         <Select value={u.employment_type} onValueChange={(v) => handleEmploymentTypeChange(u.id, v as "Employee" | "Contractor")}>
                           <SelectTrigger className="h-8 w-[110px] text-xs mx-auto"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Employee">Employee</SelectItem>
-                            <SelectItem value="Contractor">Contractor</SelectItem>
+                            <SelectItem value="Employee">{t("Employee")}</SelectItem>
+                            <SelectItem value="Contractor">{t("Contractor")}</SelectItem>
                           </SelectContent>
                         </Select>
                       </td>
                       <td className="text-center py-3 px-4">
-                        <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{u.status}</Badge>
+                        <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{t(u.status)}</Badge>
                       </td>
                       <td className="text-center py-3 px-4">
-                        <button onClick={() => openEditTech(u)} title="Edit Tech"><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></button>
-                        <button onClick={() => handleDeleteTech(u)} title="Delete Tech" className="ml-2"><Trash2 className="w-3.5 h-3.5 text-[#DC2626] inline" /></button>
+                        <button onClick={() => openEditTech(u)} title={t("Edit Tech")}><Pencil className="w-3.5 h-3.5 text-[#94A3B8] inline" /></button>
+                        <button onClick={() => handleDeleteTech(u)} title={t("Delete Tech")} className="ml-2"><Trash2 className="w-3.5 h-3.5 text-[#DC2626] inline" /></button>
                       </td>
                     </tr>
                   ))}
@@ -392,12 +394,12 @@ export default function Settings() {
         <TabsContent value="integrations" className="mt-4">
           {qboStatus === "connected" && (
             <div className="mb-4 p-3 rounded-lg bg-[#16A34A]/10 border border-[#16A34A]/20 text-sm text-[#16A34A]">
-              QuickBooks connected successfully.
+              {t("QuickBooks connected successfully.")}
             </div>
           )}
           {qboStatus === "error" && (
             <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
-              QuickBooks connection failed — please try again.
+              {t("QuickBooks connection failed — please try again.")}
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -416,10 +418,10 @@ export default function Settings() {
                         <div className="flex items-center gap-2">
                           <h3 className="font-semibold text-[#0F172A]">{int.name}</h3>
                           <Badge className={`${isConnected ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F59E0B]/10 text-[#F59E0B]"} text-[10px] px-1.5 py-0`}>
-                            {int.status}
+                            {t(int.status)}
                           </Badge>
                         </div>
-                        <p className="text-sm text-[#64748B] mt-1">{int.description}</p>
+                        <p className="text-sm text-[#64748B] mt-1">{t(int.description)}</p>
                         {isQuickbooks ? (
                           <Button
                             variant="outline"
@@ -427,11 +429,11 @@ export default function Settings() {
                             className="mt-3 h-8 border-[#E2E8F0] text-[#0F172A]"
                             onClick={isConnected ? handleQuickbooksDisconnect : handleQuickbooksConnect}
                           >
-                            {isConnected ? "Disconnect" : "Connect"}
+                            {isConnected ? t("Disconnect") : t("Connect")}
                           </Button>
                         ) : (
                           <Button variant="outline" size="sm" className="mt-3 h-8 border-[#E2E8F0] text-[#0F172A]">
-                            {isConnected ? "Manage" : "Connect"}
+                            {isConnected ? t("Manage") : t("Connect")}
                           </Button>
                         )}
                       </div>
@@ -442,7 +444,7 @@ export default function Settings() {
             })}
           </div>
           <div className="mt-4 p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-sm text-[#64748B]">
-            Each client connects their own QuickBooks account — fully isolated per tenant.
+            {t("Each client connects their own QuickBooks account — fully isolated per tenant.")}
           </div>
         </TabsContent>
 
@@ -454,14 +456,14 @@ export default function Settings() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="text-lg font-bold text-[#0F172A]">{subscriptionPlans.find((p) => p.id === selectedPlan)?.name ?? "No plan selected"}</h3>
-                    <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">Current</Badge>
+                    <h3 className="text-lg font-bold text-[#0F172A]">{subscriptionPlans.find((p) => p.id === selectedPlan)?.name ?? t("No plan selected")}</h3>
+                    <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{t("Current")}</Badge>
                   </div>
-                  <p className="text-sm text-[#64748B]">${subscriptionPlans.find((p) => p.id === selectedPlan)?.price ?? 0}/month via Stripe</p>
+                  <p className="text-sm text-[#64748B]">${subscriptionPlans.find((p) => p.id === selectedPlan)?.price ?? 0}{t("/month via Stripe")}</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-[#64748B]" />
-                  <span className="text-sm text-[#0F172A]">Visa ending in 4242</span>
+                  <span className="text-sm text-[#0F172A]">{t("Visa ending in 4242")}</span>
                 </div>
               </div>
             </CardContent>
@@ -479,16 +481,16 @@ export default function Settings() {
               >
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-[#0F172A]">{plan.name}</h3>
-                    {plan.recommended && <Badge className="bg-[#0891B2] text-white text-[10px] px-1.5 py-0">Recommended</Badge>}
+                    <h3 className="font-semibold text-[#0F172A]">{t(plan.name)}</h3>
+                    {plan.recommended && <Badge className="bg-[#0891B2] text-white text-[10px] px-1.5 py-0">{t("Recommended")}</Badge>}
                   </div>
-                  <p className="text-2xl font-bold text-[#0F172A]">${plan.price}<span className="text-sm font-normal text-[#64748B]">/mo</span></p>
-                  <p className="text-sm text-[#64748B] mt-1">{plan.description}</p>
+                  <p className="text-2xl font-bold text-[#0F172A]">${plan.price}<span className="text-sm font-normal text-[#64748B]">{t("/mo")}</span></p>
+                  <p className="text-sm text-[#64748B] mt-1">{t(plan.description)}</p>
                   <ul className="mt-3 space-y-1.5">
                     {plan.features.map((f, i) => (
                       <li key={i} className="flex items-center gap-2 text-sm text-[#0F172A]">
                         <CheckCircle2 className="w-4 h-4 text-[#16A34A] shrink-0" />
-                        {f}
+                        {t(f)}
                       </li>
                     ))}
                   </ul>
@@ -497,7 +499,7 @@ export default function Settings() {
                       selectedPlan === plan.id ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0]"
                     }`}
                   >
-                    {selectedPlan === plan.id ? "Current Plan" : "Select Plan"}
+                    {selectedPlan === plan.id ? t("Current Plan") : t("Select Plan")}
                   </Button>
                 </CardContent>
               </Card>
@@ -507,27 +509,27 @@ export default function Settings() {
           {/* Billing History */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Billing History</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Billing History")}</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Date</th>
-                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Description</th>
-                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Amount</th>
-                      <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                      <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {billingHistory.map((bh) => (
                       <tr key={bh.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                         <td className="py-3 px-4 text-[#64748B]">{bh.billed_date}</td>
-                        <td className="py-3 px-4 text-[#0F172A]">{bh.description}</td>
+                        <td className="py-3 px-4 text-[#0F172A]">{t(bh.description)}</td>
                         <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${bh.amount}</td>
                         <td className="text-center py-3 px-4">
-                          <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{bh.status}</Badge>
+                          <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{t(bh.status)}</Badge>
                         </td>
                       </tr>
                     ))}
@@ -547,22 +549,22 @@ export default function Settings() {
                   <Forward className="w-5 h-5 text-[#0891B2]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-[#0F172A]">Email Forwarding</h3>
-                  <p className="text-sm text-[#64748B] mt-0.5">Forward incoming emails from Bryan automatically to the right people based on rules below.</p>
+                  <h3 className="font-semibold text-[#0F172A]">{t("Email Forwarding")}</h3>
+                  <p className="text-sm text-[#64748B] mt-0.5">{t("Forward incoming emails from Bryan automatically to the right people based on rules below.")}</p>
                 </div>
               </div>
               <div className="rounded-lg bg-[#0891B2]/5 border border-[#0891B2]/20 p-3 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-[#0891B2] shrink-0 mt-0.5" />
-                <p className="text-xs text-[#0E7490]">Your forwarding address is <span className="font-mono font-semibold">bryan@poolbrayne.com</span>. All inbound mail is scanned and routed by the rules below before hitting the inbox.</p>
+                <p className="text-xs text-[#0E7490]">{t("Your forwarding address is")} <span className="font-mono font-semibold">bryan@poolbrayne.com</span>. {t("All inbound mail is scanned and routed by the rules below before hitting the inbox.")}</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">Primary forward-to</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Primary forward-to")}</Label>
                   <Input defaultValue="dispatch@poolbrayne.com" className="mt-1 h-10" />
-                  <p className="text-xs text-[#64748B] mt-1">Default destination when no rule matches.</p>
+                  <p className="text-xs text-[#64748B] mt-1">{t("Default destination when no rule matches.")}</p>
                 </div>
                 <div>
-                  <Label className="text-sm font-medium text-[#0F172A]">CC on all forwards</Label>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("CC on all forwards")}</Label>
                   <Input defaultValue="owner@poolbrayne.com" className="mt-1 h-10" />
                 </div>
               </div>
@@ -574,10 +576,10 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Filter className="w-5 h-5 text-[#0891B2]" />
-                  <h3 className="font-semibold text-[#0F172A]">Forwarding Rules</h3>
+                  <h3 className="font-semibold text-[#0F172A]">{t("Forwarding Rules")}</h3>
                 </div>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> Add Rule
+                  <Plus className="w-4 h-4" /> {t("Add Rule")}
                 </Button>
               </div>
               <div className="space-y-3">
@@ -594,14 +596,14 @@ export default function Settings() {
                         <span className="text-xs font-mono text-[#0F172A] bg-white border border-[#E2E8F0] rounded px-1.5 py-0.5">{r.keyword}</span>
                       </div>
                       <p className="text-sm text-[#0F172A]">
-                        <span className="text-[#64748B]">to</span>{" "}
+                        <span className="text-[#64748B]">{t("to")}</span>{" "}
                         <span className="font-medium">{r.forward}</span>
                       </p>
-                      <p className="text-xs text-[#64748B] mt-0.5">{r.action}</p>
+                      <p className="text-xs text-[#64748B] mt-0.5">{t(r.action)}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <Badge className={`${r.active ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#E2E8F0] text-[#64748B]"} text-[10px] px-2 py-0`}>
-                        {r.active ? "Active" : "Paused"}
+                        {r.active ? t("Active") : t("Paused")}
                       </Badge>
                       <Switch defaultChecked={r.active} />
                       <button className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1.5 rounded-md">
@@ -616,7 +618,7 @@ export default function Settings() {
 
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardContent className="p-5">
-              <h3 className="font-semibold text-[#0F172A] mb-3">Forwarding Log (Last 24h)</h3>
+              <h3 className="font-semibold text-[#0F172A] mb-3">{t("Forwarding Log (Last 24h)")}</h3>
               <div className="space-y-2">
                 {[
                   { from: "jthompson@gmail.com", subject: "Question about my invoice #1042", to: "billing@poolbrayne.com", time: "2:14 PM", status: "Forwarded" },
@@ -628,10 +630,10 @@ export default function Settings() {
                     <Mail className="w-4 h-4 text-[#64748B] shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-[#0F172A] truncate">{log.subject}</p>
-                      <p className="text-xs text-[#64748B]">From {log.from} → {log.to}</p>
+                      <p className="text-xs text-[#64748B]">{t("From")} {log.from} → {log.to}</p>
                     </div>
                     <span className="text-xs text-[#64748B] shrink-0">{log.time}</span>
-                    <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0 shrink-0">{log.status}</Badge>
+                    <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0 shrink-0">{t(log.status)}</Badge>
                   </div>
                 ))}
               </div>
@@ -647,17 +649,17 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Tag className="w-5 h-5 text-[#0891B2]" />
-                  <h3 className="font-semibold text-[#0F172A]">Job Types</h3>
+                  <h3 className="font-semibold text-[#0F172A]">{t("Job Types")}</h3>
                 </div>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> Add Job Type
+                  <Plus className="w-4 h-4" /> {t("Add Job Type")}
                 </Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {jobTypes.map((t) => (
-                  <div key={t.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: t.color }} />
-                    <span className="text-sm font-medium text-[#0F172A] flex-1">{t.label}</span>
+                {jobTypes.map((jt) => (
+                  <div key={jt.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: jt.color }} />
+                    <span className="text-sm font-medium text-[#0F172A] flex-1">{t(jt.label)}</span>
                     <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -671,17 +673,17 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Settings2 className="w-5 h-5 text-[#0891B2]" />
-                  <h3 className="font-semibold text-[#0F172A]">Job Statuses</h3>
+                  <h3 className="font-semibold text-[#0F172A]">{t("Job Statuses")}</h3>
                 </div>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> Add Status
+                  <Plus className="w-4 h-4" /> {t("Add Status")}
                 </Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {jobStatuses.map((s) => (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color }} />
-                    <span className="text-sm font-medium text-[#0F172A] flex-1">{s.label}</span>
+                    <span className="text-sm font-medium text-[#0F172A] flex-1">{t(s.label)}</span>
                     <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -695,17 +697,17 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-[#0891B2]" />
-                  <h3 className="font-semibold text-[#0F172A]">Estimate Statuses</h3>
+                  <h3 className="font-semibold text-[#0F172A]">{t("Estimate Statuses")}</h3>
                 </div>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> Add Status
+                  <Plus className="w-4 h-4" /> {t("Add Status")}
                 </Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {estimateStatuses.map((s) => (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color }} />
-                    <span className="text-sm font-medium text-[#0F172A] flex-1">{s.label}</span>
+                    <span className="text-sm font-medium text-[#0F172A] flex-1">{t(s.label)}</span>
                     <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -720,14 +722,14 @@ export default function Settings() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Phone className="w-5 h-5 text-[#0891B2]" />
-                    <h3 className="font-semibold text-[#0F172A]">Call Types</h3>
+                    <h3 className="font-semibold text-[#0F172A]">{t("Call Types")}</h3>
                   </div>
-                  <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> Add</Button>
+                  <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> {t("Add")}</Button>
                 </div>
                 <div className="space-y-2">
                   {callTypes.map((c) => (
                     <div key={c} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                      <span className="text-sm text-[#0F172A] flex-1">{c}</span>
+                      <span className="text-sm text-[#0F172A] flex-1">{t(c)}</span>
                       <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
@@ -739,14 +741,14 @@ export default function Settings() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Globe className="w-5 h-5 text-[#0891B2]" />
-                    <h3 className="font-semibold text-[#0F172A]">Call Sources</h3>
+                    <h3 className="font-semibold text-[#0F172A]">{t("Call Sources")}</h3>
                   </div>
-                  <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> Add</Button>
+                  <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> {t("Add")}</Button>
                 </div>
                 <div className="space-y-2">
                   {callSources.map((c) => (
                     <div key={c} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                      <span className="text-sm text-[#0F172A] flex-1">{c}</span>
+                      <span className="text-sm text-[#0F172A] flex-1">{t(c)}</span>
                       <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
@@ -761,14 +763,14 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <RotateCw className="w-5 h-5 text-[#0891B2]" />
-                  <h3 className="font-semibold text-[#0F172A]">Reschedule Types</h3>
+                  <h3 className="font-semibold text-[#0F172A]">{t("Reschedule Types")}</h3>
                 </div>
-                <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> Add</Button>
+                <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> {t("Add")}</Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {rescheduleTypes.map((r) => (
                   <div key={r} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="text-sm text-[#0F172A] flex-1">{r}</span>
+                    <span className="text-sm text-[#0F172A] flex-1">{t(r)}</span>
                     <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
@@ -782,16 +784,16 @@ export default function Settings() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-[#0891B2]" />
-                  <h3 className="font-semibold text-[#0F172A]">Cancellation Reasons</h3>
+                  <h3 className="font-semibold text-[#0F172A]">{t("Cancellation Reasons")}</h3>
                 </div>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> Add Reason
+                  <Plus className="w-4 h-4" /> {t("Add Reason")}
                 </Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {cancellationReasons.map((r) => (
                   <div key={r} className="flex items-start gap-2 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="text-sm text-[#0F172A] flex-1">{r}</span>
+                    <span className="text-sm text-[#0F172A] flex-1">{t(r)}</span>
                     <button className="text-[#64748B] hover:text-[#DC2626] shrink-0"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -804,13 +806,13 @@ export default function Settings() {
             <CardContent className="p-5 space-y-4">
               <div className="flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-[#0891B2]" />
-                <h3 className="font-semibold text-[#0F172A]">Content Categories</h3>
+                <h3 className="font-semibold text-[#0F172A]">{t("Content Categories")}</h3>
               </div>
-              <p className="text-sm text-[#64748B]">Tabs available on each job detail page. Toggle which categories are visible to your team.</p>
+              <p className="text-sm text-[#64748B]">{t("Tabs available on each job detail page. Toggle which categories are visible to your team.")}</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {contentCategories.map((c) => (
                   <div key={c.id} className="flex flex-col items-center gap-2 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="text-xs font-medium text-[#0F172A] text-center">{c.label}</span>
+                    <span className="text-xs font-medium text-[#0F172A] text-center">{t(c.label)}</span>
                     <Switch defaultChecked />
                   </div>
                 ))}
@@ -823,7 +825,7 @@ export default function Settings() {
         <TabsContent value="notifications" className="mt-4">
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardContent className="p-5 space-y-4">
-              <h3 className="font-semibold text-[#0F172A] mb-2">Customer Notifications</h3>
+              <h3 className="font-semibold text-[#0F172A] mb-2">{t("Customer Notifications")}</h3>
               {[
                 { label: "Booking confirmation", desc: "Send when a job is scheduled" },
                 { label: "Technician en route", desc: "Send when tech is dispatched" },
@@ -834,14 +836,14 @@ export default function Settings() {
               ].map((n) => (
                 <div key={n.label} className="flex items-center justify-between py-2 border-b border-[#F1F5F9] last:border-0">
                   <div>
-                    <p className="text-sm font-medium text-[#0F172A]">{n.label}</p>
-                    <p className="text-xs text-[#64748B]">{n.desc}</p>
+                    <p className="text-sm font-medium text-[#0F172A]">{t(n.label)}</p>
+                    <p className="text-xs text-[#64748B]">{t(n.desc)}</p>
                   </div>
                   <Switch defaultChecked />
                 </div>
               ))}
 
-              <h3 className="font-semibold text-[#0F172A] mb-2 mt-6">Staff Notifications</h3>
+              <h3 className="font-semibold text-[#0F172A] mb-2 mt-6">{t("Staff Notifications")}</h3>
               {[
                 { label: "New job assigned", desc: "Notify technician when assigned" },
                 { label: "Job overdue alert", desc: "Alert when job exceeds scheduled time" },
@@ -850,8 +852,8 @@ export default function Settings() {
               ].map((n) => (
                 <div key={n.label} className="flex items-center justify-between py-2 border-b border-[#F1F5F9] last:border-0">
                   <div>
-                    <p className="text-sm font-medium text-[#0F172A]">{n.label}</p>
-                    <p className="text-xs text-[#64748B]">{n.desc}</p>
+                    <p className="text-sm font-medium text-[#0F172A]">{t(n.label)}</p>
+                    <p className="text-xs text-[#64748B]">{t(n.desc)}</p>
                   </div>
                   <Switch defaultChecked />
                 </div>

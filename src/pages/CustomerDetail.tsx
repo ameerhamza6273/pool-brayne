@@ -22,6 +22,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { formatPhoneInput } from "@/lib/phone";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -49,6 +50,7 @@ export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, tenantId } = useAuth();
+  const { t } = useLanguage();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [history, setHistory] = useState<ServiceHistory[]>([]);
   const [notes, setNotes] = useState<CustomerNote[]>([]);
@@ -221,7 +223,7 @@ export default function CustomerDetail() {
       await customersApi.syncToQuickbooks(id);
       await load();
     } catch (err) {
-      setQboError(err instanceof Error ? err.message : "QuickBooks sync failed");
+      setQboError(err instanceof Error ? err.message : t("QuickBooks sync failed"));
     }
     setQboSyncing(false);
   };
@@ -272,14 +274,14 @@ export default function CustomerDetail() {
   };
 
   if (isLoading) {
-    return <div className="text-center py-20 text-[#64748B]">Loading customer...</div>;
+    return <div className="text-center py-20 text-[#64748B]">{t("Loading customer...")}</div>;
   }
 
   if (!customer) {
     return (
       <div className="text-center py-20">
-        <p className="text-[#64748B]">Customer not found</p>
-        <Button onClick={() => navigate("/customers")} className="mt-4 bg-[#0891B2] text-white">Back to Customers</Button>
+        <p className="text-[#64748B]">{t("Customer not found")}</p>
+        <Button onClick={() => navigate("/customers")} className="mt-4 bg-[#0891B2] text-white">{t("Back to Customers")}</Button>
       </div>
     );
   }
@@ -299,7 +301,7 @@ export default function CustomerDetail() {
             <h1 className="text-xl font-bold text-[#0F172A]">{customer.name}</h1>
             <div className="flex gap-1">
               {customer.tags.map((tag) => (
-                <Badge key={tag} className={`${tagColors[tag] || ""} text-[10px] px-1.5 py-0`}>{tag}</Badge>
+                <Badge key={tag} className={`${tagColors[tag] || ""} text-[10px] px-1.5 py-0`}>{t(tag)}</Badge>
               ))}
             </div>
           </div>
@@ -307,7 +309,7 @@ export default function CustomerDetail() {
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]" onClick={() => setEditOpen(true)}>
             <Pencil className="w-4 h-4" />
-            <span className="hidden sm:inline">Edit</span>
+            <span className="hidden sm:inline">{t("Edit")}</span>
           </Button>
           <Button
             size="sm"
@@ -316,7 +318,7 @@ export default function CustomerDetail() {
             onClick={() => customer.phone && (window.location.href = `tel:${customer.phone}`)}
           >
             <Phone className="w-4 h-4" />
-            <span className="hidden sm:inline">Call</span>
+            <span className="hidden sm:inline">{t("Call")}</span>
           </Button>
           <Button
             size="sm"
@@ -325,7 +327,7 @@ export default function CustomerDetail() {
             onClick={() => customer.phone && (window.location.href = `sms:${customer.phone}`)}
           >
             <MessageSquare className="w-4 h-4" />
-            <span className="hidden sm:inline">Text</span>
+            <span className="hidden sm:inline">{t("Text")}</span>
           </Button>
           <Button
             size="sm"
@@ -334,7 +336,7 @@ export default function CustomerDetail() {
             onClick={() => customer.email && (window.location.href = `mailto:${customer.email}`)}
           >
             <Mail className="w-4 h-4" />
-            <span className="hidden sm:inline">Email</span>
+            <span className="hidden sm:inline">{t("Email")}</span>
           </Button>
           <Button
             size="sm"
@@ -343,7 +345,7 @@ export default function CustomerDetail() {
             onClick={handleSyncToQuickbooks}
             disabled={qboSyncing || !!customer.qbo_customer_id}
           >
-            {customer.qbo_customer_id ? "Synced to QuickBooks" : qboSyncing ? "Syncing..." : "Sync to QuickBooks"}
+            {customer.qbo_customer_id ? t("Synced to QuickBooks") : qboSyncing ? t("Syncing...") : t("Sync to QuickBooks")}
           </Button>
         </div>
       </div>
@@ -355,7 +357,7 @@ export default function CustomerDetail() {
           {/* Contact Info */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Contact Info</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Contact Info")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <div className="flex items-center gap-3">
@@ -364,7 +366,7 @@ export default function CustomerDetail() {
                 </Avatar>
                 <div>
                   <p className="font-semibold text-[#0F172A]">{customer.name}</p>
-                  <p className="text-sm text-[#64748B]">{customer.type}</p>
+                  <p className="text-sm text-[#64748B]">{t(customer.type)}</p>
                 </div>
               </div>
               <div className="space-y-2 text-sm">
@@ -385,7 +387,7 @@ export default function CustomerDetail() {
               <div className="h-32 rounded-lg bg-[#F1F5F9] flex items-center justify-center">
                 <div className="text-center">
                   <MapPin className="w-6 h-6 text-[#0891B2] mx-auto mb-1" />
-                  <p className="text-xs text-[#64748B]">Map view</p>
+                  <p className="text-xs text-[#64748B]">{t("Map view")}</p>
                 </div>
               </div>
             </CardContent>
@@ -395,9 +397,9 @@ export default function CustomerDetail() {
               Address", positioned above Service Reminder, and now supports adding a contact). */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Other Contacts</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Other Contacts")}</CardTitle>
               <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-[#E2E8F0]" onClick={() => setAddContactOpen(true)}>
-                <Plus className="w-3.5 h-3.5" /> Add
+                <Plus className="w-3.5 h-3.5" /> {t("Add")}
               </Button>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
@@ -414,7 +416,7 @@ export default function CustomerDetail() {
                 </button>
               ))}
               {household.length === 0 && (
-                <p className="text-sm text-[#64748B] py-1">No other contacts at this address yet.</p>
+                <p className="text-sm text-[#64748B] py-1">{t("No other contacts at this address yet.")}</p>
               )}
             </CardContent>
           </Card>
@@ -423,13 +425,13 @@ export default function CustomerDetail() {
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
-                <Bell className="w-4 h-4 text-[#0891B2]" /> Service Reminder
+                <Bell className="w-4 h-4 text-[#0891B2]" /> {t("Service Reminder")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase mb-1">Next Due</p>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">{t("Next Due")}</p>
                   <Input
                     type="date"
                     className="h-9 text-sm"
@@ -438,7 +440,7 @@ export default function CustomerDetail() {
                   />
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase mb-1">Repeat (months)</p>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">{t("Repeat (months)")}</p>
                   <Input
                     type="number"
                     placeholder="e.g. 4"
@@ -449,12 +451,12 @@ export default function CustomerDetail() {
                 </div>
               </div>
               {customer.next_reminder_date && new Date(customer.next_reminder_date) <= new Date() && (
-                <p className="text-xs font-medium text-[#DC2626]">Due now — service is overdue.</p>
+                <p className="text-xs font-medium text-[#DC2626]">{t("Due now — service is overdue.")}</p>
               )}
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="flex-1 h-8 border-[#E2E8F0]" onClick={handleSaveReminder}>Save</Button>
+                <Button size="sm" variant="outline" className="flex-1 h-8 border-[#E2E8F0]" onClick={handleSaveReminder}>{t("Save")}</Button>
                 <Button size="sm" className="flex-1 h-8 bg-[#16A34A] hover:bg-[#15803D] text-white gap-1.5" onClick={handleMarkServiced} disabled={!reminderDraft.frequencyMonths}>
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Mark Serviced
+                  <CheckCircle2 className="w-3.5 h-3.5" /> {t("Mark Serviced")}
                 </Button>
               </div>
             </CardContent>
@@ -466,14 +468,14 @@ export default function CustomerDetail() {
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
-                <Bell className="w-4 h-4 text-[#0891B2]" /> Other Reminders
+                <Bell className="w-4 h-4 text-[#0891B2]" /> {t("Other Reminders")}
               </CardTitle>
               <Button size="icon" variant="outline" className="h-7 w-7 border-[#E2E8F0]" onClick={() => setReminderTypeOpen(true)}>
                 <Plus className="w-3.5 h-3.5" />
               </Button>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
-              {reminders.length === 0 && <p className="text-xs text-[#64748B]">No additional reminders yet.</p>}
+              {reminders.length === 0 && <p className="text-xs text-[#64748B]">{t("No additional reminders yet.")}</p>}
               {reminders.map((r) => {
                 const overdue = new Date(r.next_due) <= new Date();
                 return (
@@ -481,7 +483,7 @@ export default function CustomerDetail() {
                     <div>
                       <p className="text-sm font-medium text-[#0F172A]">{r.label}</p>
                       <p className={`text-xs ${overdue ? "text-[#DC2626] font-medium" : "text-[#64748B]"}`}>
-                        Due {r.next_due} · every {r.frequency_months}mo{overdue ? " · overdue" : ""}
+                        {t("Due")} {r.next_due} · {t("every")} {r.frequency_months}{t("mo")}{overdue ? ` · ${t("overdue")}` : ""}
                       </p>
                     </div>
                     <div className="flex items-center gap-1">
@@ -503,11 +505,11 @@ export default function CustomerDetail() {
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[#0891B2]" /> Service Forms
+                <FileText className="w-4 h-4 text-[#0891B2]" /> {t("Service Forms")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
-              {serviceForms.length === 0 && <p className="text-xs text-[#64748B]">No forms submitted yet.</p>}
+              {serviceForms.length === 0 && <p className="text-xs text-[#64748B]">{t("No forms submitted yet.")}</p>}
               {serviceForms.map((f) => (
                 <button
                   key={f.id}
@@ -515,7 +517,7 @@ export default function CustomerDetail() {
                   className="w-full text-left rounded-lg border border-[#F1F5F9] px-3 py-2 hover:bg-[#F8FAFC]"
                 >
                   <p className="text-sm font-medium text-[#0F172A]">{f.template_name ?? f.type}</p>
-                  <p className="text-xs text-[#64748B]">{f.job_type ?? "Job"} · {new Date(f.submitted_at).toLocaleDateString()}</p>
+                  <p className="text-xs text-[#64748B]">{f.job_type ?? t("Job")} · {new Date(f.submitted_at).toLocaleDateString()}</p>
                 </button>
               ))}
             </CardContent>
@@ -523,14 +525,14 @@ export default function CustomerDetail() {
 
           <Dialog open={reminderTypeOpen} onOpenChange={setReminderTypeOpen}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Add Reminder Type</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Add Reminder Type")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
-                <div><Label>Label</Label><Input className="mt-1" placeholder="e.g. Filter Cleaning" value={reminderTypeDraft.label} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, label: e.target.value }))} /></div>
+                <div><Label>{t("Label")}</Label><Input className="mt-1" placeholder="e.g. Filter Cleaning" value={reminderTypeDraft.label} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, label: e.target.value }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><Label>Frequency (months)</Label><Input type="number" className="mt-1" placeholder="e.g. 4" value={reminderTypeDraft.frequencyMonths} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, frequencyMonths: e.target.value }))} /></div>
-                  <div><Label>Next Due</Label><Input type="date" className="mt-1" value={reminderTypeDraft.nextDue} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, nextDue: e.target.value }))} /></div>
+                  <div><Label>{t("Frequency (months)")}</Label><Input type="number" className="mt-1" placeholder="e.g. 4" value={reminderTypeDraft.frequencyMonths} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, frequencyMonths: e.target.value }))} /></div>
+                  <div><Label>{t("Next Due")}</Label><Input type="date" className="mt-1" value={reminderTypeDraft.nextDue} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, nextDue: e.target.value }))} /></div>
                 </div>
-                <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddReminderType}>Save</Button>
+                <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddReminderType}>{t("Save")}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -539,24 +541,24 @@ export default function CustomerDetail() {
               button) */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Equipment on File</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Equipment on File")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Pump</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Pump")}</p>
                   <p className="font-medium text-[#0F172A]">{equipment.pump || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Heater</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Heater")}</p>
                   <p className="font-medium text-[#0F172A]">{equipment.heater || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Filter</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Filter")}</p>
                   <p className="font-medium text-[#0F172A]">{equipment.filter || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Salt System</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Salt System")}</p>
                   <p className="font-medium text-[#0F172A]">{equipment.salt || "—"}</p>
                 </div>
               </div>
@@ -566,52 +568,52 @@ export default function CustomerDetail() {
           {/* Gate Codes / Access Info */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold text-[#0F172A]">Gate Codes & Access</CardTitle>
+              <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Gate Codes & Access")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase mb-1">Front Gate Code</p>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">{t("Front Gate Code")}</p>
                   <Input placeholder="e.g. #1234" className="h-9 text-sm" value={gateDraft.frontGate} onChange={(e) => setGateDraft((p) => ({ ...p, frontGate: e.target.value }))} />
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase mb-1">House Gate Code</p>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">{t("House Gate Code")}</p>
                   <Input placeholder="e.g. #5678" className="h-9 text-sm" value={gateDraft.houseGate} onChange={(e) => setGateDraft((p) => ({ ...p, houseGate: e.target.value }))} />
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase mb-1">Padlock Code</p>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">{t("Padlock Code")}</p>
                   <Input placeholder="e.g. 0000" className="h-9 text-sm" value={gateDraft.padlock} onChange={(e) => setGateDraft((p) => ({ ...p, padlock: e.target.value }))} />
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase mb-1">Gated Subdivision Entrance</p>
+                  <p className="text-xs text-[#64748B] uppercase mb-1">{t("Gated Subdivision Entrance")}</p>
                   <Select value={gateDraft.subdivisionEntrance} onValueChange={(v) => setGateDraft((p) => ({ ...p, subdivisionEntrance: v }))}>
                     <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">No gated subdivision</SelectItem>
-                      <SelectItem value="call">Call box at entrance</SelectItem>
-                      <SelectItem value="code">Keypad code at entrance</SelectItem>
-                      <SelectItem value="remote">Remote / transponder</SelectItem>
-                      <SelectItem value="guard">Guard / attendant</SelectItem>
-                      <SelectItem value="open">Open access (no code needed)</SelectItem>
+                      <SelectItem value="none">{t("No gated subdivision")}</SelectItem>
+                      <SelectItem value="call">{t("Call box at entrance")}</SelectItem>
+                      <SelectItem value="code">{t("Keypad code at entrance")}</SelectItem>
+                      <SelectItem value="remote">{t("Remote / transponder")}</SelectItem>
+                      <SelectItem value="guard">{t("Guard / attendant")}</SelectItem>
+                      <SelectItem value="open">{t("Open access (no code needed)")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div>
-                <p className="text-xs text-[#64748B] uppercase mb-1">Access Notes</p>
+                <p className="text-xs text-[#64748B] uppercase mb-1">{t("Access Notes")}</p>
                 <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} value={gateDraft.notes} onChange={(e) => setGateDraft((p) => ({ ...p, notes: e.target.value }))} />
               </div>
-              <Button size="sm" variant="outline" className="w-full h-8 border-[#E2E8F0]" onClick={handleSaveGateCodes}>Save Access Info</Button>
+              <Button size="sm" variant="outline" className="w-full h-8 border-[#E2E8F0]" onClick={handleSaveGateCodes}>{t("Save Access Info")}</Button>
             </CardContent>
           </Card>
         </div>
         <div className="lg:col-span-2">
           <Tabs defaultValue="history" className="w-full">
             <TabsList className="bg-white border border-[#E2E8F0] w-full justify-start h-10 p-1 rounded-lg mb-4">
-              <TabsTrigger value="history" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Service History</TabsTrigger>
-              <TabsTrigger value="notes" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Notes</TabsTrigger>
-              <TabsTrigger value="invoices" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Invoices</TabsTrigger>
-              <TabsTrigger value="previous-sales" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">Previous Sales</TabsTrigger>
+              <TabsTrigger value="history" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Service History")}</TabsTrigger>
+              <TabsTrigger value="notes" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Notes")}</TabsTrigger>
+              <TabsTrigger value="invoices" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Invoices")}</TabsTrigger>
+              <TabsTrigger value="previous-sales" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Previous Sales")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="history" className="mt-0">
@@ -626,7 +628,7 @@ export default function CustomerDetail() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-[#0F172A]">{h.type}</p>
-                            <Badge className={`${statusColors[h.status] || ""} text-[10px] px-1.5 py-0`}>{h.status}</Badge>
+                            <Badge className={`${statusColors[h.status] || ""} text-[10px] px-1.5 py-0`}>{t(h.status)}</Badge>
                           </div>
                           <p className="text-sm text-[#64748B]">{h.service_date} &middot; {h.tech}</p>
                         </div>
@@ -636,7 +638,7 @@ export default function CustomerDetail() {
                       </div>
                     ))}
                     {history.length === 0 && (
-                      <div className="p-8 text-center text-[#64748B]">No service history yet</div>
+                      <div className="p-8 text-center text-[#64748B]">{t("No service history yet")}</div>
                     )}
                   </div>
                 </CardContent>
@@ -647,9 +649,9 @@ export default function CustomerDetail() {
               <Card className="border-[#E2E8F0] shadow-sm">
                 <CardContent className="p-4 space-y-4">
                   <div className="flex items-center gap-2">
-                    <Input placeholder="Add a note..." className="flex-1" value={newNote} onChange={(e) => setNewNote(e.target.value)} />
+                    <Input placeholder={t("Add a note...")} className="flex-1" value={newNote} onChange={(e) => setNewNote(e.target.value)} />
                     <Button size="sm" className="bg-[#0891B2] text-white gap-1" onClick={handleAddNote}>
-                      <Plus className="w-4 h-4" /> Add
+                      <Plus className="w-4 h-4" /> {t("Add")}
                     </Button>
                   </div>
                   <div className="space-y-3">
@@ -664,13 +666,13 @@ export default function CustomerDetail() {
                       </div>
                     ))}
                     {notes.length === 0 && (
-                      <p className="text-center text-[#64748B] py-4">No notes yet</p>
+                      <p className="text-center text-[#64748B] py-4">{t("No notes yet")}</p>
                     )}
                   </div>
                   {/* Photos */}
                   <div>
                     <p className="text-sm font-medium text-[#0F172A] mb-2 flex items-center gap-2">
-                      <Camera className="w-4 h-4" /> Photos
+                      <Camera className="w-4 h-4" /> {t("Photos")}
                     </p>
                     <input
                       ref={fileInputRef}
@@ -687,7 +689,7 @@ export default function CustomerDetail() {
                           <button
                             onClick={() => handleDeletePhoto(photo.id, photo.url)}
                             className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Delete photo"
+                            title={t("Delete photo")}
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -722,9 +724,9 @@ export default function CustomerDetail() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-[#0F172A]">{inv.number}</p>
-                            <Badge className={`${statusColors[inv.status] || ""} text-[10px] px-1.5 py-0`}>{inv.status}</Badge>
+                            <Badge className={`${statusColors[inv.status] || ""} text-[10px] px-1.5 py-0`}>{t(inv.status)}</Badge>
                           </div>
-                          <p className="text-sm text-[#64748B]">Issued: {inv.issue_date}</p>
+                          <p className="text-sm text-[#64748B]">{t("Issued:")} {inv.issue_date}</p>
                           {inv.job_description && <p className="text-xs text-[#64748B] mt-0.5 truncate">{inv.job_description}</p>}
                         </div>
                         <div className="text-right shrink-0">
@@ -733,7 +735,7 @@ export default function CustomerDetail() {
                       </div>
                     ))}
                     {invoices.length === 0 && (
-                      <div className="p-8 text-center text-[#64748B]">No invoices yet</div>
+                      <div className="p-8 text-center text-[#64748B]">{t("No invoices yet")}</div>
                     )}
                   </div>
                 </CardContent>
@@ -753,7 +755,7 @@ export default function CustomerDetail() {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-[#0F172A]">{new Date(sale.created_at).toLocaleDateString()}</p>
-                              <p className="text-xs text-[#64748B]">{sale.payment_method || "In-store sale"}</p>
+                              <p className="text-xs text-[#64748B]">{sale.payment_method || t("In-store sale")}</p>
                             </div>
                           </div>
                           <p className="font-semibold text-[#0F172A]">${sale.total}</p>
@@ -769,7 +771,7 @@ export default function CustomerDetail() {
                       </div>
                     ))}
                     {previousSales.length === 0 && (
-                      <div className="p-8 text-center text-[#64748B]">No previous in-store sales yet</div>
+                      <div className="p-8 text-center text-[#64748B]">{t("No previous in-store sales yet")}</div>
                     )}
                   </div>
                 </CardContent>
@@ -783,24 +785,24 @@ export default function CustomerDetail() {
       <div className="lg:hidden mt-4">
         <Card className="border-[#E2E8F0] shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-[#0F172A]">Customer Summary</CardTitle>
+            <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Customer Summary")}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-[#64748B] uppercase">Lifetime Value</p>
+                <p className="text-xs text-[#64748B] uppercase">{t("Lifetime Value")}</p>
                 <p className="text-lg font-bold text-[#0F172A]">${customer.lifetime_value.toLocaleString()}</p>
               </div>
               <div>
-                <p className="text-xs text-[#64748B] uppercase">Total Jobs</p>
+                <p className="text-xs text-[#64748B] uppercase">{t("Total Jobs")}</p>
                 <p className="text-lg font-bold text-[#0F172A]">{history.length}</p>
               </div>
               <div>
-                <p className="text-xs text-[#64748B] uppercase">Customer Since</p>
+                <p className="text-xs text-[#64748B] uppercase">{t("Customer Since")}</p>
                 <p className="text-sm font-medium text-[#0F172A]">{customer.customer_since}</p>
               </div>
               <div>
-                <p className="text-xs text-[#64748B] uppercase">Last Contact</p>
+                <p className="text-xs text-[#64748B] uppercase">{t("Last Contact")}</p>
                 <p className="text-sm font-medium text-[#0F172A]">{customer.last_contact}</p>
               </div>
             </div>
@@ -811,40 +813,40 @@ export default function CustomerDetail() {
       {/* Edit Customer (client bug report 2026-09-02: previously no way to edit anything) */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Edit Customer</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Edit Customer")}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>First Name</Label><Input className="mt-1" value={editDraft.firstName} onChange={(e) => setEditDraft((p) => ({ ...p, firstName: e.target.value }))} /></div>
-              <div><Label>Last Name</Label><Input className="mt-1" value={editDraft.lastName} onChange={(e) => setEditDraft((p) => ({ ...p, lastName: e.target.value }))} /></div>
+              <div><Label>{t("First Name")}</Label><Input className="mt-1" value={editDraft.firstName} onChange={(e) => setEditDraft((p) => ({ ...p, firstName: e.target.value }))} /></div>
+              <div><Label>{t("Last Name")}</Label><Input className="mt-1" value={editDraft.lastName} onChange={(e) => setEditDraft((p) => ({ ...p, lastName: e.target.value }))} /></div>
             </div>
             <div>
-              <Label>Type</Label>
+              <Label>{t("Type")}</Label>
               <Select value={editDraft.type} onValueChange={(v) => setEditDraft((p) => ({ ...p, type: v }))}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Residential">Residential</SelectItem>
-                  <SelectItem value="Commercial">Commercial</SelectItem>
+                  <SelectItem value="Residential">{t("Residential")}</SelectItem>
+                  <SelectItem value="Commercial">{t("Commercial")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Phone</Label><Input className="mt-1" value={editDraft.phone} onChange={(e) => setEditDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
-              <div><Label>Email</Label><Input className="mt-1" value={editDraft.email} onChange={(e) => setEditDraft((p) => ({ ...p, email: e.target.value }))} /></div>
+              <div><Label>{t("Phone")}</Label><Input className="mt-1" value={editDraft.phone} onChange={(e) => setEditDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
+              <div><Label>{t("Email")}</Label><Input className="mt-1" value={editDraft.email} onChange={(e) => setEditDraft((p) => ({ ...p, email: e.target.value }))} /></div>
             </div>
             <div>
-              <Label>Address</Label>
+              <Label>{t("Address")}</Label>
               <AddressAutocomplete className="mt-1" value={editDraft.address} onChange={(address) => setEditDraft((p) => ({ ...p, address }))} />
             </div>
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">Equipment on File</p>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Equipment on File")}</p>
               <div className="grid grid-cols-2 gap-3">
-                <div><Label className="text-xs">Pump</Label><Input className="mt-1 h-9" value={editDraft.pump} onChange={(e) => setEditDraft((p) => ({ ...p, pump: e.target.value }))} /></div>
-                <div><Label className="text-xs">Heater</Label><Input className="mt-1 h-9" value={editDraft.heater} onChange={(e) => setEditDraft((p) => ({ ...p, heater: e.target.value }))} /></div>
-                <div><Label className="text-xs">Filter</Label><Input className="mt-1 h-9" value={editDraft.filter} onChange={(e) => setEditDraft((p) => ({ ...p, filter: e.target.value }))} /></div>
-                <div><Label className="text-xs">Salt System</Label><Input className="mt-1 h-9" value={editDraft.salt} onChange={(e) => setEditDraft((p) => ({ ...p, salt: e.target.value }))} /></div>
+                <div><Label className="text-xs">{t("Pump")}</Label><Input className="mt-1 h-9" value={editDraft.pump} onChange={(e) => setEditDraft((p) => ({ ...p, pump: e.target.value }))} /></div>
+                <div><Label className="text-xs">{t("Heater")}</Label><Input className="mt-1 h-9" value={editDraft.heater} onChange={(e) => setEditDraft((p) => ({ ...p, heater: e.target.value }))} /></div>
+                <div><Label className="text-xs">{t("Filter")}</Label><Input className="mt-1 h-9" value={editDraft.filter} onChange={(e) => setEditDraft((p) => ({ ...p, filter: e.target.value }))} /></div>
+                <div><Label className="text-xs">{t("Salt System")}</Label><Input className="mt-1 h-9" value={editDraft.salt} onChange={(e) => setEditDraft((p) => ({ ...p, salt: e.target.value }))} /></div>
               </div>
             </div>
-            <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveEdit}>Save Changes</Button>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveEdit}>{t("Save Changes")}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -852,16 +854,16 @@ export default function CustomerDetail() {
       {/* Add Other Contact (client bug report 2026-09-02) */}
       <Dialog open={addContactOpen} onOpenChange={setAddContactOpen}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Other Contact</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("Add Other Contact")}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>First Name</Label><Input className="mt-1" value={contactDraft.firstName} onChange={(e) => setContactDraft((p) => ({ ...p, firstName: e.target.value }))} /></div>
-              <div><Label>Last Name</Label><Input className="mt-1" value={contactDraft.lastName} onChange={(e) => setContactDraft((p) => ({ ...p, lastName: e.target.value }))} /></div>
+              <div><Label>{t("First Name")}</Label><Input className="mt-1" value={contactDraft.firstName} onChange={(e) => setContactDraft((p) => ({ ...p, firstName: e.target.value }))} /></div>
+              <div><Label>{t("Last Name")}</Label><Input className="mt-1" value={contactDraft.lastName} onChange={(e) => setContactDraft((p) => ({ ...p, lastName: e.target.value }))} /></div>
             </div>
-            <div><Label>Phone</Label><Input className="mt-1" value={contactDraft.phone} onChange={(e) => setContactDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
-            <div><Label>Email</Label><Input className="mt-1" value={contactDraft.email} onChange={(e) => setContactDraft((p) => ({ ...p, email: e.target.value }))} /></div>
-            <p className="text-xs text-[#64748B]">Shares this property's address with {customer.name}.</p>
-            <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddContact}>Save Contact</Button>
+            <div><Label>{t("Phone")}</Label><Input className="mt-1" value={contactDraft.phone} onChange={(e) => setContactDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
+            <div><Label>{t("Email")}</Label><Input className="mt-1" value={contactDraft.email} onChange={(e) => setContactDraft((p) => ({ ...p, email: e.target.value }))} /></div>
+            <p className="text-xs text-[#64748B]">{t("Shares this property's address with")} {customer.name}.</p>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddContact}>{t("Save Contact")}</Button>
           </div>
         </DialogContent>
       </Dialog>

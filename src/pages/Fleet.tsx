@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fleetApi } from "@/lib/api/fleet";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Vehicle = Database["public"]["Tables"]["vehicles"]["Row"] & { profiles: { name: string } | null };
@@ -20,6 +21,7 @@ const statusColors: Record<string, string> = {
 const formatTime = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "—");
 
 export default function Fleet() {
+  const { t } = useLanguage();
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -42,23 +44,23 @@ export default function Fleet() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[#0F172A]">Fleet & Vehicle Tracking</h1>
+        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Fleet & Vehicle Tracking")}</h1>
         <Button
           variant="outline"
           className="gap-2 border-[#E2E8F0]"
           onClick={() => window.open("https://platform.gps7000.com/", "_blank", "noopener,noreferrer")}
         >
-          <ExternalLink className="w-4 h-4" /> Open GPS7000
+          <ExternalLink className="w-4 h-4" /> {t("Open GPS7000")}
         </Button>
       </div>
 
       {/* Banner */}
       <div className="bg-gradient-to-r from-[#0891B2] to-[#0E7490] rounded-xl p-4 text-white flex items-center gap-3">
         <Navigation className="w-5 h-5 shrink-0" />
-        <p className="text-sm font-medium">GPS7000 has no API to sync live position into Clear Pool CRM yet — use the link above to open it directly.</p>
+        <p className="text-sm font-medium">{t("GPS7000 has no API to sync live position into Clear Pool CRM yet — use the link above to open it directly.")}</p>
       </div>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading fleet...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading fleet...")}</div>}
 
       {!isLoading && (
       <>
@@ -76,7 +78,7 @@ export default function Fleet() {
                 <path d="M0 100 L800 100" stroke="#CBD5E1" strokeWidth="1" strokeDasharray="8 8" />
                 <path d="M0 300 L800 300" stroke="#CBD5E1" strokeWidth="1" strokeDasharray="8 8" />
                 <text x="50" y="30" fill="#64748B" fontSize="12" fontFamily="sans-serif">Austin, TX</text>
-                <text x="50" y="50" fill="#94A3B8" fontSize="10" fontFamily="sans-serif">Live tracking active</text>
+                <text x="50" y="50" fill="#94A3B8" fontSize="10" fontFamily="sans-serif">{t("Live tracking active")}</text>
               </svg>
               {/* Vehicle pins */}
               {vehicles.map((v, i) => {
@@ -116,7 +118,7 @@ export default function Fleet() {
 
         {/* Vehicle List */}
         <div className="space-y-2">
-          <h3 className="font-semibold text-[#0F172A] text-sm">Vehicles</h3>
+          <h3 className="font-semibold text-[#0F172A] text-sm">{t("Vehicles")}</h3>
           {vehicles.map((v) => (
             <button
               key={v.id}
@@ -138,12 +140,12 @@ export default function Fleet() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-sm text-[#0F172A]">{v.name}</p>
-                    <Badge className={`${statusColors[v.status]} text-[10px] px-1.5 py-0`}>{v.status}</Badge>
+                    <Badge className={`${statusColors[v.status]} text-[10px] px-1.5 py-0`}>{t(v.status)}</Badge>
                   </div>
                   <p className="text-xs text-[#64748B] truncate">{v.location_label ?? v.profiles?.name ?? "—"}</p>
                   <div className="flex items-center gap-3 mt-1 text-xs text-[#64748B]">
-                    <span className="flex items-center gap-1"><Gauge className="w-3 h-3" />{v.speed} mph</span>
-                    <span className="flex items-center gap-1"><Route className="w-3 h-3" />{v.mileage_today} mi</span>
+                    <span className="flex items-center gap-1"><Gauge className="w-3 h-3" />{v.speed} {t("mph")}</span>
+                    <span className="flex items-center gap-1"><Route className="w-3 h-3" />{v.mileage_today} {t("mi")}</span>
                   </div>
                 </div>
                 <div className="shrink-0 text-[10px] text-[#64748B]">{formatTime(v.last_update)}</div>
@@ -160,8 +162,8 @@ export default function Fleet() {
             <Navigation className="w-5 h-5 text-[#0891B2]" />
           </div>
           <div>
-            <p className="text-sm font-medium text-[#0F172A]">Smart Dispatch</p>
-            <p className="text-xs text-[#64748B]">Dispatch suggests the nearest available technician based on live vehicle position.</p>
+            <p className="text-sm font-medium text-[#0F172A]">{t("Smart Dispatch")}</p>
+            <p className="text-xs text-[#64748B]">{t("Dispatch suggests the nearest available technician based on live vehicle position.")}</p>
           </div>
         </CardContent>
       </Card>
@@ -170,10 +172,10 @@ export default function Fleet() {
       <Tabs defaultValue="trips" className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
           <TabsTrigger value="trips" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <Route className="w-4 h-4" /> Trip History
+            <Route className="w-4 h-4" /> {t("Trip History")}
           </TabsTrigger>
           <TabsTrigger value="geofence" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
-            <AlertTriangle className="w-4 h-4" /> Geofence Alerts
+            <AlertTriangle className="w-4 h-4" /> {t("Geofence Alerts")}
           </TabsTrigger>
         </TabsList>
 
@@ -183,13 +185,13 @@ export default function Fleet() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Vehicle</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Start</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">End</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Start Location</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">End Location</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Distance</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Duration</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vehicle")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Start")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("End")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Start Location")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("End Location")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Distance")}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Duration")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -200,8 +202,8 @@ export default function Fleet() {
                       <td className="py-3 px-4 text-[#64748B]">{formatTime(tr.end_time)}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{tr.start_location}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{tr.end_location}</td>
-                      <td className="text-right py-3 px-4 font-medium text-[#0F172A]">{tr.distance_miles} mi</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{tr.duration_minutes} min</td>
+                      <td className="text-right py-3 px-4 font-medium text-[#0F172A]">{tr.distance_miles} {t("mi")}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">{tr.duration_minutes} {t("min")}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -220,7 +222,7 @@ export default function Fleet() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-sm text-[#0F172A]">{g.vehicles?.number ?? "—"}</p>
-                    <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{g.severity}</Badge>
+                    <Badge className="bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t(g.severity)}</Badge>
                   </div>
                   <p className="text-sm text-[#64748B]">{g.message}</p>
                 </div>
@@ -230,7 +232,7 @@ export default function Fleet() {
               </div>
             ))}
             {geofenceAlerts.length === 0 && (
-              <p className="text-center text-[#64748B] py-8">No geofence alerts</p>
+              <p className="text-center text-[#64748B] py-8">{t("No geofence alerts")}</p>
             )}
           </div>
         </TabsContent>

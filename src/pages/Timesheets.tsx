@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { timesheetsApi } from "@/lib/api/timesheets";
 import { settingsApi } from "@/lib/api/settings";
 import { useAuth } from "@/lib/auth-context";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
 type Timesheet = Database["public"]["Tables"]["timesheets"]["Row"] & { profiles: { name: string; role: string; employment_type: string } | null };
@@ -22,6 +23,7 @@ function weekStartOf(date: Date, startDay: number) {
 
 export default function Timesheets() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const [clockedIn, setClockedIn] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -82,12 +84,12 @@ export default function Timesheets() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[#0F172A]">Timesheets</h1>
-          <p className="text-sm text-[#64748B] mt-0.5">Week of {weekStart}</p>
+          <h1 className="text-2xl font-bold text-[#0F172A]">{t("Timesheets")}</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">{t("Week of")} {weekStart}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-10" onClick={handleApproveWeek}>
-            <CheckCircle2 className="w-4 h-4" /> Approve Week
+            <CheckCircle2 className="w-4 h-4" /> {t("Approve Week")}
           </Button>
         </div>
       </div>
@@ -104,7 +106,7 @@ export default function Timesheets() {
                 <p className="text-sm font-medium text-[#0F172A]">{user?.name ?? "—"}</p>
                 <div className="flex items-center gap-1.5 text-xs text-[#64748B]">
                   <MapPin className="w-3 h-3 text-[#0891B2]" />
-                  GPS-verified at job site
+                  {t("GPS-verified at job site")}
                 </div>
                 {clockedIn && (
                   <p className="text-lg font-bold text-[#0891B2] mt-0.5">
@@ -119,38 +121,38 @@ export default function Timesheets() {
               onClick={handleClockToggle}
               className={`h-12 px-8 font-semibold ${clockedIn ? "bg-[#DC2626] hover:bg-[#B91C1C] text-white" : "bg-[#16A34A] hover:bg-[#15803D] text-white"}`}
             >
-              {clockedIn ? "Clock Out" : "Clock In"}
+              {clockedIn ? t("Clock Out") : t("Clock In")}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">Loading timesheets...</div>}
+      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading timesheets...")}</div>}
 
       {!isLoading && (
       <>
       {/* Timesheet Table */}
       <Card className="border-[#E2E8F0] shadow-sm overflow-hidden">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold text-[#0F172A]">Weekly Hours</CardTitle>
+          <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Weekly Hours")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Employee</th>
-                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Mon</th>
-                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Tue</th>
-                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Wed</th>
-                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Thu</th>
-                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Fri</th>
-                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Sat</th>
-                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Sun</th>
-                  <th className="text-right py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">Total</th>
-                  <th className="text-right py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">OT</th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Status</th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">Action</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Employee")}</th>
+                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Mon")}</th>
+                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Tue")}</th>
+                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Wed")}</th>
+                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Thu")}</th>
+                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Fri")}</th>
+                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Sat")}</th>
+                  <th className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Sun")}</th>
+                  <th className="text-right py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
+                  <th className="text-right py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("OT")}</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,7 +190,7 @@ export default function Timesheets() {
                             className="h-7 bg-[#0891B2] hover:bg-[#0E7490] text-white text-xs"
                             onClick={() => handleApprove(ts.id)}
                           >
-                            Approve
+                            {t("Approve")}
                           </Button>
                         )}
                       </td>
@@ -206,17 +208,17 @@ export default function Timesheets() {
         {/* Job Costing */}
         <Card className="border-[#E2E8F0] shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-[#0F172A]">Job Costing</CardTitle>
+            <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Job Costing")}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">Tech</th>
-                    <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">Job</th>
-                    <th className="text-right py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">Hours</th>
-                    <th className="text-right py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">Labor Cost</th>
+                    <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Tech")}</th>
+                    <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Job")}</th>
+                    <th className="text-right py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Hours")}</th>
+                    <th className="text-right py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Labor Cost")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -237,34 +239,34 @@ export default function Timesheets() {
         {/* Payroll Export */}
         <Card className="border-[#E2E8F0] shadow-sm">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold text-[#0F172A]">Payroll Export</CardTitle>
+            <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Payroll Export")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 pt-0">
-            <p className="text-sm text-[#64748B]">No double entry, no manual reconciliation.</p>
+            <p className="text-sm text-[#64748B]">{t("No double entry, no manual reconciliation.")}</p>
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" className="h-11 border-[#E2E8F0] text-[#0F172A] gap-2">
-                <Users className="w-4 h-4 text-[#0891B2]" /> Export to Gusto
+                <Users className="w-4 h-4 text-[#0891B2]" /> {t("Export to Gusto")}
               </Button>
               <Button variant="outline" className="h-11 border-[#E2E8F0] text-[#0F172A] gap-2">
-                <Briefcase className="w-4 h-4 text-[#0891B2]" /> Export to ADP
+                <Briefcase className="w-4 h-4 text-[#0891B2]" /> {t("Export to ADP")}
               </Button>
             </div>
             <div className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Total Hours</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Total Hours")}</p>
                   <p className="text-xl font-bold text-[#0F172A]">{totalHours.toFixed(1)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Total OT</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Total OT")}</p>
                   <p className="text-xl font-bold text-[#F59E0B]">{totalOT.toFixed(1)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Employees</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Employees")}</p>
                   <p className="text-xl font-bold text-[#0F172A]">{employeeCount}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-[#64748B] uppercase">Est. Payroll</p>
+                  <p className="text-xs text-[#64748B] uppercase">{t("Est. Payroll")}</p>
                   <p className="text-xl font-bold text-[#16A34A]">${estPayroll.toLocaleString()}</p>
                 </div>
               </div>

@@ -20,6 +20,7 @@ import { profilesApi } from "@/lib/api/profiles";
 import { customersApi } from "@/lib/api/customers";
 import { recurringJobsApi, type RecurringJob } from "@/lib/api/recurringJobs";
 import { geocodeAddress } from "@/lib/geocode";
+import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -65,6 +66,7 @@ const techDotColor = (techId: string): string => {
 };
 
 export default function Jobs() {
+  const { t } = useLanguage();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule" | "map">(
     () => (searchParams.get("tab") as "pipeline" | "dispatch" | "schedule" | "map") || "pipeline",
@@ -327,39 +329,39 @@ export default function Jobs() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0F172A]">Jobs & Dispatch</h1>
+        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Jobs & Dispatch")}</h1>
         <div className="flex items-center gap-2">
           <Dialog open={newJobOpen} onOpenChange={setNewJobOpen}>
             <DialogTrigger asChild>
               <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
-                <Plus className="w-4 h-4" /> New Job
+                <Plus className="w-4 h-4" /> {t("New Job")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Create New Job</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Create New Job")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
-                  <Label>Customer</Label>
+                  <Label>{t("Customer")}</Label>
                   <div className="mt-1">
                     <SearchableSelect
                       value={newJob.customerId}
                       onChange={(v) => setNewJob((p) => ({ ...p, customerId: v }))}
-                      placeholder="Select customer"
-                      searchPlaceholder="Search customers..."
+                      placeholder={t("Select customer")}
+                      searchPlaceholder={t("Search customers...")}
                       options={customers.map((c) => ({ value: c.id, label: c.name, sublabel: [c.phone, c.address].filter(Boolean).join(" · ") || undefined }))}
                     />
                   </div>
                 </div>
                 <div>
-                  <Label>Job Type</Label>
+                  <Label>{t("Job Type")}</Label>
                   <Select value={newJob.jobType} onValueChange={(v) => setNewJob((p) => ({ ...p, jobType: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select job type" /></SelectTrigger>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select job type")} /></SelectTrigger>
                     <SelectContent>
-                      {jobTypes.map((t) => (
-                        <SelectItem key={t.id} value={t.label}>
+                      {jobTypes.map((jt) => (
+                        <SelectItem key={jt.id} value={jt.label}>
                           <span className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: t.color }} />
-                            {t.label}
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: jt.color }} />
+                            {jt.label}
                           </span>
                         </SelectItem>
                       ))}
@@ -368,23 +370,23 @@ export default function Jobs() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Call Type</Label>
+                    <Label>{t("Call Type")}</Label>
                     <Select>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select call type" /></SelectTrigger>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select call type")} /></SelectTrigger>
                       <SelectContent>
                         {callTypes.map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                          <SelectItem key={c} value={c}>{t(c)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>Call Source</Label>
+                    <Label>{t("Call Source")}</Label>
                     <Select>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select source" /></SelectTrigger>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select source")} /></SelectTrigger>
                       <SelectContent>
                         {callSources.map((c) => (
-                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                          <SelectItem key={c} value={c}>{t(c)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -392,37 +394,37 @@ export default function Jobs() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Date</Label>
+                    <Label>{t("Date")}</Label>
                     <Input type="date" className="mt-1" value={newJob.date} onChange={(e) => setNewJob((p) => ({ ...p, date: e.target.value }))} />
                   </div>
                   <div>
-                    <Label>Time</Label>
+                    <Label>{t("Time")}</Label>
                     <Input type="time" className="mt-1" value={newJob.time} onChange={(e) => setNewJob((p) => ({ ...p, time: e.target.value }))} />
                   </div>
                 </div>
                 <div>
-                  <Label>Assign Technician</Label>
+                  <Label>{t("Assign Technician")}</Label>
                   <Select value={newJob.techId} onValueChange={(v) => setNewJob((p) => ({ ...p, techId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Select tech" /></SelectTrigger>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select tech")} /></SelectTrigger>
                     <SelectContent>
-                      {technicians.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      {technicians.map((tech) => (
+                        <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Notes</Label>
-                  <Input placeholder="Job description..." className="mt-1" value={newJob.description} onChange={(e) => setNewJob((p) => ({ ...p, description: e.target.value }))} />
+                  <Label>{t("Notes")}</Label>
+                  <Input placeholder={t("Job description...")} className="mt-1" value={newJob.description} onChange={(e) => setNewJob((p) => ({ ...p, description: e.target.value }))} />
                 </div>
                 <div>
-                  <Label>Line Items</Label>
+                  <Label>{t("Line Items")}</Label>
                   <div className="mt-1">
                     <LineItemsEditor items={newJobLineItems} onChange={setNewJobLineItems} inventoryItems={inventoryItems} />
                   </div>
                 </div>
                 <div>
-                  <Label>Amount {newJobLineItems.length > 0 && <span className="text-xs text-[#64748B]">(from line items)</span>}</Label>
+                  <Label>{t("Amount")} {newJobLineItems.length > 0 && <span className="text-xs text-[#64748B]">({t("from line items")})</span>}</Label>
                   <Input
                     type="number"
                     placeholder="0.00"
@@ -431,10 +433,10 @@ export default function Jobs() {
                     onChange={(e) => setNewJob((p) => ({ ...p, amount: e.target.value }))}
                     disabled={newJobLineItems.length > 0}
                   />
-                  <p className="text-xs text-[#64748B] mt-1">Used for the invoice generated when this job is marked complete.</p>
+                  <p className="text-xs text-[#64748B] mt-1">{t("Used for the invoice generated when this job is marked complete.")}</p>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateJob}>
-                  Create Job
+                  {t("Create Job")}
                 </Button>
               </div>
             </DialogContent>
@@ -443,96 +445,96 @@ export default function Jobs() {
           <Dialog open={newRecurringOpen} onOpenChange={setNewRecurringOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white">
-                <Calendar className="w-4 h-4" /> New Recurring
+                <Calendar className="w-4 h-4" /> {t("New Recurring")}
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Create Recurring Job</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Create Recurring Job")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
-                  <Label>Customer</Label>
+                  <Label>{t("Customer")}</Label>
                   <div className="mt-1">
                     <SearchableSelect
                       value={newRecurring.customerId}
                       onChange={(v) => setNewRecurring((p) => ({ ...p, customerId: v }))}
-                      placeholder="Select customer"
-                      searchPlaceholder="Search customers..."
+                      placeholder={t("Select customer")}
+                      searchPlaceholder={t("Search customers...")}
                       options={customers.map((c) => ({ value: c.id, label: c.name }))}
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Job Type</Label>
+                    <Label>{t("Job Type")}</Label>
                     <Select value={newRecurring.jobType} onValueChange={(v) => setNewRecurring((p) => ({ ...p, jobType: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select type" /></SelectTrigger>
-                      <SelectContent>{jobTypes.map((t) => <SelectItem key={t.id} value={t.label}>{t.label}</SelectItem>)}</SelectContent>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select type")} /></SelectTrigger>
+                      <SelectContent>{jobTypes.map((jt) => <SelectItem key={jt.id} value={jt.label}>{jt.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label>Tech</Label>
+                    <Label>{t("Tech")}</Label>
                     <Select value={newRecurring.techId} onValueChange={(v) => setNewRecurring((p) => ({ ...p, techId: v }))}>
-                      <SelectTrigger className="mt-1"><SelectValue placeholder="Select tech" /></SelectTrigger>
-                      <SelectContent>{technicians.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                      <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select tech")} /></SelectTrigger>
+                      <SelectContent>{technicians.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                 </div>
                 <div>
-                  <Label>Description (customer-facing)</Label>
+                  <Label>{t("Description (customer-facing)")}</Label>
                   <Input className="mt-1" value={newRecurring.description} onChange={(e) => setNewRecurring((p) => ({ ...p, description: e.target.value }))} />
                 </div>
                 <div>
                   {/* Client PDF 2026-09-05: "Able to show notes for all recurring jobs moving
                       forward" -- carried onto every generated occurrence, tech-only. */}
-                  <Label>Tech-Only Notes (carries to every occurrence)</Label>
+                  <Label>{t("Tech-Only Notes (carries to every occurrence)")}</Label>
                   <Input className="mt-1" value={newRecurring.techNotes} onChange={(e) => setNewRecurring((p) => ({ ...p, techNotes: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Amount</Label>
+                    <Label>{t("Amount")}</Label>
                     <Input type="number" className="mt-1" value={newRecurring.amount} onChange={(e) => setNewRecurring((p) => ({ ...p, amount: e.target.value }))} />
                   </div>
                   <div>
-                    <Label>Frequency</Label>
+                    <Label>{t("Frequency")}</Label>
                     <Select value={newRecurring.frequency} onValueChange={(v) => setNewRecurring((p) => ({ ...p, frequency: v as "weekly" | "biweekly" | "monthly" }))}>
                       <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="weekly">Weekly</SelectItem>
-                        <SelectItem value="biweekly">Bi-weekly</SelectItem>
-                        <SelectItem value="monthly">Monthly</SelectItem>
+                        <SelectItem value="weekly">{t("Weekly")}</SelectItem>
+                        <SelectItem value="biweekly">{t("Bi-weekly")}</SelectItem>
+                        <SelectItem value="monthly">{t("Monthly")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
                 {newRecurring.frequency !== "monthly" ? (
                   <div>
-                    <Label>Day of Week</Label>
+                    <Label>{t("Day of Week")}</Label>
                     <Select value={newRecurring.dayOfWeek} onValueChange={(v) => setNewRecurring((p) => ({ ...p, dayOfWeek: v }))}>
                       <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d, i) => <SelectItem key={i} value={String(i)}>{t(d)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
                 ) : (
                   <div>
-                    <Label>Day of Month</Label>
+                    <Label>{t("Day of Month")}</Label>
                     <Input type="number" min={1} max={31} className="mt-1" value={newRecurring.dayOfMonth} onChange={(e) => setNewRecurring((p) => ({ ...p, dayOfMonth: e.target.value }))} />
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>Start Date</Label>
+                    <Label>{t("Start Date")}</Label>
                     <Input type="date" className="mt-1" value={newRecurring.startDate} onChange={(e) => setNewRecurring((p) => ({ ...p, startDate: e.target.value }))} />
                   </div>
                   <div>
                     {/* Client PDF 2026-09-05: "Have an option for an end date or no end date". */}
-                    <Label>End Date (optional)</Label>
+                    <Label>{t("End Date (optional)")}</Label>
                     <Input type="date" className="mt-1" value={newRecurring.endDate} onChange={(e) => setNewRecurring((p) => ({ ...p, endDate: e.target.value }))} />
                   </div>
                 </div>
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleCreateRecurring}>
-                  Create Recurring Job
+                  {t("Create Recurring Job")}
                 </Button>
               </div>
             </DialogContent>
@@ -558,7 +560,7 @@ export default function Jobs() {
               }`}
             >
               <Icon className="w-4 h-4" />
-              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="hidden sm:inline">{t(tab.label)}</span>
             </button>
           );
         })}
@@ -568,7 +570,7 @@ export default function Jobs() {
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
         <Input
-          placeholder="Search jobs..."
+          placeholder={t("Search jobs...")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9 h-10 bg-white border-[#E2E8F0]"
@@ -584,7 +586,7 @@ export default function Jobs() {
               return (
                 <div key={stage.id} className="flex-1 min-w-[200px]">
                   <div className={`flex items-center justify-between px-3 py-2 rounded-t-lg bg-white border border-[#E2E8F0] border-b-0 ${stage.color} border-t-2`}>
-                    <span className="font-semibold text-sm text-[#0F172A]">{stage.label}</span>
+                    <span className="font-semibold text-sm text-[#0F172A]">{t(stage.label)}</span>
                     <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px]">{stageJobs.length}</Badge>
                   </div>
                   <div className="bg-[#F8FAFC] rounded-b-lg border border-[#E2E8F0] border-t-0 p-2 space-y-2 min-h-[300px]">
@@ -598,7 +600,7 @@ export default function Jobs() {
                           <Badge className="text-[10px] px-1.5 py-0" style={techStyle(job.tech_id)}>{job.type}</Badge>
                           <div className="flex items-center gap-1.5">
                             {job.en_route_at && !job.arrived_at && !job.completed_at && (
-                              <Navigation className="w-3.5 h-3.5 text-[#F59E0B]" aria-label="En route" />
+                              <Navigation className="w-3.5 h-3.5 text-[#F59E0B]" aria-label={t("En route")} />
                             )}
                             <span className="text-xs text-[#64748B]">{job.scheduled_time}</span>
                           </div>
@@ -629,8 +631,8 @@ export default function Jobs() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Unassigned Jobs */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
-            <h3 className="font-semibold text-[#0F172A] mb-3">Unassigned & Today's Jobs</h3>
-            <p className="text-xs text-[#94A3B8] -mt-2 mb-3">Drag a job onto a technician to assign it.</p>
+            <h3 className="font-semibold text-[#0F172A] mb-3">{t("Unassigned & Today's Jobs")}</h3>
+            <p className="text-xs text-[#94A3B8] -mt-2 mb-3">{t("Drag a job onto a technician to assign it.")}</p>
             <div className="space-y-2">
               {filteredJobs.filter((j) => j.stage === "booked" || j.stage === "lead").map((job) => (
                 <div
@@ -650,11 +652,11 @@ export default function Jobs() {
                   <div className="shrink-0">
                     <Select onValueChange={(v) => assignTech(job.id, v)}>
                       <SelectTrigger className="h-8 w-32 text-xs">
-                        <SelectValue placeholder="Assign" />
+                        <SelectValue placeholder={t("Assign")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {technicians.map((t) => (
-                          <SelectItem key={t.id} value={t.id} className="text-xs">{t.name}</SelectItem>
+                        {technicians.map((tech) => (
+                          <SelectItem key={tech.id} value={tech.id} className="text-xs">{tech.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -662,7 +664,7 @@ export default function Jobs() {
                 </div>
               ))}
               {filteredJobs.filter((j) => j.stage === "booked" || j.stage === "lead").length === 0 && (
-                <p className="text-center text-[#64748B] py-4 text-sm">All jobs assigned</p>
+                <p className="text-center text-[#64748B] py-4 text-sm">{t("All jobs assigned")}</p>
               )}
             </div>
           </div>
@@ -670,8 +672,8 @@ export default function Jobs() {
           {/* Technicians */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-[#0F172A]">Technicians</h3>
-              <p className="text-xs text-[#64748B] italic">Assigns nearest available based on live vehicle position</p>
+              <h3 className="font-semibold text-[#0F172A]">{t("Technicians")}</h3>
+              <p className="text-xs text-[#64748B] italic">{t("Assigns nearest available based on live vehicle position")}</p>
             </div>
             <div className="space-y-2">
               {technicians.map((tech) => {
@@ -702,10 +704,10 @@ export default function Jobs() {
                         <p className="font-medium text-sm text-[#0F172A]">{tech.name}</p>
                         <Badge className={`${statusColors[tech.status] || ""} text-[10px] px-1.5 py-0`}>{tech.status}</Badge>
                       </div>
-                      <p className="text-xs text-[#64748B]">{jobs.filter((j) => j.tech_id === tech.id).length} jobs today</p>
+                      <p className="text-xs text-[#64748B]">{jobs.filter((j) => j.tech_id === tech.id).length} {t("jobs today")}</p>
                     </div>
                     <div className="shrink-0 text-xs text-[#64748B]">
-                      {tech.status === "On a job" && <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> Active</div>}
+                      {tech.status === "On a job" && <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> {t("Active")}</div>}
                     </div>
                   </div>
                 );
@@ -737,10 +739,10 @@ export default function Jobs() {
                 ))}
               </div>
             </div>
-            <p className="text-xs text-[#94A3B8] -mt-2 mb-3">Click an empty day to schedule a job. Drag a job onto another day to reschedule it.</p>
+            <p className="text-xs text-[#94A3B8] -mt-2 mb-3">{t("Click an empty day to schedule a job. Drag a job onto another day to reschedule it.")}</p>
             <div className="grid grid-cols-7 gap-2 text-center text-xs text-[#64748B] mb-2">
               {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                <div key={d} className="font-semibold py-2">{d}</div>
+                <div key={d} className="font-semibold py-2">{t(d)}</div>
               ))}
             </div>
             <div className="grid grid-cols-7 gap-2">
@@ -776,13 +778,13 @@ export default function Jobs() {
                           onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData("text/job-id", j.id); e.dataTransfer.effectAllowed = "move"; }}
                           className="group text-[10px] px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing truncate flex items-center justify-between gap-1"
                           style={techStyle(j.tech_id)}
-                          title={j.description ?? `${j.type} — ${j.customers?.name ?? "Unassigned"}`}
+                          title={j.description ?? `${j.type} — ${j.customers?.name ?? t("Unassigned")}`}
                           onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${j.id}`); }}
                         >
                           <span className="truncate">{j.scheduled_time} {j.customers?.name.split(" ")[0]}</span>
                           <button
                             className="opacity-0 group-hover:opacity-100 shrink-0"
-                            title="Remove from schedule"
+                            title={t("Remove from schedule")}
                             onClick={(e) => { e.stopPropagation(); handleUnschedule(j.id); }}
                           >
                             <X className="w-2.5 h-2.5" />
@@ -802,58 +804,58 @@ export default function Jobs() {
               Client SMS 2026-09-09: "recurring fields, full functionality" -- pause/resume,
               edit, and delete a series (backend already supported this, UI didn't expose it). */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
-            <h3 className="font-semibold text-[#0F172A] mb-3">Recurring Jobs</h3>
+            <h3 className="font-semibold text-[#0F172A] mb-3">{t("Recurring Jobs")}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {recurringJobs.map((rj) => (
                 <div key={rj.id} className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                   <div className="flex items-center justify-between mb-2">
                     <h4 className="font-medium text-[#0F172A]">{rj.customers?.name ?? "—"}</h4>
                     <Badge className={`text-[10px] px-1.5 py-0 ${rj.active ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
-                      {rj.active ? rj.frequency : "Paused"}
+                      {rj.active ? rj.frequency : t("Paused")}
                     </Badge>
                   </div>
                   <div className="space-y-1 text-sm text-[#64748B]">
                     <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {rj.job_type}</p>
-                    <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {rj.profiles?.name ?? "Unassigned"}</p>
-                    <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Since {rj.start_date}{rj.end_date ? ` · ends ${rj.end_date}` : " · no end date"}</p>
+                    <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {rj.profiles?.name ?? t("Unassigned")}</p>
+                    <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t("Since")} {rj.start_date}{rj.end_date ? ` · ${t("ends")} ${rj.end_date}` : ` · ${t("no end date")}`}</p>
                   </div>
                   <div className="flex items-center gap-3 mt-3 pt-2 border-t border-[#E2E8F0]">
                     <button className="text-xs text-[#0891B2] font-medium flex items-center gap-1" onClick={() => handleToggleRecurringActive(rj)}>
-                      {rj.active ? <><Pause className="w-3 h-3" /> Pause</> : <><Play className="w-3 h-3" /> Resume</>}
+                      {rj.active ? <><Pause className="w-3 h-3" /> {t("Pause")}</> : <><Play className="w-3 h-3" /> {t("Resume")}</>}
                     </button>
                     <button className="text-xs text-[#64748B] font-medium flex items-center gap-1" onClick={() => openEditRecurring(rj)}>
-                      <Pencil className="w-3 h-3" /> Edit
+                      <Pencil className="w-3 h-3" /> {t("Edit")}
                     </button>
                     <button className="text-xs text-[#DC2626] font-medium flex items-center gap-1" onClick={() => handleDeleteRecurring(rj)}>
-                      <Trash2 className="w-3 h-3" /> Delete
+                      <Trash2 className="w-3 h-3" /> {t("Delete")}
                     </button>
                   </div>
                 </div>
               ))}
-              {recurringJobs.length === 0 && <p className="text-sm text-[#64748B] col-span-full py-2">No recurring jobs set up yet.</p>}
+              {recurringJobs.length === 0 && <p className="text-sm text-[#64748B] col-span-full py-2">{t("No recurring jobs set up yet.")}</p>}
             </div>
           </div>
 
           <Dialog open={!!editRecurring} onOpenChange={(open) => !open && setEditRecurring(null)}>
             <DialogContent className="max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>Edit Recurring Job — {editRecurring?.customers?.name}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{t("Edit Recurring Job")} — {editRecurring?.customers?.name}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div>
-                  <Label>Technician</Label>
+                  <Label>{t("Technician")}</Label>
                   <Select value={editRecurringDraft.techId} onValueChange={(v) => setEditRecurringDraft((p) => ({ ...p, techId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder="Unassigned" /></SelectTrigger>
-                    <SelectContent>{technicians.map((t) => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}</SelectContent>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder={t("Unassigned")} /></SelectTrigger>
+                    <SelectContent>{technicians.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
-                  <Label>Amount</Label>
+                  <Label>{t("Amount")}</Label>
                   <Input type="number" className="mt-1" value={editRecurringDraft.amount} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, amount: e.target.value }))} />
                 </div>
                 <div>
-                  <Label>End Date</Label>
+                  <Label>{t("End Date")}</Label>
                   <Input type="date" className="mt-1" value={editRecurringDraft.endDate} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, endDate: e.target.value }))} />
                 </div>
-                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveRecurring}>Save Changes</Button>
+                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveRecurring}>{t("Save Changes")}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -882,7 +884,7 @@ export default function Jobs() {
           </div>
 
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4 space-y-4 max-h-[560px] overflow-y-auto">
-            <h3 className="font-semibold text-[#0F172A]">Daily Route by Technician</h3>
+            <h3 className="font-semibold text-[#0F172A]">{t("Daily Route by Technician")}</h3>
             {routeByTech.map(({ tech, stops }) => (
               <div key={tech.id}>
                 <div className="flex items-center gap-2 mb-1.5">
@@ -903,7 +905,7 @@ export default function Jobs() {
               <div>
                 <div className="flex items-center gap-2 mb-1.5">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ background: unassignedColor }} />
-                  <p className="font-medium text-sm text-[#0F172A]">Unassigned</p>
+                  <p className="font-medium text-sm text-[#0F172A]">{t("Unassigned")}</p>
                   <span className="text-xs text-[#64748B]">({unassignedStops.length})</span>
                 </div>
                 <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
@@ -915,7 +917,7 @@ export default function Jobs() {
                 </div>
               </div>
             )}
-            {mapJobs.length === 0 && <p className="text-sm text-[#64748B] text-center py-4">No jobs scheduled this day</p>}
+            {mapJobs.length === 0 && <p className="text-sm text-[#64748B] text-center py-4">{t("No jobs scheduled this day")}</p>}
           </div>
         </div>
       )}

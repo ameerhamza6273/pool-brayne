@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/lib/auth-context";
+import { useLanguage } from "@/lib/language-context";
 
 const steps = [
   { id: 1, label: "Company", icon: Building2 },
@@ -25,6 +26,7 @@ const plans = [
 ];
 
 export default function Onboarding() {
+  const { t } = useLanguage();
   const [step, setStep] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState("pro");
   const [completed, setCompleted] = useState(false);
@@ -56,8 +58,8 @@ export default function Onboarding() {
           <div className="w-20 h-20 rounded-full bg-[#16A34A]/10 flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-10 h-10 text-[#16A34A]" />
           </div>
-          <h1 className="text-2xl font-bold text-[#0F172A] mb-2">Welcome to Clear Pool CRM!</h1>
-          <p className="text-sm text-[#64748B] mb-8">Your company is set up and ready to go. Let's start managing your pool business.</p>
+          <h1 className="text-2xl font-bold text-[#0F172A] mb-2">{t("Welcome to Clear Pool CRM!")}</h1>
+          <p className="text-sm text-[#64748B] mb-8">{t("Your company is set up and ready to go. Let's start managing your pool business.")}</p>
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 rounded-xl bg-[#0891B2] flex items-center justify-center">
               <Droplets className="w-6 h-6 text-white" />
@@ -67,7 +69,7 @@ export default function Onboarding() {
               <p className="text-xs text-[#64748B]">{getPlanName()}</p>
             </div>
           </div>
-          {error && <p className="text-sm text-[#DC2626] mb-4">{error}</p>}
+          {error && <p className="text-sm text-[#DC2626] mb-4">{t(error)}</p>}
           <Button
             disabled={isSubmitting}
             className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-12 px-8"
@@ -83,7 +85,7 @@ export default function Onboarding() {
               navigate(result.needsEmailConfirmation ? "/login" : "/dashboard");
             }}
           >
-            {isSubmitting ? "Setting up..." : "Go to Dashboard"}
+            {isSubmitting ? t("Setting up...") : t("Go to Dashboard")}
           </Button>
         </div>
       </div>
@@ -119,7 +121,7 @@ export default function Onboarding() {
                       {isDone ? <CheckCircle2 className="w-5 h-5" /> : <Icon className="w-5 h-5" />}
                     </div>
                     <span className={`text-xs font-medium ${isActive ? "text-[#0891B2]" : isDone ? "text-[#16A34A]" : "text-[#64748B]"}`}>
-                      {s.label}
+                      {t(s.label)}
                     </span>
                   </div>
                   {i < steps.length - 1 && (
@@ -135,43 +137,43 @@ export default function Onboarding() {
             <CardContent className="p-6">
               {step === 1 && (
                 <div className="space-y-4">
-                  <h2 className="text-xl font-bold text-[#0F172A]">Company Details</h2>
-                  <p className="text-sm text-[#64748B]">Tell us about your pool business.</p>
+                  <h2 className="text-xl font-bold text-[#0F172A]">{t("Company Details")}</h2>
+                  <p className="text-sm text-[#64748B]">{t("Tell us about your pool business.")}</p>
                   <div className="space-y-4">
                     <div>
-                      <Label>Company Name</Label>
-                      <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="mt-1 h-11" placeholder="Your company name" />
+                      <Label>{t("Company Name")}</Label>
+                      <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} className="mt-1 h-11" placeholder={t("Your company name")} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>Your Name</Label>
-                        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 h-11" placeholder="Full name" />
+                        <Label>{t("Your Name")}</Label>
+                        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 h-11" placeholder={t("Full name")} />
                       </div>
                       <div>
-                        <Label>Email</Label>
+                        <Label>{t("Email")}</Label>
                         <Input value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 h-11" placeholder="you@company.com" />
                       </div>
                     </div>
                     <div>
-                      <Label>Password</Label>
-                      <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 h-11" placeholder="Min 8 characters" />
+                      <Label>{t("Password")}</Label>
+                      <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 h-11" placeholder={t("Min 8 characters")} />
                     </div>
                     <div>
-                      <Label>Address</Label>
-                      <Input defaultValue="1200 Warehouse Blvd" className="mt-1 h-11" placeholder="Business address" />
+                      <Label>{t("Address")}</Label>
+                      <Input defaultValue="1200 Warehouse Blvd" className="mt-1 h-11" placeholder={t("Business address")} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <Label>City</Label>
+                        <Label>{t("City")}</Label>
                         <Input defaultValue="Austin" className="mt-1 h-11" />
                       </div>
                       <div>
-                        <Label>State</Label>
+                        <Label>{t("State")}</Label>
                         <Input defaultValue="TX" className="mt-1 h-11" />
                       </div>
                     </div>
                     <div>
-                      <Label>Phone</Label>
+                      <Label>{t("Phone")}</Label>
                       <Input defaultValue="(512) 555-1000" className="mt-1 h-11" placeholder="(000) 000-0000" />
                     </div>
                   </div>
@@ -180,26 +182,26 @@ export default function Onboarding() {
 
               {step === 2 && (
                 <div className="space-y-4">
-                  <h2 className="text-xl font-bold text-[#0F172A]">Connect QuickBooks</h2>
-                  <p className="text-sm text-[#64748B]">Sync your invoices and payments automatically.</p>
+                  <h2 className="text-xl font-bold text-[#0F172A]">{t("Connect QuickBooks")}</h2>
+                  <p className="text-sm text-[#64748B]">{t("Sync your invoices and payments automatically.")}</p>
                   <div className="p-6 rounded-xl border-2 border-dashed border-[#E2E8F0] bg-[#F8FAFC] text-center">
                     <div className="w-16 h-16 rounded-xl bg-[#16A34A]/10 flex items-center justify-center mx-auto mb-4">
                       <BookOpen className="w-8 h-8 text-[#16A34A]" />
                     </div>
                     <h3 className="font-semibold text-[#0F172A] mb-2">QuickBooks Online</h3>
-                    <p className="text-sm text-[#64748B] mb-4">Connect your QuickBooks account for two-way sync. Your data stays secure and isolated.</p>
+                    <p className="text-sm text-[#64748B] mb-4">{t("Connect your QuickBooks account for two-way sync. Your data stays secure and isolated.")}</p>
                     <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
-                      <Shield className="w-4 h-4" /> Connect QuickBooks
+                      <Shield className="w-4 h-4" /> {t("Connect QuickBooks")}
                     </Button>
-                    <p className="text-xs text-[#64748B] mt-3">You can skip this and connect later in Settings.</p>
+                    <p className="text-xs text-[#64748B] mt-3">{t("You can skip this and connect later in Settings.")}</p>
                   </div>
                 </div>
               )}
 
               {step === 3 && (
                 <div className="space-y-4">
-                  <h2 className="text-xl font-bold text-[#0F172A]">Connect Integrations</h2>
-                  <p className="text-sm text-[#64748B]">Link your fleet and payroll providers.</p>
+                  <h2 className="text-xl font-bold text-[#0F172A]">{t("Connect Integrations")}</h2>
+                  <p className="text-sm text-[#64748B]">{t("Link your fleet and payroll providers.")}</p>
                   <div className="space-y-3">
                     {[
                       { name: "Fleet/GPS Provider", desc: "Live vehicle tracking and dispatch optimization", icon: Truck, status: "Connected" },
@@ -215,23 +217,23 @@ export default function Onboarding() {
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center gap-2">
-                              <h3 className="font-medium text-[#0F172A]">{int.name}</h3>
-                              <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{int.status}</Badge>
+                              <h3 className="font-medium text-[#0F172A]">{t(int.name)}</h3>
+                              <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px] px-1.5 py-0">{t(int.status)}</Badge>
                             </div>
-                            <p className="text-sm text-[#64748B]">{int.desc}</p>
+                            <p className="text-sm text-[#64748B]">{t(int.desc)}</p>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                  <p className="text-sm text-[#64748B]">Vendor-agnostic — swappable providers anytime from Settings.</p>
+                  <p className="text-sm text-[#64748B]">{t("Vendor-agnostic — swappable providers anytime from Settings.")}</p>
                 </div>
               )}
 
               {step === 4 && (
                 <div className="space-y-4">
-                  <h2 className="text-xl font-bold text-[#0F172A]">Choose Your Plan</h2>
-                  <p className="text-sm text-[#64748B]">Select the plan that fits your business. Upgrade anytime.</p>
+                  <h2 className="text-xl font-bold text-[#0F172A]">{t("Choose Your Plan")}</h2>
+                  <p className="text-sm text-[#64748B]">{t("Select the plan that fits your business. Upgrade anytime.")}</p>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {plans.map((plan) => (
                       <div
@@ -243,14 +245,14 @@ export default function Onboarding() {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <h3 className="font-semibold text-[#0F172A]">{plan.name}</h3>
-                          {plan.recommended && <Badge className="bg-[#0891B2] text-white text-[10px] px-1.5 py-0">Best</Badge>}
+                          {plan.recommended && <Badge className="bg-[#0891B2] text-white text-[10px] px-1.5 py-0">{t("Best")}</Badge>}
                         </div>
-                        <p className="text-2xl font-bold text-[#0F172A]">${plan.price}<span className="text-sm font-normal text-[#64748B]">/mo</span></p>
-                        <p className="text-xs text-[#64748B] mt-1">{plan.description}</p>
+                        <p className="text-2xl font-bold text-[#0F172A]">${plan.price}<span className="text-sm font-normal text-[#64748B]">{t("/mo")}</span></p>
+                        <p className="text-xs text-[#64748B] mt-1">{t(plan.description)}</p>
                         <ul className="mt-3 space-y-1">
                           {plan.features.map((f, i) => (
                             <li key={i} className="flex items-center gap-1.5 text-xs text-[#0F172A]">
-                              <Check className="w-3 h-3 text-[#16A34A]" /> {f}
+                              <Check className="w-3 h-3 text-[#16A34A]" /> {t(f)}
                             </li>
                           ))}
                         </ul>
@@ -259,7 +261,7 @@ export default function Onboarding() {
                             selectedPlan === plan.id ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#0F172A] border border-[#E2E8F0]"
                           }`}
                         >
-                          {selectedPlan === plan.id ? "Current Plan" : "Select Plan"}
+                          {selectedPlan === plan.id ? t("Current Plan") : t("Select Plan")}
                         </Button>
                       </div>
                     ))}
@@ -271,7 +273,7 @@ export default function Onboarding() {
                       </div>
                       <div>
                         <p className="text-sm font-medium text-[#0F172A]">Stripe Checkout</p>
-                        <p className="text-xs text-[#64748B]">Secure payment via Stripe. No card details stored.</p>
+                        <p className="text-xs text-[#64748B]">{t("Secure payment via Stripe. No card details stored.")}</p>
                       </div>
                     </div>
                   </div>
@@ -286,13 +288,13 @@ export default function Onboarding() {
                   onClick={() => step > 1 && setStep(step - 1)}
                   disabled={step === 1}
                 >
-                  Back
+                  {t("Back")}
                 </Button>
                 <Button
                   className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10 gap-2"
                   onClick={nextStep}
                 >
-                  {step === 4 ? "Complete Setup" : "Continue"}
+                  {step === 4 ? t("Complete Setup") : t("Continue")}
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>

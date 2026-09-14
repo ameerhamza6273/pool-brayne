@@ -7,6 +7,8 @@ type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { 
 type InventoryVariance = Database["public"]["Tables"]["inventory_variance"]["Row"] & { inventory_items: { name: string } | null };
 
 export type SupplierLocation = { id: string; supplier_id: string; label: string; address: string | null; contact_name: string | null; phone: string | null };
+export type PoLineItem = { id: string; po_id: string; description: string; sku: string | null; quantity: number; unit_cost: number; amount: number };
+export type PoLineItemInput = { description: string; sku: string | null; quantity: number; unitCost: number };
 export type CategoryTaxonomyRow = { id: string; category: string; subcategory: string | null; sub_subcategory: string | null; sub_sub_subcategory: string | null };
 
 export type ItemWithStock = InventoryItem & { storeQty: number; vehicleQty: number; total: number; status: "In Stock" | "Low" | "Out" };
@@ -49,8 +51,13 @@ export const inventoryApi = {
 
   updatePurchaseOrder: (
     id: string,
-    data: { number: string; supplierId: string; status: string; itemCount: number; total: number; receivedDate: string | null; locationId?: string | null },
+    data: { number: string; supplierId: string; status: string; receivedDate: string | null; locationId?: string | null },
   ) => api.patch<PurchaseOrder>(`/api/inventory/purchase-orders/${id}`, data),
+
+  getPurchaseOrderLineItems: (id: string) => api.get<PoLineItem[]>(`/api/inventory/purchase-orders/${id}/line-items`),
+
+  savePurchaseOrderLineItems: (id: string, lineItems: PoLineItemInput[]) =>
+    api.patch<PurchaseOrder>(`/api/inventory/purchase-orders/${id}/line-items`, { lineItems }),
 
   addItem: (data: {
     name: string;
@@ -97,7 +104,7 @@ export const inventoryApi = {
     },
   ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
 
-  createPurchaseOrder: (data: { supplierId: string; number: string; locationId?: string | null }) =>
+  createPurchaseOrder: (data: { supplierId: string; number: string; locationId?: string | null; lineItems?: PoLineItemInput[] }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),
 
   getQboAccounts: () => api.get<QboAccount[]>("/api/inventory/qbo-accounts"),

@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { AuthProvider, useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { LanguageProvider } from "@/lib/language-context";
 import AppShell from "@/components/AppShell";
 import Login from "@/pages/Login";
@@ -31,10 +31,16 @@ import PublicForm from "@/pages/PublicForm";
 import PublicEstimate from "@/pages/PublicEstimate";
 import { Toaster } from "@/components/ui/sonner";
 
+// Client feedback 2026-09-11: "Allow us to set up permission: Admin / Tech view / Contractor
+// view" -- technician/contractor accounts are restricted to the Field page; every other route
+// (including "/") bounces them there instead of exposing the full admin app.
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, role } = useAuth();
+  const location = useLocation();
   if (isLoading) return null;
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (isFieldOnlyRole(role) && location.pathname !== "/field") return <Navigate to="/field" replace />;
+  return <>{children}</>;
 }
 
 function AppRoutes() {

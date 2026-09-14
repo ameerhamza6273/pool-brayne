@@ -19,6 +19,7 @@ export type FormTemplate = {
   fields: FormField[];
   is_builtin: boolean;
   created_at: string;
+  required: boolean;
 };
 
 export const formTemplatesApi = {
@@ -26,10 +27,10 @@ export const formTemplatesApi = {
 
   detail: (id: string) => api.get<FormTemplate>(`/api/form-templates/${id}`),
 
-  create: (data: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[] }) =>
+  create: (data: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[]; required?: boolean }) =>
     api.post<FormTemplate>("/api/form-templates", data),
 
-  update: (id: string, data: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[] }) =>
+  update: (id: string, data: { name: string; description: string | null; appliesTo: string | null; customerVisible: boolean; fields: FormField[]; required?: boolean }) =>
     api.patch<FormTemplate>(`/api/form-templates/${id}`, data),
 
   remove: (id: string) => api.del(`/api/form-templates/${id}`),
