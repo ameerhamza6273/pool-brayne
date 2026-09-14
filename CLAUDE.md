@@ -405,3 +405,15 @@ history was condensed into the structural sections above on 2026-09-10.)*
   Usadas"/"Parts Used" search+stepper block; confirmed live by searching "filter" in the field view
   and getting 50+ real inventory results with working +/- steppers. No code changes needed for
   either — only Open/Pending Items #8's PO item-selection needs the client to actually re-check.
+- **2026-09-14 (same day, third follow-up)** — Final pass over the transcript's action items caught
+  one still-missing piece: "Merge Jobs and Dispatch... make drag-and-drop" (item combined with the
+  earlier nav merge) only had the nav merge done — the Pipeline kanban board's stage columns
+  themselves had no drag-and-drop (cards were click-only), unlike the Dispatch Board and Schedule
+  tabs which already had it. Added it, reusing the exact same native-HTML5-drag pattern already
+  used elsewhere in `Jobs.tsx`. Verified live: `left_click_drag` (synthetic mouse events) doesn't
+  trigger real HTML5 drag events — confirmed this is a browser-automation limitation, not a code
+  bug, by testing the same technique against the already-working Dispatch Board drag and seeing it
+  also fail — so verified instead by dispatching real `DragEvent`s via the console, which moved a
+  job between stage columns, persisted after reload, then dragged it back to restore state. This
+  was the last remaining item from the 2026-09-14 transcript; everything from that meeting is now
+  either built or (PO item-selection only) just needs the client to re-check the live deploy.
