@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
@@ -63,6 +64,7 @@ export default function PointOfSale() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 60;
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [saleNote, setSaleNote] = useState("");
   const [customerName, setCustomerName] = useState("Walk-in");
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [customerOpen, setCustomerOpen] = useState(false);
@@ -219,6 +221,7 @@ export default function PointOfSale() {
       subtotal,
       tax,
       total,
+      note: saleNote.trim() || null,
       payments: tenderLines.map((t) => ({ method: t.method, amount: t.amount, opaqueData: t.opaqueData })),
       items: cart.map((item) => ({
         id: item.id,
@@ -239,6 +242,7 @@ export default function PointOfSale() {
     setCustomerId(null);
     setTenderLines([]);
     setTenderAmount("");
+    setSaleNote("");
     loadPos();
   };
 
@@ -543,6 +547,18 @@ export default function PointOfSale() {
             )}
           </div>
 
+          {/* Client PDF 2026-09-15: "need a notes section (freeform)" on a POS transaction. */}
+          {cart.length > 0 && (
+            <div className="px-4 pt-3">
+              <Textarea
+                placeholder={t("Notes (optional)...")}
+                value={saleNote}
+                onChange={(e) => setSaleNote(e.target.value)}
+                className="text-sm min-h-[60px] bg-white border-[#E2E8F0]"
+              />
+            </div>
+          )}
+
           {/* Totals & Checkout */}
           {cart.length > 0 && (
             <div className="border-t border-[#E2E8F0] p-4 space-y-3">
@@ -612,7 +628,10 @@ export default function PointOfSale() {
               {transactions.map((tx) => (
                 <tr key={tx.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                   <td className="py-3 px-4 text-[#64748B]">{new Date(tx.created_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}</td>
-                  <td className="py-3 px-4 font-medium text-[#0F172A]">{tx.customers?.name ?? "Walk-in"}</td>
+                  <td className="py-3 px-4 font-medium text-[#0F172A]">
+                    {tx.customers?.name ?? "Walk-in"}
+                    {tx.note && <span className="block text-xs font-normal text-[#94A3B8] truncate max-w-[220px]" title={tx.note}>{tx.note}</span>}
+                  </td>
                   <td className="py-3 px-4 text-right text-[#0F172A]">{tx.item_count}</td>
                   <td className="py-3 px-4 text-right text-[#0F172A]">${tx.subtotal.toFixed(2)}</td>
                   <td className="py-3 px-4 text-right text-[#0F172A]">${tx.tax.toFixed(2)}</td>

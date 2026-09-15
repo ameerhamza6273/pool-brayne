@@ -51,7 +51,7 @@ export const inventoryApi = {
 
   updatePurchaseOrder: (
     id: string,
-    data: { number: string; supplierId: string; status: string; receivedDate: string | null; locationId?: string | null },
+    data: { number: string; supplierId: string; status: string; receivedDate: string | null; locationId?: string | null; paymentTerms?: string },
   ) => api.patch<PurchaseOrder>(`/api/inventory/purchase-orders/${id}`, data),
 
   getPurchaseOrderLineItems: (id: string) => api.get<PoLineItem[]>(`/api/inventory/purchase-orders/${id}/line-items`),
@@ -104,7 +104,7 @@ export const inventoryApi = {
     },
   ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
 
-  createPurchaseOrder: (data: { supplierId: string; number: string; locationId?: string | null; lineItems?: PoLineItemInput[] }) =>
+  createPurchaseOrder: (data: { supplierId: string; number: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),
 
   getQboAccounts: () => api.get<QboAccount[]>("/api/inventory/qbo-accounts"),

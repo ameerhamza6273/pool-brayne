@@ -7,7 +7,7 @@ type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"]
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
 export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
 export type EstimateLineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
-export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null };
+export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null; po_number: string | null };
 
 export type EstimateAttachment = { id: string; estimate_id: string; url: string; label: string | null; filename: string | null; type: "document" | "photo"; created_at: string };
 
@@ -110,7 +110,7 @@ export const invoicingApi = {
 
   vendorBills: () => api.get<VendorBill[]>("/api/invoices/vendor-bills/list"),
 
-  createVendorBill: (data: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number }) =>
+  createVendorBill: (data: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number; poId?: string | null }) =>
     api.post<VendorBill>("/api/invoices/vendor-bills", data),
 
   markVendorBillPaid: (id: string) => api.patch<VendorBill>(`/api/invoices/vendor-bills/${id}/mark-paid`, {}),

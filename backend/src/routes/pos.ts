@@ -74,11 +74,12 @@ export default async function posRoutes(app: FastifyInstance) {
       subtotal: number;
       tax: number;
       total: number;
+      note?: string | null;
       payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[];
       items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null }[];
     };
   }>("/checkout", async (req, reply) => {
-    const { customerId, subtotal, tax, total, payments, items } = req.body;
+    const { customerId, subtotal, tax, total, note, payments, items } = req.body;
 
     if (payments.length === 0) {
       reply.code(400).send({ error: "At least one payment is required" });
@@ -119,8 +120,8 @@ export default async function posRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [order] = await tx`
-        insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id)
-        values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId})
+        insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id, note)
+        values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId}, ${note || null})
         returning id
       `;
 

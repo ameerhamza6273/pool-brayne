@@ -427,23 +427,27 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   });
 
   // Client request 2026-08-27: separate vendor bills (accounts payable) ledger from customer invoices.
+  // Client PDF 2026-09-15: "Ability to search by PO number" -- vendor_bills.po_id links a bill
+  // back to the PO it's paying off; po.number is joined in so the frontend can search/display it.
   app.get("/vendor-bills/list", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
-      select vb.*, jsonb_build_object('name', s.name) as suppliers
-      from vendor_bills vb left join suppliers s on s.id = vb.supplier_id
+      select vb.*, jsonb_build_object('name', s.name) as suppliers, po.number as po_number
+      from vendor_bills vb
+      left join suppliers s on s.id = vb.supplier_id
+      left join purchase_orders po on po.id = vb.po_id
       order by vb.issue_date desc
     `);
   });
 
   app.post<{
-    Body: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number };
+    Body: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number; poId?: string | null };
   }>("/vendor-bills", async (req) => {
-    const { supplierId, number, issueDate, dueDate, amount } = req.body;
+    const { supplierId, number, issueDate, dueDate, amount, poId } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into vendor_bills (tenant_id, supplier_id, number, issue_date, due_date, amount, status)
-        values (${tenant.id}, ${supplierId}, ${number}, ${issueDate}, ${dueDate}, ${amount}, 'Received')
+        insert into vendor_bills (tenant_id, supplier_id, number, issue_date, due_date, amount, status, po_id)
+        values (${tenant.id}, ${supplierId}, ${number}, ${issueDate}, ${dueDate}, ${amount}, 'Received', ${poId || null})
         returning *
       `;
       return row;

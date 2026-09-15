@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import JsBarcode from "jsbarcode";
-import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye } from "lucide-react";
+import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,13 +34,18 @@ const statusColors: Record<string, string> = {
 
 const poStatusColors: Record<string, string> = {
   "Pending": "bg-[#F59E0B]/10 text-[#F59E0B]",
-  "Sent": "bg-[#0891B2]/10 text-[#0891B2]",
+  "Sent - Email": "bg-[#0891B2]/10 text-[#0891B2]",
+  "Sent - Portal": "bg-[#7C3AED]/10 text-[#7C3AED]",
   "Received": "bg-[#16A34A]/10 text-[#16A34A]",
-  // Backward-compat for any PO row written by pre-2026-09-11 code before the status vocabulary
-  // migrated from Draft/Ordered to Pending/Sent.
+  // Backward-compat for any PO row written by older code before the status vocabulary migrated
+  // (Draft/Ordered -> Pending/Sent, then Sent -> Sent - Email 2026-09-15).
   "Draft": "bg-[#F59E0B]/10 text-[#F59E0B]",
   "Ordered": "bg-[#0891B2]/10 text-[#0891B2]",
+  "Sent": "bg-[#0891B2]/10 text-[#0891B2]",
 };
+
+// Client PDF 2026-09-15: "Receive po with net 30 or customizable term".
+const PAYMENT_TERMS_PRESETS = ["Due on Receipt", "Net 15", "Net 30", "Net 60"];
 
 const vendorBillStatusColors: Record<string, string> = {
   "Draft": "bg-[#F59E0B]/10 text-[#F59E0B]",
@@ -184,7 +189,7 @@ export default function Inventory() {
     subcategory: "", subSubcategory: "", subSubSubcategory: "",
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
-  const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001`, locationId: "" });
+  const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001`, locationId: "", paymentTerms: "Net 30" });
   const [poError, setPoError] = useState("");
   const [newPoLocations, setNewPoLocations] = useState<SupplierLocation[]>([]);
   const [newPoLineItems, setNewPoLineItems] = useState<PoLineItemInput[]>([]);
@@ -210,7 +215,10 @@ export default function Inventory() {
   const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [vendorBillsDue, setVendorBillsDue] = useState<VendorBillDueRow[]>([]);
   const [newBillOpen, setNewBillOpen] = useState(false);
-  const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
+  const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "", poId: "" });
+  // Client PDF 2026-09-15: "Ability to search by PO number" on the Pay Invoices / Vendor Bills tab.
+  const [billSearch, setBillSearch] = useState("");
+  const [billSort, setBillSort] = useState<{ key: "amount" | "vendor" | null; dir: "asc" | "desc" }>({ key: null, dir: "asc" });
 
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
@@ -328,8 +336,9 @@ export default function Inventory() {
       number: newPo.number,
       locationId: newPo.locationId || null,
       lineItems: newPoLineItems.filter((li) => li.description.trim()),
+      paymentTerms: newPo.paymentTerms,
     });
-    setNewPo({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(purchaseOrders.length + 2).padStart(3, "0")}`, locationId: "" });
+    setNewPo({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(purchaseOrders.length + 2).padStart(3, "0")}`, locationId: "", paymentTerms: "Net 30" });
     setNewPoLocations([]);
     setNewPoLineItems([]);
     setPoOpen(false);
@@ -403,7 +412,7 @@ export default function Inventory() {
 
   // Client request 2026-09-03: PO list needed a view/edit option.
   const [poDetail, setPoDetail] = useState<PurchaseOrder | null>(null);
-  const [poDetailDraft, setPoDetailDraft] = useState({ number: "", supplierId: "", status: "Pending", receivedDate: "" });
+  const [poDetailDraft, setPoDetailDraft] = useState({ number: "", supplierId: "", status: "Pending", receivedDate: "", paymentTerms: "Net 30" });
 
   const openPoDetail = async (po: PurchaseOrder) => {
     setPoDetail(po);
@@ -412,6 +421,7 @@ export default function Inventory() {
       supplierId: po.supplier_id ?? "",
       status: po.status,
       receivedDate: po.received_date ?? "",
+      paymentTerms: po.payment_terms || "Net 30",
     });
     setPoDetailLineItems([]);
     const lines = await inventoryApi.getPurchaseOrderLineItems(po.id);
@@ -425,10 +435,66 @@ export default function Inventory() {
       supplierId: poDetailDraft.supplierId,
       status: poDetailDraft.status,
       receivedDate: poDetailDraft.receivedDate || null,
+      paymentTerms: poDetailDraft.paymentTerms,
     });
     await inventoryApi.savePurchaseOrderLineItems(poDetail.id, poDetailLineItems.filter((li) => li.description.trim()));
     setPoDetail(null);
     loadInventory();
+  };
+
+  // Client PDF 2026-09-15: "review or view purchase order on pdf screen (full screen)".
+  const handleViewPoPdf = () => {
+    if (!poDetail) return;
+    const supplierName = suppliers.find((s) => s.id === poDetailDraft.supplierId)?.name ?? "—";
+    const win = window.open("", "_blank");
+    if (!win || !win.document) return;
+    const rowsHtml = poDetailLineItems
+      .filter((li) => li.description.trim())
+      .map(
+        (li) => `
+          <tr>
+            <td>${li.description}</td>
+            <td>${li.sku ?? ""}</td>
+            <td style="text-align:right">${li.quantity}</td>
+            <td style="text-align:right">$${li.unitCost.toFixed(2)}</td>
+            <td style="text-align:right">$${(li.quantity * li.unitCost).toFixed(2)}</td>
+          </tr>`
+      )
+      .join("");
+    const total = poDetailLineItems.reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
+    win.document.write(`
+      <html>
+        <head>
+          <title>${poDetailDraft.number}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; color: #0F172A; }
+            h1 { font-size: 22px; margin-bottom: 4px; }
+            .meta { color: #64748B; font-size: 13px; margin-bottom: 24px; }
+            .meta div { margin-bottom: 2px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+            th, td { border-bottom: 1px solid #E2E8F0; padding: 8px; font-size: 13px; text-align: left; }
+            th { background: #F8FAFC; text-transform: uppercase; font-size: 11px; color: #64748B; }
+            .total { text-align: right; font-size: 16px; font-weight: bold; margin-top: 16px; }
+          </style>
+        </head>
+        <body>
+          <h1>Purchase Order ${poDetailDraft.number}</h1>
+          <div class="meta">
+            <div><strong>Vendor:</strong> ${supplierName}</div>
+            <div><strong>Status:</strong> ${poDetailDraft.status}</div>
+            <div><strong>Payment Terms:</strong> ${poDetailDraft.paymentTerms}</div>
+            ${poDetailDraft.receivedDate ? `<div><strong>Received:</strong> ${poDetailDraft.receivedDate}</div>` : ""}
+          </div>
+          <table>
+            <thead><tr><th>Description</th><th>SKU</th><th>Qty</th><th>Unit Cost</th><th>Amount</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <div class="total">Total: $${total.toFixed(2)}</div>
+          <script>window.onload = () => window.print();</script>
+        </body>
+      </html>
+    `);
+    win.document.close();
   };
 
   // Client request 2026-08-27: map each item to QuickBooks COGS/Income/Asset accounts, fetched
@@ -471,6 +537,22 @@ export default function Inventory() {
   // filtered and the Edit dialog showed the Category field blank for them. Filter dropdown is now
   // built from whatever categories actually exist; Add/Edit switched to free text (see below).
   const dynamicCategories = ["All", ...Array.from(new Set(items.map((i) => i.category))).sort()];
+
+  // Client PDF 2026-09-15: "sort by amount or vendors" + "search by PO number" on Pay Invoices.
+  const filteredVendorBills = vendorBills
+    .filter((b) => matchesQuery(billSearch, [b.number, b.suppliers?.name, b.po_number]))
+    .sort((a, b) => {
+      if (billSort.key === "amount") return billSort.dir === "asc" ? a.amount - b.amount : b.amount - a.amount;
+      if (billSort.key === "vendor") {
+        const cmp = (a.suppliers?.name ?? "").localeCompare(b.suppliers?.name ?? "");
+        return billSort.dir === "asc" ? cmp : -cmp;
+      }
+      return 0;
+    });
+
+  const toggleBillSort = (key: "amount" | "vendor") => {
+    setBillSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  };
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -521,8 +603,9 @@ export default function Inventory() {
       issueDate: newBill.issueDate,
       dueDate: newBill.dueDate || null,
       amount: parseFloat(newBill.amount) || 0,
+      poId: newBill.poId || null,
     });
-    setNewBill({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "" });
+    setNewBill({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "", poId: "" });
     setNewBillOpen(false);
     loadInventory();
   };
@@ -877,6 +960,21 @@ export default function Inventory() {
                       </Select>
                     </div>
                   )}
+                  <div><Label>{t("Payment Terms")}</Label>
+                    <Select
+                      value={PAYMENT_TERMS_PRESETS.includes(newPo.paymentTerms) ? newPo.paymentTerms : "Custom"}
+                      onValueChange={(v) => setNewPo((p) => ({ ...p, paymentTerms: v === "Custom" ? "" : v }))}
+                    >
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_TERMS_PRESETS.map((term) => <SelectItem key={term} value={term}>{t(term)}</SelectItem>)}
+                        <SelectItem value="Custom">{t("Custom")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {!PAYMENT_TERMS_PRESETS.includes(newPo.paymentTerms) && (
+                      <Input className="mt-2" placeholder={t("e.g. Net 45, COD...")} value={newPo.paymentTerms} onChange={(e) => setNewPo((p) => ({ ...p, paymentTerms: e.target.value }))} />
+                    )}
+                  </div>
                   <div><Label>{t("Products")}</Label>
                     <div className="mt-1">
                       <PoLineItemsEditor items={newPoLineItems} onChange={setNewPoLineItems} inventoryItems={items} />
@@ -890,8 +988,14 @@ export default function Inventory() {
           </div>
 
           <Dialog open={!!poDetail} onOpenChange={(open) => !open && setPoDetail(null)}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{t("Purchase Order")} {poDetail?.number}</DialogTitle></DialogHeader>
+            <DialogContent className="max-h-[90vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>{t("Purchase Order")} {poDetail?.number}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
+                <div className="flex justify-end">
+                  <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 border-[#E2E8F0]" onClick={handleViewPoPdf}>
+                    <FileText className="w-3.5 h-3.5" /> {t("View PDF")}
+                  </Button>
+                </div>
                 <div><Label>{t("PO Number")}</Label><Input className="mt-1" value={poDetailDraft.number} onChange={(e) => setPoDetailDraft((p) => ({ ...p, number: e.target.value }))} /></div>
                 <div><Label>{t("Vendor")}</Label>
                   <div className="mt-1">
@@ -904,17 +1008,38 @@ export default function Inventory() {
                     />
                   </div>
                 </div>
-                <div><Label>{t("Status")}</Label>
-                  <Select value={poDetailDraft.status} onValueChange={(v) => setPoDetailDraft((p) => ({ ...p, status: v }))}>
+                <div className="grid grid-cols-2 gap-4">
+                  <div><Label>{t("Status")}</Label>
+                    <Select value={poDetailDraft.status} onValueChange={(v) => setPoDetailDraft((p) => ({ ...p, status: v }))}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Pending">{t("Pending")}</SelectItem>
+                        <SelectItem value="Sent - Email">{t("Sent - Email")}</SelectItem>
+                        <SelectItem value="Sent - Portal">{t("Sent - Portal")}</SelectItem>
+                        <SelectItem value="Received">{t("Received")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div><Label>{t("Received Date")}</Label><Input type="date" className="mt-1" value={poDetailDraft.receivedDate} onChange={(e) => setPoDetailDraft((p) => ({ ...p, receivedDate: e.target.value }))} /></div>
+                </div>
+                {poDetailDraft.status === "Received" && (
+                  <p className="text-xs text-[#0891B2] bg-[#0891B2]/10 rounded-lg px-3 py-2">{t("Saving as Received adds these quantities into store inventory (matched by SKU).")}</p>
+                )}
+                <div><Label>{t("Payment Terms")}</Label>
+                  <Select
+                    value={PAYMENT_TERMS_PRESETS.includes(poDetailDraft.paymentTerms) ? poDetailDraft.paymentTerms : "Custom"}
+                    onValueChange={(v) => setPoDetailDraft((p) => ({ ...p, paymentTerms: v === "Custom" ? "" : v }))}
+                  >
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Pending">{t("Pending")}</SelectItem>
-                      <SelectItem value="Sent">{t("Sent")}</SelectItem>
-                      <SelectItem value="Received">{t("Received")}</SelectItem>
+                      {PAYMENT_TERMS_PRESETS.map((term) => <SelectItem key={term} value={term}>{t(term)}</SelectItem>)}
+                      <SelectItem value="Custom">{t("Custom")}</SelectItem>
                     </SelectContent>
                   </Select>
+                  {!PAYMENT_TERMS_PRESETS.includes(poDetailDraft.paymentTerms) && (
+                    <Input className="mt-2" placeholder={t("e.g. Net 45, COD...")} value={poDetailDraft.paymentTerms} onChange={(e) => setPoDetailDraft((p) => ({ ...p, paymentTerms: e.target.value }))} />
+                  )}
                 </div>
-                <div><Label>{t("Received Date")}</Label><Input type="date" className="mt-1" value={poDetailDraft.receivedDate} onChange={(e) => setPoDetailDraft((p) => ({ ...p, receivedDate: e.target.value }))} /></div>
                 <div><Label>{t("Products")}</Label>
                   <div className="mt-1">
                     <PoLineItemsEditor items={poDetailLineItems} onChange={setPoDetailLineItems} inventoryItems={items} />
@@ -934,6 +1059,7 @@ export default function Inventory() {
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Items")}</th>
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Terms")}</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Received")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
@@ -947,6 +1073,7 @@ export default function Inventory() {
                       <td className="text-right py-3 px-4 text-[#0F172A]">{po.item_count}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${po.total.toLocaleString()}</td>
                       <td className="py-3 px-4 text-[#64748B]">{po.order_date}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{t(po.payment_terms || "Net 30")}</td>
                       <td className="py-3 px-4 text-[#64748B]">{po.received_date || "—"}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${poStatusColors[po.status]} text-[10px] px-1.5 py-0`}>{t(po.status)}</Badge>
@@ -984,6 +1111,21 @@ export default function Inventory() {
                     </div>
                   </div>
                   <div><Label>{t("Bill Number")}</Label><Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} /></div>
+                  {/* Client PDF 2026-09-15: link a bill back to the PO it's paying off, so it can be searched/found by PO number. */}
+                  <div><Label>{t("Purchase Order (optional)")}</Label>
+                    <div className="mt-1">
+                      <SearchableSelect
+                        value={newBill.poId}
+                        onChange={(v) => setNewBill((p) => ({ ...p, poId: v }))}
+                        placeholder={t("Link a PO (optional)")}
+                        searchPlaceholder={t("Search PO number...")}
+                        emptyText={t("No matching purchase orders.")}
+                        options={purchaseOrders
+                          .filter((po) => !newBill.supplierId || po.supplier_id === newBill.supplierId)
+                          .map((po) => ({ value: po.id, label: po.number, sublabel: po.suppliers?.name ?? undefined }))}
+                      />
+                    </div>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><Label>{t("Issue Date")}</Label><Input type="date" className="mt-1" value={newBill.issueDate} onChange={(e) => setNewBill((p) => ({ ...p, issueDate: e.target.value }))} /></div>
                     <div><Label>{t("Due Date")}</Label><Input type="date" className="mt-1" value={newBill.dueDate} onChange={(e) => setNewBill((p) => ({ ...p, dueDate: e.target.value }))} /></div>
@@ -1009,24 +1151,40 @@ export default function Inventory() {
               </div>
             </div>
           )}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+            <Input placeholder={t("Search bill #, vendor, or PO number...")} value={billSearch} onChange={(e) => setBillSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+          </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Bill #")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vendor")}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("PO #")}</th>
+                    <th
+                      className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase cursor-pointer select-none hover:text-[#0891B2]"
+                      onClick={() => toggleBillSort("vendor")}
+                    >
+                      <span className="inline-flex items-center gap-1">{t("Vendor")}{billSort.key === "vendor" && <span className="text-[10px]">{billSort.dir === "asc" ? "▲" : "▼"}</span>}</span>
+                    </th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Due Date")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                    <th
+                      className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase cursor-pointer select-none hover:text-[#0891B2]"
+                      onClick={() => toggleBillSort("amount")}
+                    >
+                      <span className="inline-flex items-center gap-1 justify-end">{t("Amount")}{billSort.key === "amount" && <span className="text-[10px]">{billSort.dir === "asc" ? "▲" : "▼"}</span>}</span>
+                    </th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {vendorBills.map((bill) => (
+                  {filteredVendorBills.map((bill) => (
                     <tr key={bill.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{bill.number}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{bill.po_number ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{bill.suppliers?.name ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{bill.issue_date}</td>
                       <td className="py-3 px-4 text-[#64748B]">{bill.due_date ?? "—"}</td>
@@ -1043,8 +1201,8 @@ export default function Inventory() {
                       </td>
                     </tr>
                   ))}
-                  {vendorBills.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{t("No vendor bills yet")}</td></tr>
+                  {filteredVendorBills.length === 0 && (
+                    <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">{t("No vendor bills yet")}</td></tr>
                   )}
                 </tbody>
               </table>

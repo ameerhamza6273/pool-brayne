@@ -315,15 +315,15 @@ export default async function inventoryRoutes(app: FastifyInstance) {
 
   type PoLineItemInput = { description: string; sku: string | null; quantity: number; unitCost: number };
 
-  app.post<{ Body: { supplierId: string; number: string; locationId?: string | null; lineItems?: PoLineItemInput[] } }>("/purchase-orders", async (req) => {
-    const { supplierId, number, locationId, lineItems } = req.body;
+  app.post<{ Body: { supplierId: string; number: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string } }>("/purchase-orders", async (req) => {
+    const { supplierId, number, locationId, lineItems, paymentTerms } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const itemCount = lineItems?.length ?? 0;
       const total = (lineItems ?? []).reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
       const [row] = await tx`
-        insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total)
-        values (${tenant.id}, ${number}, ${supplierId}, 'Pending', ${locationId ?? null}, ${itemCount}, ${total})
+        insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total, payment_terms)
+        values (${tenant.id}, ${number}, ${supplierId}, 'Pending', ${locationId ?? null}, ${itemCount}, ${total}, ${paymentTerms || "Net 30"})
         returning *
       `;
       if (lineItems && lineItems.length > 0) {
@@ -341,18 +341,47 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   // Client request 2026-09-03: PO list had no way to view/edit an existing order.
   app.patch<{
     Params: { id: string };
-    Body: { number: string; supplierId: string; status: string; receivedDate: string | null; locationId?: string | null };
+    Body: { number: string; supplierId: string; status: string; receivedDate: string | null; locationId?: string | null; paymentTerms?: string };
   }>("/purchase-orders/:id", async (req) => {
     const { id } = req.params;
-    const { number, supplierId, status, receivedDate, locationId } = req.body;
+    const { number, supplierId, status, receivedDate, locationId, paymentTerms } = req.body;
     return withTenantContext(req.userId, async (tx) => {
+      const [existing] = await tx`select status from purchase_orders where id = ${id}` as unknown as { status: string }[];
       const [row] = await tx`
         update purchase_orders
         set number = ${number}, supplier_id = ${supplierId}, status = ${status},
-            received_date = ${receivedDate}, location_id = ${locationId ?? null}
+            received_date = ${receivedDate}, location_id = ${locationId ?? null},
+            payment_terms = ${paymentTerms || "Net 30"}
         where id = ${id}
         returning *
       `;
+
+      // Client PDF 2026-09-15: "Ability to receive PO to 'put in inventory'" -- marking a PO
+      // Received used to only flip the status label; it now actually adds the ordered quantities
+      // into store stock (matched by SKU, since PO line items don't carry an item_id).
+      if (status === "Received" && existing?.status !== "Received") {
+        const [tenant] = await tx`select current_tenant_id() as id`;
+        const [store] = await tx`select id from inventory_locations where type = 'store' limit 1` as unknown as { id: string }[];
+        if (store) {
+          const lineItems = await tx`
+            select sku, quantity from purchase_order_line_items where po_id = ${id}
+          ` as unknown as { sku: string | null; quantity: number }[];
+          for (const li of lineItems) {
+            if (!li.sku) continue;
+            const [item] = await tx`select id from inventory_items where sku = ${li.sku} limit 1` as unknown as { id: string }[];
+            if (!item) continue;
+            const [stockRow] = await tx`
+              select id, quantity from inventory_stock where item_id = ${item.id} and location_id = ${store.id} limit 1
+            ` as unknown as { id: string; quantity: number }[];
+            if (stockRow) {
+              await tx`update inventory_stock set quantity = ${stockRow.quantity + li.quantity} where id = ${stockRow.id}`;
+            } else {
+              await tx`insert into inventory_stock (tenant_id, item_id, location_id, quantity) values (${tenant.id}, ${item.id}, ${store.id}, ${li.quantity})`;
+            }
+          }
+        }
+      }
+
       return row;
     });
   });

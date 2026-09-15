@@ -417,3 +417,17 @@ history was condensed into the structural sections above on 2026-09-10.)*
   job between stage columns, persisted after reload, then dragged it back to restore state. This
   was the last remaining item from the 2026-09-14 transcript; everything from that meeting is now
   either built or (PO item-selection only) just needs the client to re-check the live deploy.
+- **2026-09-15** — Client sent a new "work flow.pdf" (workflow/requirements doc, not a transcript).
+  Cross-checked it against the live app and built the 6 real gaps found: POS freeform notes field,
+  PO full-screen PDF/print view, PO status split into Sent - Email/Sent - Portal, PO payment terms
+  (Net 30/customizable, new `purchase_orders.payment_terms` column), Vendor Bills PO-number
+  search + PO link (new `vendor_bills.po_id`), and PO "Received" now actually pushes ordered
+  quantities into `inventory_stock` (SKU-matched) instead of just flipping a status label —
+  previously fully manual. Also fixed a real bug hit while verifying live: the shared
+  `DialogContent` component (`src/components/ui/dialog.tsx`) let long unbreakable content (e.g. a
+  long vendor name in a select trigger) push a dialog's grid column past `max-w-lg`, causing
+  horizontal bleed/scroll instead of clipping — fixed app-wide with `overflow-x-hidden` +
+  `[&>*]:min-w-0` on the dialog's grid children, not just patched locally. Verified all 6 items
+  live in the browser (PO detail dialog, New PO dialog, Vendor Bills tab, POS cart) with real
+  tenant data; no console errors. Migration applied directly to production Supabase via the
+  established `_tmp-run-migration.ts` pattern.

@@ -828,6 +828,7 @@ export type Database = {
           number: string
           paid_date: string | null
           payment_method: string | null
+          po_id: string | null
           status: string
           supplier_id: string
           tenant_id: string
@@ -841,6 +842,7 @@ export type Database = {
           number: string
           paid_date?: string | null
           payment_method?: string | null
+          po_id?: string | null
           status?: string
           supplier_id: string
           tenant_id: string
@@ -854,6 +856,7 @@ export type Database = {
           number?: string
           paid_date?: string | null
           payment_method?: string | null
+          po_id?: string | null
           status?: string
           supplier_id?: string
           tenant_id?: string
@@ -1310,6 +1313,7 @@ export type Database = {
           created_at: string
           customer_id: string | null
           id: string
+          note: string | null
           payment_method: string | null
           subtotal: number
           tax: number
@@ -1321,6 +1325,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           id?: string
+          note?: string | null
           payment_method?: string | null
           subtotal?: number
           tax?: number
@@ -1332,6 +1337,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           id?: string
+          note?: string | null
           payment_method?: string | null
           subtotal?: number
           tax?: number
@@ -1432,6 +1438,7 @@ export type Database = {
           location_id: string | null
           number: string
           order_date: string
+          payment_terms: string
           received_date: string | null
           status: string
           supplier_id: string | null
@@ -1444,6 +1451,7 @@ export type Database = {
           location_id?: string | null
           number: string
           order_date?: string
+          payment_terms?: string
           received_date?: string | null
           status?: string
           supplier_id?: string | null
@@ -1456,6 +1464,7 @@ export type Database = {
           location_id?: string | null
           number?: string
           order_date?: string
+          payment_terms?: string
           received_date?: string | null
           status?: string
           supplier_id?: string | null
