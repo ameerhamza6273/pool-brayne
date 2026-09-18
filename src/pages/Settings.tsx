@@ -18,7 +18,6 @@ import type { Database } from "@/lib/database.types";
 import { contentCategories } from "@/lib/data";
 import { useLanguage } from "@/lib/language-context";
 import { useConfigLists } from "@/hooks/use-config-lists";
-import type { ConfigListKey } from "@/lib/api/configLists";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Integration = Database["public"]["Tables"]["integrations"]["Row"];

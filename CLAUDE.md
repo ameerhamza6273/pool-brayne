@@ -89,6 +89,17 @@ GPS; PoolBrayne's trucks use a different, API-less consumer tracker — see Inte
   destructures `const { t } = useLanguage()` — it silently shadows the translate function within
   that callback (several sessions have hit this; rename the loop var instead, e.g. `tpl`/`row`).
 - No automated tests in the repo.
+- **Gotcha (bit a live deploy 2026-09-18):** `npx tsc --noEmit -p .` is **not** the same check
+  Vercel/Railway run and can pass while the real build fails. Both `package.json`s' actual
+  `build` script is `tsc -b && vite build` (frontend) / `tsc -b` (backend) — `tsc -b` (project-
+  reference build mode) enforces `noUnusedLocals`/`noUnusedParameters`, which plain `--noEmit`
+  here does not. An unused type-only import (`ConfigListKey` in `Settings.tsx`) passed
+  `--noEmit` clean, got pushed, and Vercel's build failed in prod while the site kept silently
+  serving the previous deploy — no crash, no alert, just stale code live for ~15 minutes.
+  **Always run the actual `npm run build` in both `/` and `/backend` before pushing**, not just
+  `--noEmit`, and after any push that changes frontend code, check
+  `vercel.com/<team>/pool-brayne/deployments` (or the CLI) for a Ready/Error status rather than
+  assuming a successful `git push` means the site updated.
 
 ## Current State (as of 2026-09-10)
 
