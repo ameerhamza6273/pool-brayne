@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formTemplatesApi, type FormTemplate, type FormField, type FormFieldType } from "@/lib/api/formTemplates";
 import { useLanguage } from "@/lib/language-context";
-import { jobTypes } from "@/lib/data";
+import { useConfigLists } from "@/hooks/use-config-lists";
 
 const fieldTypeLabels: Record<FormFieldType, string> = {
   text: "Short Text",
@@ -29,6 +29,7 @@ const emptyField = (): FormField => ({ id: `field_${Date.now()}_${Math.random().
 // optionally suggest itself for a job type via `appliesTo`).
 export default function FormBuilder() {
   const { t: translate } = useLanguage();
+  const { lists: configLists } = useConfigLists();
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -117,7 +118,7 @@ export default function FormBuilder() {
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="any">{translate("Any job type")}</SelectItem>
-                      {jobTypes.map((jt) => <SelectItem key={jt.id} value={jt.label}>{translate(jt.label)}</SelectItem>)}
+                      {configLists.job_types.map((jt) => <SelectItem key={jt.id} value={jt.label}>{translate(jt.label)}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>

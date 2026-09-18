@@ -170,9 +170,15 @@ export default function Field() {
   };
 
   // Client feedback 2026-09-11: forms weren't reachable here at all (Field techs never see
-  // desktop JobDetail) -- same suggested-templates rule as JobDetail: any template with no
-  // applies_to, or matching this job's type.
-  const suggestedTemplates = currentJob ? allTemplates.filter((t) => t.applies_to === currentJob.type || t.applies_to === null) : [];
+  // desktop JobDetail) -- same suggested-templates rule as JobDetail. Client PDF 2026-09-18: a
+  // job's own selected_form_ids (chosen at creation) now takes priority; falls back to the old
+  // applies_to-derived rule for jobs created before that feature existed.
+  const currentJobSelectedFormIds = currentJob && Array.isArray(currentJob.selected_form_ids) ? (currentJob.selected_form_ids as string[]) : [];
+  const suggestedTemplates = currentJob
+    ? (currentJobSelectedFormIds.length > 0
+        ? allTemplates.filter((t) => currentJobSelectedFormIds.includes(t.id))
+        : allTemplates.filter((t) => t.applies_to === currentJob.type || t.applies_to === null))
+    : [];
   const missingRequiredTemplates = suggestedTemplates.filter((t) => t.required && !jobForms.some((f) => f.template_id === t.id));
 
   const handleSaveForm = async (template: FormTemplate, data: Record<string, unknown>) => {

@@ -19,9 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  jobStatuses, jobTypes, cancellationReasons, rescheduleTypes,
-} from "@/lib/data";
+import { useConfigLists } from "@/hooks/use-config-lists";
+import type { ConfigListItem } from "@/lib/api/configLists";
 import { useTranslator } from "@/hooks/use-translator";
 import { useLanguage } from "@/lib/language-context";
 import { Loader2, RefreshCw, Pencil } from "lucide-react";
@@ -99,13 +98,13 @@ const timelineSteps = [
   { id: "completed", label: "Completed", icon: CheckCircle2 },
 ];
 
-const statusBadge = (status: string) => {
+const statusBadge = (status: string, jobStatuses: ConfigListItem[]) => {
   const s = jobStatuses.find((j) => j.label === status || j.id === status);
   if (!s) return "bg-[#64748B]/10 text-[#64748B]";
   return `bg-[${s.color}]/10 text-[${s.color}]`;
 };
 
-const typeBadgeStyle = (type: string): React.CSSProperties => {
+const typeBadgeStyle = (type: string, jobTypes: ConfigListItem[]): React.CSSProperties => {
   const t = jobTypes.find((j) => j.label === type);
   const color = t?.color || "#0891B2";
   return { backgroundColor: `${color}1A`, color };
@@ -114,6 +113,7 @@ const typeBadgeStyle = (type: string): React.CSSProperties => {
 export default function JobDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { lists: configLists } = useConfigLists();
   const [job, setJob] = useState<JobRow | null>(null);
   const [descEditing, setDescEditing] = useState(false);
   const [descDraft, setDescDraft] = useState("");
@@ -408,10 +408,19 @@ export default function JobDetail() {
     setNoteText("");
   };
 
-  // Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted into the job."
-  const missingRequiredTemplates = job
-    ? allTemplates.filter((t) => (t.applies_to === job.type || t.applies_to === null) && t.required && !pastForms.some((f) => f.template_id === t.id))
+  // Client PDF 2026-09-18: "allow us to select the forms needed for the job. Not automatically
+  // [applied] to each job" -- jobs created after this feature carry an explicit selected_form_ids
+  // list (set at creation, see Jobs.tsx); jobs created before it have an empty array, so they
+  // fall back to the old applies_to-derived set rather than silently losing their required forms.
+  const jobSelectedFormIds = job && Array.isArray(job.selected_form_ids) ? (job.selected_form_ids as string[]) : [];
+  const applicableTemplates = job
+    ? (jobSelectedFormIds.length > 0
+        ? allTemplates.filter((t) => jobSelectedFormIds.includes(t.id))
+        : allTemplates.filter((t) => t.applies_to === job.type || t.applies_to === null))
     : [];
+
+  // Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted into the job."
+  const missingRequiredTemplates = applicableTemplates.filter((t) => t.required && !pastForms.some((f) => f.template_id === t.id));
 
   const handleMarkComplete = async () => {
     if (!job) return;
@@ -472,8 +481,8 @@ export default function JobDetail() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.id.slice(0, 8).toUpperCase()}</h1>
-            <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type)}>{job.type}</Badge>
-            <Badge className={`${statusBadge(job.status)} text-[10px] px-1.5 py-0`}>{job.status}</Badge>
+            <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type, configLists.job_types)}>{job.type}</Badge>
+            <Badge className={`${statusBadge(job.status, configLists.job_statuses)} text-[10px] px-1.5 py-0`}>{job.status}</Badge>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -565,8 +574,8 @@ export default function JobDetail() {
                 <Select value={rescheduleReason} onValueChange={setRescheduleReason}>
                   <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select reason")} /></SelectTrigger>
                   <SelectContent>
-                    {rescheduleTypes.map((r) => (
-                      <SelectItem key={r} value={r}>{t(r)}</SelectItem>
+                    {configLists.reschedule_types.map((r) => (
+                      <SelectItem key={r.id} value={r.label}>{t(r.label)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -851,8 +860,8 @@ export default function JobDetail() {
                     <Select>
                       <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select reason")} /></SelectTrigger>
                       <SelectContent>
-                        {cancellationReasons.map((r) => (
-                          <SelectItem key={r} value={r}>{t(r)}</SelectItem>
+                        {configLists.cancellation_reasons.map((r) => (
+                          <SelectItem key={r.id} value={r.label}>{t(r.label)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -1030,78 +1039,6 @@ export default function JobDetail() {
             </CardContent>
           </Card>
 
-          {/* Service Forms — Client SMS 2026-09-06: custom Form Builder. Templates that suggest
-              themselves for this job's type render automatically; any other template can be
-              tagged on ("Add Another Form") without leaving the job. */}
-          {(() => {
-            const suggested = allTemplates.filter((t) => t.applies_to === job.type || t.applies_to === null);
-            const extra = allTemplates.filter((t) => extraTemplateIds.includes(t.id) && !suggested.some((s) => s.id === t.id));
-            const shown = [...suggested, ...extra];
-            const pickable = allTemplates.filter((t) => !shown.some((s) => s.id === t.id));
-            return (
-              <div className="space-y-4">
-                {shown.map((tpl) => (
-                  <div key={tpl.id} className="relative">
-                    {tpl.required && !pastForms.some((f) => f.template_id === tpl.id) && (
-                      <Badge className="absolute -top-2 right-2 z-10 bg-[#DC2626] text-white text-[10px] px-1.5 py-0">{t("Required")}</Badge>
-                    )}
-                    <DynamicForm template={tpl} onSave={(data) => handleSaveForm(tpl, data)} onUploadPhoto={handleFormPhotoUpload} />
-                  </div>
-                ))}
-                {pickable.length > 0 && (
-                  <Dialog open={addFormPickerOpen} onOpenChange={setAddFormPickerOpen}>
-                    <DialogTrigger asChild>
-                      <Button variant="outline" size="sm" className="gap-1.5 border-[#E2E8F0] border-dashed">
-                        <Plus className="w-3.5 h-3.5" /> {t("Add Another Form")}
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-h-[80vh] overflow-y-auto">
-                      <DialogHeader><DialogTitle>{t("Tag a Form to This Job")}</DialogTitle></DialogHeader>
-                      <div className="space-y-2 pt-2">
-                        {pickable.map((tpl) => (
-                          <button
-                            key={tpl.id}
-                            className="w-full text-left p-3 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                            onClick={() => { setExtraTemplateIds((prev) => [...prev, tpl.id]); setAddFormPickerOpen(false); }}
-                          >
-                            <p className="text-sm font-medium text-[#0F172A]">{t(tpl.name)}</p>
-                            {tpl.description && <p className="text-xs text-[#64748B]">{t(tpl.description)}</p>}
-                          </button>
-                        ))}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Past submitted forms for this job — client PDF 2026-09-06: "view all forms from
-              previous jobs". */}
-          {pastForms.length > 0 && (
-            <Card className="border-[#E2E8F0] shadow-sm">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Submitted Forms")}</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 space-y-2">
-                {pastForms.map((f) => (
-                  <div key={f.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <div>
-                      <p className="text-sm font-medium text-[#0F172A]">{t(f.template_name ?? f.type)}</p>
-                      <p className="text-xs text-[#64748B]">{new Date(f.submitted_at).toLocaleString()} · {f.submitted_by_name ?? t("Unknown")}</p>
-                    </div>
-                    <button
-                      className="text-xs text-[#0891B2] hover:underline shrink-0"
-                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${f.public_token}`)}
-                    >
-                      {t("Copy Customer Link")}
-                    </button>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
           {/* Line Items — client question 2026-09-03: "How to add items to a service ticket/Job" */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex items-center justify-between">
@@ -1184,6 +1121,80 @@ export default function JobDetail() {
             libraryDocuments={libraryDocuments}
             onAttachExisting={handleAttachLibraryDocument}
           />
+
+          {/* Client PDF 2026-09-18: "put the forms under documents" -- Service Forms now render
+              directly under the Documents section instead of as a separate card elsewhere on the
+              page. Client SMS 2026-09-06: custom Form Builder. Templates that suggest themselves
+              for this job's type render automatically; any other template can be tagged on
+              ("Add Another Form") without leaving the job. */}
+          {(() => {
+            const suggested = applicableTemplates;
+            const extra = allTemplates.filter((t) => extraTemplateIds.includes(t.id) && !suggested.some((s) => s.id === t.id));
+            const shown = [...suggested, ...extra];
+            const pickable = allTemplates.filter((t) => !shown.some((s) => s.id === t.id));
+            return (
+              <div className="space-y-4">
+                {shown.map((tpl) => (
+                  <div key={tpl.id} className="relative">
+                    {tpl.required && !pastForms.some((f) => f.template_id === tpl.id) && (
+                      <Badge className="absolute -top-2 right-2 z-10 bg-[#DC2626] text-white text-[10px] px-1.5 py-0">{t("Required")}</Badge>
+                    )}
+                    <DynamicForm template={tpl} onSave={(data) => handleSaveForm(tpl, data)} onUploadPhoto={handleFormPhotoUpload} />
+                  </div>
+                ))}
+                {pickable.length > 0 && (
+                  <Dialog open={addFormPickerOpen} onOpenChange={setAddFormPickerOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1.5 border-[#E2E8F0] border-dashed">
+                        <Plus className="w-3.5 h-3.5" /> {t("Add Another Form")}
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-h-[80vh] overflow-y-auto">
+                      <DialogHeader><DialogTitle>{t("Tag a Form to This Job")}</DialogTitle></DialogHeader>
+                      <div className="space-y-2 pt-2">
+                        {pickable.map((tpl) => (
+                          <button
+                            key={tpl.id}
+                            className="w-full text-left p-3 rounded-lg border border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                            onClick={() => { setExtraTemplateIds((prev) => [...prev, tpl.id]); setAddFormPickerOpen(false); }}
+                          >
+                            <p className="text-sm font-medium text-[#0F172A]">{t(tpl.name)}</p>
+                            {tpl.description && <p className="text-xs text-[#64748B]">{t(tpl.description)}</p>}
+                          </button>
+                        ))}
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Past submitted forms for this job — client PDF 2026-09-06: "view all forms from
+              previous jobs". */}
+          {pastForms.length > 0 && (
+            <Card className="border-[#E2E8F0] shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Submitted Forms")}</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0 space-y-2">
+                {pastForms.map((f) => (
+                  <div key={f.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <div>
+                      <p className="text-sm font-medium text-[#0F172A]">{t(f.template_name ?? f.type)}</p>
+                      <p className="text-xs text-[#64748B]">{new Date(f.submitted_at).toLocaleString()} · {f.submitted_by_name ?? t("Unknown")}</p>
+                    </div>
+                    <button
+                      className="text-xs text-[#0891B2] hover:underline shrink-0"
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${f.public_token}`)}
+                    >
+                      {t("Copy Customer Link")}
+                    </button>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Parts Used (auto-deducted from store inventory on job completion) */}
           {partsUsed.length > 0 && (

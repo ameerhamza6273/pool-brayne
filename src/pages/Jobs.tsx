@@ -11,7 +11,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { jobTypes, callTypes, callSources } from "@/lib/data";
+import { useConfigLists } from "@/hooks/use-config-lists";
+import type { ConfigListItem } from "@/lib/api/configLists";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
@@ -19,6 +20,7 @@ import { jobsApi } from "@/lib/api/jobs";
 import { profilesApi } from "@/lib/api/profiles";
 import { customersApi } from "@/lib/api/customers";
 import { recurringJobsApi, type RecurringJob } from "@/lib/api/recurringJobs";
+import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
 import { geocodeAddress } from "@/lib/geocode";
 import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
@@ -40,7 +42,7 @@ const stages = [
   { id: "completed", label: "Completed", color: "bg-[#16A34A]/10 border-t-[#16A34A]" },
 ];
 
-const typeStyle = (label: string): React.CSSProperties => {
+const typeStyle = (label: string, jobTypes: ConfigListItem[]): React.CSSProperties => {
   const t = jobTypes.find((j) => j.label === label);
   const color = t?.color || "#0891B2";
   return { backgroundColor: `${color}1A`, color };
@@ -67,6 +69,7 @@ const techDotColor = (techId: string): string => {
 
 export default function Jobs() {
   const { t } = useLanguage();
+  const { lists: configLists } = useConfigLists();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule" | "map">(
     () => (searchParams.get("tab") as "pipeline" | "dispatch" | "schedule" | "map") || "pipeline",
@@ -90,7 +93,12 @@ export default function Jobs() {
     startDate: new Date().toISOString().slice(0, 10), endDate: "",
   });
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
+  const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", selectedFormIds: [] as string[] });
+  // Client PDF 2026-09-18: "allow us to select the forms needed for the job. Not automatically
+  // [applied] to each job" -- staff pick per-job now instead of the set being purely derived from
+  // job type; templates whose Applies-To/Required setting (Form Builder) matches are pre-checked
+  // as a starting point, but every checkbox is togglable.
+  const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
   // Client bug report 2026-09-04: "dynamic search or autofill for SKUs... ability to add
   // multiple line items" — New Job's old Item SKU/Labor SKU text fields weren't wired to
   // inventory at all. Same LineItemsEditor + inventory search as Estimates/Invoices now.
@@ -113,7 +121,24 @@ export default function Jobs() {
     customersApi.list().then((data) => setCustomers(data ?? []));
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
     inventoryApi.summary().then((data) => setInventoryItems(data.items));
+    formTemplatesApi.list().then((data) => setFormTemplates(data ?? []));
   }, [loadJobs]);
+
+  const toggleNewJobForm = (templateId: string) => {
+    setNewJob((p) => ({
+      ...p,
+      selectedFormIds: p.selectedFormIds.includes(templateId)
+        ? p.selectedFormIds.filter((id) => id !== templateId)
+        : [...p.selectedFormIds, templateId],
+    }));
+  };
+
+  // Pre-check templates Form Builder already marks as applying to this job type (or "any") and
+  // required -- staff can still uncheck them, this just saves re-picking the obvious ones.
+  const handleNewJobTypeChange = (jobType: string) => {
+    const suggested = formTemplates.filter((tpl) => tpl.required && (tpl.applies_to === jobType || tpl.applies_to === null)).map((tpl) => tpl.id);
+    setNewJob((p) => ({ ...p, jobType, selectedFormIds: Array.from(new Set([...suggested, ...p.selectedFormIds])) }));
+  };
 
   const handleCreateJob = async () => {
     if (!newJob.customerId || !newJob.jobType) return;
@@ -130,8 +155,9 @@ export default function Jobs() {
       lineItems: lineItems.length > 0
         ? lineItems.map((li) => ({ description: li.description, sku: li.sku ?? null, itemType: li.itemType ?? "material", quantity: li.quantity, cost: li.cost ?? 0, rate: li.rate }))
         : undefined,
+      selectedFormIds: newJob.selectedFormIds,
     });
-    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "" });
+    setNewJob({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", selectedFormIds: [] });
     setNewJobLineItems([]);
     setNewJobOpen(false);
     loadJobs();
@@ -366,13 +392,13 @@ export default function Jobs() {
                 </div>
                 <div>
                   <Label>{t("Job Type")}</Label>
-                  <Select value={newJob.jobType} onValueChange={(v) => setNewJob((p) => ({ ...p, jobType: v }))}>
+                  <Select value={newJob.jobType} onValueChange={handleNewJobTypeChange}>
                     <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select job type")} /></SelectTrigger>
                     <SelectContent>
-                      {jobTypes.map((jt) => (
+                      {configLists.job_types.map((jt) => (
                         <SelectItem key={jt.id} value={jt.label}>
                           <span className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: jt.color }} />
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: jt.color ?? "#64748B" }} />
                             {jt.label}
                           </span>
                         </SelectItem>
@@ -380,14 +406,32 @@ export default function Jobs() {
                     </SelectContent>
                   </Select>
                 </div>
+                {formTemplates.length > 0 && (
+                  <div>
+                    <Label>{t("Forms for this Job")}</Label>
+                    <div className="mt-1 border border-[#E2E8F0] rounded-lg p-2 space-y-1 max-h-40 overflow-y-auto">
+                      {formTemplates.map((tpl) => (
+                        <label key={tpl.id} className="flex items-center gap-2 text-sm py-1 px-1.5 rounded hover:bg-[#F8FAFC] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newJob.selectedFormIds.includes(tpl.id)}
+                            onChange={() => toggleNewJobForm(tpl.id)}
+                          />
+                          <span className="flex-1">{t(tpl.name)}</span>
+                          {tpl.required && <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">{t("Required")}</Badge>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>{t("Call Type")}</Label>
                     <Select>
                       <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select call type")} /></SelectTrigger>
                       <SelectContent>
-                        {callTypes.map((c) => (
-                          <SelectItem key={c} value={c}>{t(c)}</SelectItem>
+                        {configLists.call_types.map((c) => (
+                          <SelectItem key={c.id} value={c.label}>{t(c.label)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -397,8 +441,8 @@ export default function Jobs() {
                     <Select>
                       <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select source")} /></SelectTrigger>
                       <SelectContent>
-                        {callSources.map((c) => (
-                          <SelectItem key={c} value={c}>{t(c)}</SelectItem>
+                        {configLists.call_sources.map((c) => (
+                          <SelectItem key={c.id} value={c.label}>{t(c.label)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -480,7 +524,7 @@ export default function Jobs() {
                     <Label>{t("Job Type")}</Label>
                     <Select value={newRecurring.jobType} onValueChange={(v) => setNewRecurring((p) => ({ ...p, jobType: v }))}>
                       <SelectTrigger className="mt-1"><SelectValue placeholder={t("Select type")} /></SelectTrigger>
-                      <SelectContent>{jobTypes.map((jt) => <SelectItem key={jt.id} value={jt.label}>{jt.label}</SelectItem>)}</SelectContent>
+                      <SelectContent>{configLists.job_types.map((jt) => <SelectItem key={jt.id} value={jt.label}>{jt.label}</SelectItem>)}</SelectContent>
                     </Select>
                   </div>
                   <div>
@@ -667,7 +711,7 @@ export default function Jobs() {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type)}>{job.type}</Badge>
+                      <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type, configLists.job_types)}>{job.type}</Badge>
                       <span className="text-xs text-[#64748B]">{job.scheduled_date} {job.scheduled_time}</span>
                     </div>
                     <p className="font-medium text-sm text-[#0F172A] mt-0.5">{job.customers?.name}</p>

@@ -526,7 +526,7 @@ export default function Inventory() {
   };
 
   const filtered = items.filter((p) => {
-    const matchesSearch = matchesQuery(search, [p.name, p.sku, p.short_description, p.long_description, p.category, p.manufacturer]);
+    const matchesSearch = matchesQuery(search, [p.name, p.sku, p.item_number != null ? String(p.item_number) : null, p.short_description, p.long_description, p.category, p.manufacturer]);
     const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
@@ -724,7 +724,7 @@ export default function Inventory() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-              <Input placeholder={t("Search name, SKU, description, category, or manufacturer...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+              <Input placeholder={t("Search item #, name, SKU, description, category, or manufacturer...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
             </div>
             <div className="flex gap-2">
               <Select value={categoryFilter} onValueChange={setCategoryFilter}>

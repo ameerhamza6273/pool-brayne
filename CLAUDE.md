@@ -62,6 +62,16 @@ GPS; PoolBrayne's trucks use a different, API-less consumer tracker — see Inte
   number in the thousands, see Known Gotchas), `AddressAutocomplete`, `CardPaymentForm`
   (Authorize.net Accept.js), `DocumentsSection`, `CategoryPicker` (4-level taxonomy), `DynamicForm`
   (renders a `form_templates` row — see Form Builder below).
+- `src/hooks/use-config-lists.ts` (`useConfigLists()`, added 2026-09-18) — fetches all 7
+  `tenant_config_lists` lists (job types/statuses, estimate statuses, call types/sources,
+  reschedule types, cancellation reasons) via `src/lib/api/configLists.ts`, falls back to the
+  matching static array in `src/lib/data.ts` while loading so nothing flashes empty. Replaces the
+  old pattern of importing those arrays directly from `data.ts` — **any page that needs one of
+  these lists should call this hook, not import the static array** (the static arrays still exist
+  only as the hook's loading-state fallback). Settings > Job Settings tab is the only editor
+  (Add/Delete wired to the same table); consumers seen so far: Jobs.tsx (New Job dialog + Pipeline
+  badges), JobDetail.tsx (badges, reschedule/cancellation reason selects), FormBuilder.tsx
+  (Applies-To selector).
 - i18n: `src/lib/language-context.tsx` (`useLanguage()` → `{ lang, setLang, toggle, t }`, `lang`
   persisted to `localStorage`) + `src/hooks/use-translator.ts` (the separate live-translate widget
   used only by JobDetail's Job Notes card). Client feedback 2026-09-11: `t()` used to be a pure
@@ -129,9 +139,12 @@ GPS; PoolBrayne's trucks use a different, API-less consumer tracker — see Inte
   `pos_orders`/`pos_order_items`/`pos_order_payments` (split tender), `vehicles`/`trip_history`/
   `geofence_alerts`, `timesheets`/`job_costing`, `automations`/`seasonal_campaigns`/
   `sms_conversations`/`sms_messages`/`reviews`, `integrations`/`subscription_plans`/
-  `billing_history`, `tasks`, `directory_contacts`, `form_templates`, `library_documents`. Every
-  business table carries `tenant_id`; RLS (`tenant_isolation` policy) is on everything.
-  `current_tenant_id()` helper resolves the caller's tenant via `profiles`.
+  `billing_history`, `tasks`, `directory_contacts`, `form_templates`, `library_documents`,
+  `tenant_config_lists` (generic tenant-editable small lists — Job Types/Statuses, Estimate
+  Statuses, Call Types/Sources, Reschedule Types, Cancellation Reasons — added 2026-09-18, see
+  Architecture note below). Every business table carries `tenant_id`; RLS (`tenant_isolation`
+  policy) is on everything. `current_tenant_id()` helper resolves the caller's tenant via
+  `profiles`.
 - **RLS gotcha (fixed):** `profiles` originally only allowed self-update — a tenant admin
   couldn't edit a teammate's row (silent no-op, no error). Fixed with an added
   `profiles_update_tenant` policy (`tenant_id = current_tenant_id()`). No other table has this
@@ -298,14 +311,33 @@ vendor, different payment processor).
    Field.tsx, confirmed live by searching "filter" and getting 50+ real inventory results with
    add/remove steppers — client just hadn't seen the undeployed build). Nothing left to build from
    this transcript; only re-confirm with the client once they're on the current deploy.
-9. **Flaky `GET /api/invoices/by-job` on JobDetail load** — observed intermittent 500s (then
-   succeeding on manual retry) while testing job write-off 2026-09-14, in this pre-existing route
-   unrelated to that feature. JobDetail fires ~12 parallel GET requests on mount (notifications,
-   form-templates, library, profiles, job detail, invoices/by-job, parts, line-items, attachments,
-   crew, forms, inventory/summary), each opening its own `withTenantContext` transaction — a
-   connection-pool-exhaustion-under-burst theory is untested but plausible. Not investigated
-   further (out of scope for that session); worth a dedicated look if it recurs or a client
-   reports JobDetail intermittently missing invoice-linked UI state.
+9. **Slow/stuck-looking initial page loads, app-wide — likely explains a chunk of the "you broke
+   what was working" client frustration on 2026-09-17** — confirmed live 2026-09-18 on `npm run
+   dev` against production Supabase: POS, Inventory, Customers, Jobs, Invoicing, and Settings all
+   sat on their own "Loading …" spinner for anywhere from ~3 to ~9 seconds on first load (then
+   rendered correctly, no errors, no retry needed). This generalizes the 2026-09-14 note below
+   about `/api/invoices/by-job` specifically — it's not that one route, it's most first-loads on
+   most pages, each of which fires many parallel GETs on mount, each opening its own
+   `withTenantContext` transaction. Connection-pool-exhaustion-under-burst (Supabase pooler) is
+   still the leading theory but is **still unconfirmed** — nobody has looked at pooler
+   metrics/logs or tried raising the pool size. Given the client already associates "slow/frozen
+   page" with "broken," this deserves a dedicated investigation session rather than being folded
+   into a feature-request session again. Original 2026-09-14 note, now subsumed by the above:
+   flaky `GET /api/invoices/by-job` intermittent 500s on JobDetail load (JobDetail alone fires
+   ~12 parallel GETs on mount — notifications, form-templates, library, profiles, job detail,
+   invoices/by-job, parts, line-items, attachments, crew, forms, inventory/summary).
+10. **Three items from the client's 2026-09-18 "work flow" feedback list are genuinely ambiguous
+    and were deliberately left unbuilt pending the client's own clarification** (dev was asked
+    directly and didn't know either, so a clarifying text was drafted for the dev to send rather
+    than guessed at): (a) "Remove the original in inventory list (default list we started with)"
+    — unclear whether this means a leftover seed/demo category or the whole legacy-import product
+    set; (b) "Need a Document folder to put from 'Document List'" — unclear whether this wants a
+    folder structure inside Library or a new Documents-type section on Job/Estimate; (c) on
+    Inventory edit, "need a drop down" — unclear which field. **Worth noting once an answer comes
+    back:** live-testing the Inventory edit dialog 2026-09-18 found Category/Subcategory are
+    already real `<Select>` dropdowns (via `CategoryPicker`) but **Manufacturer is still a plain
+    text `<Input>`**, no dropdown — a very plausible reading of (c) if the client means that field
+    specifically.
 
 ## Session Changelog
 
@@ -431,3 +463,42 @@ history was condensed into the structural sections above on 2026-09-10.)*
   live in the browser (PO detail dialog, New PO dialog, Vendor Bills tab, POS cart) with real
   tenant data; no console errors. Migration applied directly to production Supabase via the
   established `_tmp-run-migration.ts` pattern.
+- **2026-09-17** — Relayed client SMS: frustrated that recent changes "broke what was working,"
+  feels over-consulted on detail, explicitly referenced having already lost the Engage Hydrovac
+  account to a similar pattern (see `[[project_client_trust_crisis_2026_09_17]]` memory). Checked
+  build health + git/deploy sync on the spot: both clean, nothing unpushed — no evidence of an
+  actual regression from the vague report, matching the 2026-09-14 pattern where "broken" turned
+  out to be an undeployed-build confusion. No specific item was ever named, so nothing was "fixed"
+  this session — asked for concrete specifics before touching anything, per the memory's guidance.
+- **2026-09-18** — Client sent a new detailed feedback list (POS, Inventory, Jobs, Library,
+  Settings) plus an Excel sheet ("Copy of Library category.manufacture.xlsx") of Library's own
+  category/manufacturer vocabulary. Built the unambiguous items: POS list/spreadsheet view now
+  default (was grid), POS/Inventory search now include Item #, POS category+manufacturer now
+  pulled from the real catalog instead of a hardcoded 6-value list, with a star-to-favorite quick-
+  access row for each (new `localStorage` prefs, not DB); Library's category/manufacturer
+  dropdowns now use the client's own fixed list (`src/lib/data.ts`
+  `libraryCategories`/`libraryManufacturers`) instead of sharing Inventory's taxonomy; per-job form
+  selection at job creation (new `jobs.selected_form_ids` jsonb column, "Forms for this Job"
+  checklist in the New Job dialog, pre-checked from each template's existing Applies-To/Required
+  setting but fully overridable — JobDetail/Field.tsx fall back to the old applies_to-derived set
+  only for jobs created before this column existed); JobDetail's Service Forms now render directly
+  under Documents instead of as a separate card; and — the biggest find — **the entire Settings >
+  Job Settings tab (Job Types, Job Statuses, Estimate Statuses, Call Types, Call Sources,
+  Reschedule Types, Cancellation Reasons) was purely decorative** (hardcoded arrays, Add
+  buttons and delete icons with no handlers at all) — client's "make the add buttons active" /
+  "edit all fields" complaints were literally true. Replaced with a new tenant-scoped
+  `tenant_config_lists` table + `useConfigLists()` hook (see Architecture) used by Settings (full
+  add/delete CRUD) and every page that previously imported those arrays statically (Jobs.tsx,
+  JobDetail.tsx, FormBuilder.tsx) so an edit in Settings now actually propagates. Baked the
+  client's explicit Job Types edit into the seed defaults: added "Weekly Maintenance" + "In Store
+  Repair", renamed "Install / New Build" → "Install". **Not built, needs client clarification
+  first** (dev didn't know either, clarifying text drafted for them to send) — see Open/Pending
+  Items #10. **Also found (not this session's fault, pre-existing)** — see Open/Pending Items #9:
+  live-tested nearly every page and found first-page-load spinners consistently taking 3-9 seconds
+  app-wide (POS, Inventory, Customers, Jobs, Invoicing, Settings), not just the one route flagged
+  2026-09-14 — plausibly a real contributor to the client's "everything feels broken" perception,
+  worth a dedicated investigation session. Verified all built items live in the browser with real
+  tenant data (POS category/favorites, Inventory item-# search, Library dropdowns, New Job forms
+  picker, JobDetail Documents/Forms order, Settings Job Types add+delete with a full page reload
+  to confirm persistence, FormBuilder's Applies-To list). `tsc --noEmit` clean on both frontend and
+  backend throughout.

@@ -626,6 +626,17 @@ export const estimateAgreements = [
   "Renovation Contract",
 ];
 
+// Client excel sheet 2026-09-18 ("Copy of Library category.manufacture.xlsx"): the Library's own
+// category/manufacturer dropdowns, separate from Inventory's product taxonomy (pool equipment
+// documentation categories, not sellable product categories).
+export const libraryCategories = [
+  "Electrical", "Miscellaneous", "Infloor Cleaner", "Automation", "Salt System", "Cleaners",
+  "Water Feature / Landscape", "Acid Feeder", "Chlorinator / Feeder", "Ozinator / UV",
+  "Pumps / Motors", "Heater / Heat Pump", "Lights", "Warranty / Serial Number", "Timer / Freeze Guard",
+];
+
+export const libraryManufacturers = ["Jandy", "Solaxx", "Raypak", "Century", "Pentair", "Intermatic"];
+
 export const inventoryUnits = [
   { unit: "ea", label: "Each" },
   { unit: "lb", label: "Pound" },

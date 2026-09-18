@@ -15,8 +15,10 @@ import { settingsApi } from "@/lib/api/settings";
 import { profilesApi } from "@/lib/api/profiles";
 import { quickbooksApi } from "@/lib/api/quickbooks";
 import type { Database } from "@/lib/database.types";
-import { jobTypes, jobStatuses, estimateStatuses, cancellationReasons, callTypes, callSources, rescheduleTypes, contentCategories } from "@/lib/data";
+import { contentCategories } from "@/lib/data";
 import { useLanguage } from "@/lib/language-context";
+import { useConfigLists } from "@/hooks/use-config-lists";
+import type { ConfigListKey } from "@/lib/api/configLists";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Integration = Database["public"]["Tables"]["integrations"]["Row"];
@@ -44,6 +46,51 @@ const iconMap: Record<string, React.ElementType> = {
 
 const staffRoles = ["owner", "manager", "technician", "contractor", "office_manager"];
 
+// Inline add affordance for the Job Settings config lists -- avoids window.prompt() (blocks the
+// whole page) and avoids a Dialog per list (7 near-identical ones).
+function AddListItemRow({ onAdd, placeholder, showColor, big }: {
+  onAdd: (label: string, color?: string) => void; placeholder: string; showColor?: boolean; big?: boolean;
+}) {
+  const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [color, setColor] = useState("#0891B2");
+  const submit = () => {
+    if (!label.trim()) return;
+    onAdd(label.trim(), showColor ? color : undefined);
+    setLabel("");
+    setOpen(false);
+  };
+  if (!open) {
+    return big ? (
+      <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9" onClick={() => setOpen(true)}>
+        <Plus className="w-4 h-4" /> {t("Add")}
+      </Button>
+    ) : (
+      <Button size="sm" variant="outline" className="h-8 gap-1" onClick={() => setOpen(true)}>
+        <Plus className="w-3.5 h-3.5" /> {t("Add")}
+      </Button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      {showColor && (
+        <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-8 w-8 rounded border border-[#E2E8F0] cursor-pointer p-0.5" />
+      )}
+      <Input
+        autoFocus
+        placeholder={placeholder}
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") submit(); if (e.key === "Escape") setOpen(false); }}
+        className="h-8 w-40"
+      />
+      <Button size="sm" className="h-8 bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={submit}>{t("Save")}</Button>
+      <Button size="sm" variant="ghost" className="h-8" onClick={() => setOpen(false)}>{t("Cancel")}</Button>
+    </div>
+  );
+}
+
 export default function Settings() {
   const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(true);
@@ -68,6 +115,10 @@ export default function Settings() {
   const [invoiceBusinessName, setInvoiceBusinessName] = useState("");
   const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  // Client PDF 2026-09-18: Job Types/Statuses, Estimate Statuses, Call Types/Sources,
+  // Reschedule Types, Cancellation Reasons -- previously hardcoded arrays with non-functional
+  // Add/Delete buttons, now DB-backed and editable.
+  const { lists: configLists, addItem: addConfigItem, removeItem: removeConfigItem } = useConfigLists();
   const qboStatus = new URLSearchParams(window.location.search).get("qbo");
 
   const loadSettings = useCallback(async () => {
@@ -651,16 +702,14 @@ export default function Settings() {
                   <Tag className="w-5 h-5 text-[#0891B2]" />
                   <h3 className="font-semibold text-[#0F172A]">{t("Job Types")}</h3>
                 </div>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> {t("Add Job Type")}
-                </Button>
+                <AddListItemRow big showColor placeholder={t("New job type")} onAdd={(label, color) => addConfigItem("job_types", label, color)} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {jobTypes.map((jt) => (
+                {configLists.job_types.map((jt) => (
                   <div key={jt.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: jt.color }} />
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: jt.color ?? "#64748B" }} />
                     <span className="text-sm font-medium text-[#0F172A] flex-1">{t(jt.label)}</span>
-                    <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-4 h-4" /></button>
+                    <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("job_types", jt.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>
@@ -675,16 +724,14 @@ export default function Settings() {
                   <Settings2 className="w-5 h-5 text-[#0891B2]" />
                   <h3 className="font-semibold text-[#0F172A]">{t("Job Statuses")}</h3>
                 </div>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> {t("Add Status")}
-                </Button>
+                <AddListItemRow big showColor placeholder={t("New status")} onAdd={(label, color) => addConfigItem("job_statuses", label, color)} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {jobStatuses.map((s) => (
+                {configLists.job_statuses.map((s) => (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color ?? "#64748B" }} />
                     <span className="text-sm font-medium text-[#0F172A] flex-1">{t(s.label)}</span>
-                    <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-4 h-4" /></button>
+                    <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("job_statuses", s.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>
@@ -699,16 +746,14 @@ export default function Settings() {
                   <FileText className="w-5 h-5 text-[#0891B2]" />
                   <h3 className="font-semibold text-[#0F172A]">{t("Estimate Statuses")}</h3>
                 </div>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> {t("Add Status")}
-                </Button>
+                <AddListItemRow big showColor placeholder={t("New status")} onAdd={(label, color) => addConfigItem("estimate_statuses", label, color)} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {estimateStatuses.map((s) => (
+                {configLists.estimate_statuses.map((s) => (
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color }} />
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color ?? "#64748B" }} />
                     <span className="text-sm font-medium text-[#0F172A] flex-1">{t(s.label)}</span>
-                    <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-4 h-4" /></button>
+                    <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("estimate_statuses", s.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>
@@ -724,13 +769,13 @@ export default function Settings() {
                     <Phone className="w-5 h-5 text-[#0891B2]" />
                     <h3 className="font-semibold text-[#0F172A]">{t("Call Types")}</h3>
                   </div>
-                  <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> {t("Add")}</Button>
+                  <AddListItemRow placeholder={t("New call type")} onAdd={(label) => addConfigItem("call_types", label)} />
                 </div>
                 <div className="space-y-2">
-                  {callTypes.map((c) => (
-                    <div key={c} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                      <span className="text-sm text-[#0F172A] flex-1">{t(c)}</span>
-                      <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-3.5 h-3.5" /></button>
+                  {configLists.call_types.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                      <span className="text-sm text-[#0F172A] flex-1">{t(c.label)}</span>
+                      <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("call_types", c.id)}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                 </div>
@@ -743,13 +788,13 @@ export default function Settings() {
                     <Globe className="w-5 h-5 text-[#0891B2]" />
                     <h3 className="font-semibold text-[#0F172A]">{t("Call Sources")}</h3>
                   </div>
-                  <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> {t("Add")}</Button>
+                  <AddListItemRow placeholder={t("New call source")} onAdd={(label) => addConfigItem("call_sources", label)} />
                 </div>
                 <div className="space-y-2">
-                  {callSources.map((c) => (
-                    <div key={c} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                      <span className="text-sm text-[#0F172A] flex-1">{t(c)}</span>
-                      <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-3.5 h-3.5" /></button>
+                  {configLists.call_sources.map((c) => (
+                    <div key={c.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                      <span className="text-sm text-[#0F172A] flex-1">{t(c.label)}</span>
+                      <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("call_sources", c.id)}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
                 </div>
@@ -765,13 +810,13 @@ export default function Settings() {
                   <RotateCw className="w-5 h-5 text-[#0891B2]" />
                   <h3 className="font-semibold text-[#0F172A]">{t("Reschedule Types")}</h3>
                 </div>
-                <Button size="sm" variant="outline" className="h-8 gap-1"><Plus className="w-3.5 h-3.5" /> {t("Add")}</Button>
+                <AddListItemRow placeholder={t("New reschedule type")} onAdd={(label) => addConfigItem("reschedule_types", label)} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {rescheduleTypes.map((r) => (
-                  <div key={r} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="text-sm text-[#0F172A] flex-1">{t(r)}</span>
-                    <button className="text-[#64748B] hover:text-[#DC2626]"><Trash2 className="w-3.5 h-3.5" /></button>
+                {configLists.reschedule_types.map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <span className="text-sm text-[#0F172A] flex-1">{t(r.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("reschedule_types", r.id)}><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
               </div>
@@ -786,15 +831,13 @@ export default function Settings() {
                   <AlertCircle className="w-5 h-5 text-[#0891B2]" />
                   <h3 className="font-semibold text-[#0F172A]">{t("Cancellation Reasons")}</h3>
                 </div>
-                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-9">
-                  <Plus className="w-4 h-4" /> {t("Add Reason")}
-                </Button>
+                <AddListItemRow big placeholder={t("New cancellation reason")} onAdd={(label) => addConfigItem("cancellation_reasons", label)} />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {cancellationReasons.map((r) => (
-                  <div key={r} className="flex items-start gap-2 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <span className="text-sm text-[#0F172A] flex-1">{t(r)}</span>
-                    <button className="text-[#64748B] hover:text-[#DC2626] shrink-0"><Trash2 className="w-4 h-4" /></button>
+                {configLists.cancellation_reasons.map((r) => (
+                  <div key={r.id} className="flex items-start gap-2 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <span className="text-sm text-[#0F172A] flex-1">{t(r.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#DC2626] shrink-0" onClick={() => removeConfigItem("cancellation_reasons", r.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>

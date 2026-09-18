@@ -1114,6 +1114,7 @@ export type Database = {
           recurring_job_id: string | null
           scheduled_date: string | null
           scheduled_time: string | null
+          selected_form_ids: Json
           stage: Database["public"]["Enums"]["job_stage"]
           status: string
           tech_id: string | null
@@ -1139,6 +1140,7 @@ export type Database = {
           recurring_job_id?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
+          selected_form_ids?: Json
           stage?: Database["public"]["Enums"]["job_stage"]
           status?: string
           tech_id?: string | null
@@ -1164,6 +1166,7 @@ export type Database = {
           recurring_job_id?: string | null
           scheduled_date?: string | null
           scheduled_time?: string | null
+          selected_form_ids?: Json
           stage?: Database["public"]["Enums"]["job_stage"]
           status?: string
           tech_id?: string | null

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
-import { inventoryApi } from "@/lib/api/inventory";
+import { libraryCategories, libraryManufacturers } from "@/lib/data";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
@@ -24,8 +24,10 @@ export default function Library() {
   const { t } = useLanguage();
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [manufacturers, setManufacturers] = useState<string[]>([]);
+  // Client excel sheet 2026-09-18: Library's category/manufacturer lists are its own fixed
+  // vocabulary now, not shared with Inventory's product taxonomy (see src/lib/data.ts).
+  const categories = libraryCategories;
+  const manufacturers = libraryManufacturers;
   const [uploadCategory, setUploadCategory] = useState("");
   const [uploadManufacturer, setUploadManufacturer] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -38,14 +40,8 @@ export default function Library() {
 
   const load = useCallback(async () => {
     setIsLoading(true);
-    const [docs, taxonomy, mfrs] = await Promise.all([
-      libraryApi.list(),
-      inventoryApi.categoryTaxonomy(),
-      inventoryApi.manufacturers(),
-    ]);
+    const docs = await libraryApi.list();
     setDocuments(docs);
-    setCategories(Array.from(new Set(taxonomy.map((c) => c.category))).sort());
-    setManufacturers(Array.from(new Set(mfrs.map((m) => m.manufacturer))).sort());
     setIsLoading(false);
   }, []);
 

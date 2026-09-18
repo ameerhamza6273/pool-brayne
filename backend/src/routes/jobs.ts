@@ -86,9 +86,10 @@ export default async function jobsRoutes(app: FastifyInstance) {
       itemSku?: string | null; laborSku?: string | null;
       lineItems?: { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number; notes?: string | null }[];
       crewIds?: string[];
+      selectedFormIds?: string[];
     };
   }>("/", async (req) => {
-    const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku, lineItems, crewIds } = req.body;
+    const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku, lineItems, crewIds, selectedFormIds } = req.body;
     const status = techId ? "Booked" : "Lead";
     const stage = techId ? "booked" : "lead";
     // Client bug report 2026-09-04: "when creating a job... dynamic search or autofill for
@@ -101,8 +102,8 @@ export default async function jobsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount, item_sku, labor_sku)
-        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${computedAmount}, ${itemSku ?? null}, ${laborSku ?? null})
+        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount, item_sku, labor_sku, selected_form_ids)
+        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${computedAmount}, ${itemSku ?? null}, ${laborSku ?? null}, ${tx.json(selectedFormIds ?? [])})
         returning *
       `;
       if (lineItems && lineItems.length > 0) {

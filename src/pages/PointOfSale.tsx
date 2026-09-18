@@ -3,12 +3,13 @@ import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, CreditCard,
   Banknote, FileText, Receipt, Percent, User, Package,
   TrendingUp, DollarSign, CheckCircle2, Printer,
-  ArrowRight, RotateCcw, PackagePlus, LayoutGrid, Table2,
+  ArrowRight, RotateCcw, PackagePlus, LayoutGrid, Table2, Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -55,10 +56,34 @@ export default function PointOfSale() {
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
-  // Client meeting 2026-09: "I don't know if I'm the greatest fan of seeing this stuff go three
-  // across... maybe look more like a spreadsheet going straight down." Grid stays the default;
-  // list is a dense, spreadsheet-like alternative.
-  const [productView, setProductView] = useState<"grid" | "list">("grid");
+  const [manufacturer, setManufacturer] = useState("All");
+  // Client PDF 2026-09-18: "make the spreadsheet look the default option in all fields" — list
+  // (spreadsheet-like) is now the default everywhere this grid/list toggle exists; grid stays an
+  // option for staff who prefer it.
+  const [productView, setProductView] = useState<"grid" | "list">("list");
+  // Client PDF 2026-09-18: star categories/manufacturers as favorites for quick one-click access
+  // instead of scrolling the full dropdown every time. Persisted per-browser (localStorage) since
+  // it's a personal UI convenience, not shared business data.
+  const [favoriteCategories, setFavoriteCategories] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pos_favorite_categories") ?? "[]"); } catch { return []; }
+  });
+  const [favoriteManufacturers, setFavoriteManufacturers] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pos_favorite_manufacturers") ?? "[]"); } catch { return []; }
+  });
+  const toggleFavoriteCategory = (c: string) => {
+    setFavoriteCategories((prev) => {
+      const next = prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c];
+      try { localStorage.setItem("pos_favorite_categories", JSON.stringify(next)); } catch { /* private-window storage block */ }
+      return next;
+    });
+  };
+  const toggleFavoriteManufacturer = (m: string) => {
+    setFavoriteManufacturers((prev) => {
+      const next = prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m];
+      try { localStorage.setItem("pos_favorite_manufacturers", JSON.stringify(next)); } catch { /* private-window storage block */ }
+      return next;
+    });
+  };
   // Client request 2026-09-04: the product grid rendered every catalog item at once (2,500+
   // after the real inventory import) -- same pagination fix applied to Inventory/Customers.
   const [page, setPage] = useState(1);
@@ -99,7 +124,11 @@ export default function PointOfSale() {
   const [report, setReport] = useState<SalesReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
 
-  const categories = ["All", "Chemicals", "Test Kits", "Accessories", "Parts", "Equipment", "Services"];
+  // Client PDF 2026-09-18: "set category on the pos section to match our inventory list" — this
+  // used to be a hardcoded 6-value list; now derived from the real catalog, same pattern as
+  // Inventory's dynamicCategories.
+  const categories = ["All", ...Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort()];
+  const manufacturers = ["All", ...Array.from(new Set(products.map((p) => p.manufacturer).filter((m): m is string => Boolean(m)))).sort()];
 
   const loadPos = useCallback(async () => {
     setIsLoading(true);
@@ -130,15 +159,16 @@ export default function PointOfSale() {
   }, [runReport]);
 
   const filtered = products.filter((p) => {
-    const matchesSearch = matchesQuery(search, [p.name, p.sku, p.short_description, p.long_description, p.manufacturer, p.category]);
+    const matchesSearch = matchesQuery(search, [p.name, p.sku, p.item_number != null ? String(p.item_number) : null, p.short_description, p.long_description, p.manufacturer, p.category]);
     const matchesCat = category === "All" || p.category === category;
-    return matchesSearch && matchesCat;
+    const matchesManufacturer = manufacturer === "All" || p.manufacturer === manufacturer;
+    return matchesSearch && matchesCat && matchesManufacturer;
   });
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginatedProducts = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   useEffect(() => {
     setPage(1);
-  }, [search, category]);
+  }, [search, category, manufacturer]);
 
   // Client request 2026-09-04: the Attach Customer dialog rendered all 3,600+ customer names as
   // buttons the moment it opened (before any search text was typed) -- capped to a manageable
@@ -328,7 +358,7 @@ export default function PointOfSale() {
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
                 <Input
-                  placeholder={t("Search name, SKU, description, category, or manufacturer...")}
+                  placeholder={t("Search item #, name, SKU, description, category, or manufacturer...")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9 h-10 bg-[#F8FAFC] border-[#E2E8F0]"
@@ -351,18 +381,61 @@ export default function PointOfSale() {
                 </button>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((c) => (
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger className="h-9 w-44 bg-white border-[#E2E8F0] shrink-0"><SelectValue placeholder={t("Category")} /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {categories.map((c) => <SelectItem key={c} value={c}>{c === "All" ? t("All Categories") : c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {category !== "All" && (
+                <button
+                  type="button"
+                  title={favoriteCategories.includes(category) ? t("Remove from favorites") : t("Star as favorite")}
+                  onClick={() => toggleFavoriteCategory(category)}
+                  className="p-1.5 rounded hover:bg-[#F8FAFC] shrink-0"
+                >
+                  <Star className={`w-4 h-4 ${favoriteCategories.includes(category) ? "fill-[#F59E0B] text-[#F59E0B]" : "text-[#64748B]"}`} />
+                </button>
+              )}
+              {favoriteCategories.filter((c) => categories.includes(c)).map((c) => (
                 <button
                   key={c}
                   onClick={() => setCategory(c)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                    category === c
-                      ? "bg-[#0891B2] text-white"
-                      : "bg-[#F8FAFC] text-[#64748B] hover:bg-[#E2E8F0] border border-[#E2E8F0]"
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                    category === c ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#64748B] hover:bg-[#E2E8F0] border border-[#E2E8F0]"
                   }`}
                 >
-                  {t(c)}
+                  <Star className="w-3 h-3 fill-current" /> {c}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={manufacturer} onValueChange={setManufacturer}>
+                <SelectTrigger className="h-9 w-44 bg-white border-[#E2E8F0] shrink-0"><SelectValue placeholder={t("Manufacturer")} /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {manufacturers.map((m) => <SelectItem key={m} value={m}>{m === "All" ? t("All Manufacturers") : m}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {manufacturer !== "All" && (
+                <button
+                  type="button"
+                  title={favoriteManufacturers.includes(manufacturer) ? t("Remove from favorites") : t("Star as favorite")}
+                  onClick={() => toggleFavoriteManufacturer(manufacturer)}
+                  className="p-1.5 rounded hover:bg-[#F8FAFC] shrink-0"
+                >
+                  <Star className={`w-4 h-4 ${favoriteManufacturers.includes(manufacturer) ? "fill-[#F59E0B] text-[#F59E0B]" : "text-[#64748B]"}`} />
+                </button>
+              )}
+              {favoriteManufacturers.filter((m) => manufacturers.includes(m)).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setManufacturer(m)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                    manufacturer === m ? "bg-[#0891B2] text-white" : "bg-[#F8FAFC] text-[#64748B] hover:bg-[#E2E8F0] border border-[#E2E8F0]"
+                  }`}
+                >
+                  <Star className="w-3 h-3 fill-current" /> {m}
                 </button>
               ))}
             </div>
