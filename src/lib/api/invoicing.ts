@@ -1,7 +1,7 @@
 import { api } from "@/lib/apiClient";
 import type { Database } from "@/lib/database.types";
 
-type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string; address?: string | null } | null };
+type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
 export type InvoiceLineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
@@ -43,11 +43,21 @@ type Business = {
   invoice_business_name: string | null;
 };
 
+// Job-derived extras for the customer-facing invoice document (all null/empty for invoices with no job).
+export type InvoiceDetailBundle = {
+  invoice: Invoice;
+  lineItems: InvoiceLineItem[];
+  business: Business | null;
+  job: { scheduled_date: string | null; created_at: string; completed_at: string | null; description: string | null; tech_notes: string | null; type: string } | null;
+  photos: { id: string; url: string; label: string | null }[];
+  serviceNotes: { text: string; author: string | null; created_at: string }[];
+};
+
 export const invoicingApi = {
   list: () => api.get<Invoice[]>("/api/invoices"),
 
   detail: (id: string) =>
-    api.get<{ invoice: Invoice; lineItems: InvoiceLineItem[]; business: Business | null }>(`/api/invoices/${id}`),
+    api.get<InvoiceDetailBundle>(`/api/invoices/${id}`),
 
   byJob: (jobId: string) => api.get<{ id: string } | null>(`/api/invoices/by-job?job_id=${jobId}`),
 

@@ -92,16 +92,46 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     const result = await withTenantContext(req.userId, async (tx) => {
-      const [invoiceRows, lineItems, tenantRows] = await Promise.all([
+      const [invoiceRows, lineItems, tenantRows, jobRows, photoRows, noteRows] = await Promise.all([
         tx`
-          select i.*, jsonb_build_object('name', c.name, 'address', c.address) as customers
+          select i.*, jsonb_build_object('name', c.name, 'address', c.address, 'phone', c.phone) as customers
           from invoices i left join customers c on c.id = i.customer_id
           where i.id = ${id} limit 1
         `,
         tx`select * from invoice_line_items where invoice_id = ${id}`,
         tx`select name, phone, address, city, state, zip, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
+        // Client SMS 2026-09-21: the invoice document mirrors their old system's emailed PDF --
+        // Date of Request/Service, Trip Details photos and dated "Service Performed" notes come
+        // from the invoice's job. All additive; invoices with no job just get null/empty here.
+        tx`
+          select j.scheduled_date, j.created_at, j.completed_at, j.description, j.tech_notes, j.type
+          from jobs j join invoices i on i.job_id = j.id where i.id = ${id} limit 1
+        `,
+        tx`
+          select a.id, a.url, a.label
+          from job_attachments a join invoices i on i.job_id = a.job_id
+          where i.id = ${id} and a.type = 'photo' and coalesce(a.label, '') <> 'internal'
+          order by a.created_at
+        `,
+        // The tech's Job Notes (Field view) are saved as customer notes on completion, not tied
+        // to the job -- so "Service Performed" = that customer's notes written on the service day.
+        tx`
+          select n.text, n.author, n.created_at
+          from customer_notes n
+          join invoices i on i.customer_id = n.customer_id
+          join jobs j on j.id = i.job_id
+          where i.id = ${id} and n.created_at::date = coalesce(j.completed_at::date, j.scheduled_date)
+          order by n.created_at
+        `,
       ]);
-      return { invoice: invoiceRows[0] ?? null, lineItems, business: tenantRows[0] ?? null };
+      return {
+        invoice: invoiceRows[0] ?? null,
+        lineItems,
+        business: tenantRows[0] ?? null,
+        job: jobRows[0] ?? null,
+        photos: photoRows,
+        serviceNotes: noteRows,
+      };
     });
     if (!result.invoice) {
       reply.code(404).send({ error: "Invoice not found" });

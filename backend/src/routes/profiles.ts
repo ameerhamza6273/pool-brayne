@@ -16,6 +16,16 @@ export default async function profilesRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client SMS 2026-09-21: employee color editable (Schedule panel). null = back to the automatic color.
+  app.patch<{ Params: { id: string }; Body: { color: string | null } }>("/:id/color", async (req) => {
+    const { id } = req.params;
+    const { color } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`update profiles set color = ${color} where id = ${id} returning *`;
+      return row;
+    });
+  });
+
   // Client SMS 2026-09-09: "able to add, edit, delete techs". There's no email service wired
   // (no SendGrid) to send a real invite link, so adding a tech works the same way the seed
   // script creates staff -- an admin-created login with a password the admin sets and hands to

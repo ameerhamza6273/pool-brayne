@@ -4,6 +4,7 @@ import {
   jobTypes as staticJobTypes, jobStatuses as staticJobStatuses, estimateStatuses as staticEstimateStatuses,
   callTypes as staticCallTypes, callSources as staticCallSources,
   rescheduleTypes as staticRescheduleTypes, cancellationReasons as staticCancellationReasons,
+  libraryCategories as staticLibraryCategories, libraryManufacturers as staticLibraryManufacturers,
 } from "@/lib/data";
 
 const slugify = (label: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "item";
@@ -20,6 +21,10 @@ const FALLBACK: ConfigLists = {
   call_sources: asItems(staticCallSources),
   reschedule_types: asItems(staticRescheduleTypes),
   cancellation_reasons: asItems(staticCancellationReasons),
+  reminder_types: asItems(["Filter Cleaning", "Salt Cell Cleaning", "Sand Change", "Anode Replacement"]),
+  library_categories: asItems(staticLibraryCategories),
+  library_manufacturers: asItems(staticLibraryManufacturers),
+  inventory_manufacturers: [],
 };
 
 export function useConfigLists() {
@@ -44,10 +49,15 @@ export function useConfigLists() {
     setLists((prev) => ({ ...prev, [key]: [...prev[key], item] }));
   }, []);
 
+  const updateItem = useCallback(async (key: ConfigListKey, itemId: string, patch: { label?: string; color?: string | null }) => {
+    const item = await configListsApi.update(key, itemId, patch);
+    setLists((prev) => ({ ...prev, [key]: prev[key].map((i) => (i.id === itemId ? item : i)) }));
+  }, []);
+
   const removeItem = useCallback(async (key: ConfigListKey, itemId: string) => {
     await configListsApi.remove(key, itemId);
     setLists((prev) => ({ ...prev, [key]: prev[key].filter((i) => i.id !== itemId) }));
   }, []);
 
-  return { lists, loading, addItem, removeItem, refresh };
+  return { lists, loading, addItem, updateItem, removeItem, refresh };
 }

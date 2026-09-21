@@ -80,3 +80,31 @@ export function searchAddressSuggestions(query: string): Promise<AddressSuggesti
   queue = task;
   return task as Promise<AddressSuggestion[]>;
 }
+
+// Fallback when the full street address can't be found (messy/legacy addresses): try the street
+// without its house number (street-level, still close), then city + state + zip, then just the zip,
+// so the job still shows on the map -- approximately, and flagged as such by the caller. Results are
+// remembered in localStorage so the same addresses aren't re-searched on every page load.
+export async function geocodeApproximate(address: string): Promise<{ lat: number; lng: number } | null> {
+  const storeKey = `geo-approx:${address}`;
+  try {
+    const saved = localStorage.getItem(storeKey);
+    if (saved) return JSON.parse(saved) as { lat: number; lng: number };
+  } catch { /* storage unavailable */ }
+
+  let found: { lat: number; lng: number } | null = null;
+  const withoutNumber = address.replace(/^\s*\d+[\w-]*\s+/, "");
+  if (withoutNumber !== address) found = await geocodeAddress(withoutNumber);
+  if (!found) {
+    const cityStateZip = address.match(/([^,]+),\s*([A-Za-z]{2})\.?,?\s*(\d{5})/);
+    if (cityStateZip) found = await geocodeAddress(`${cityStateZip[1].trim()}, ${cityStateZip[2]} ${cityStateZip[3]}`);
+  }
+  if (!found) {
+    const zip = address.match(/\b(\d{5})\b/);
+    if (zip) found = await geocodeAddress(zip[1]);
+  }
+  if (found) {
+    try { localStorage.setItem(storeKey, JSON.stringify(found)); } catch { /* storage unavailable */ }
+  }
+  return found;
+}

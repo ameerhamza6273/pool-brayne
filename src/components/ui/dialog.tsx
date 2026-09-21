@@ -6,6 +6,11 @@ import { cn } from '@/lib/utils';
 
 const Dialog = DialogPrimitive.Root;
 
+// Client feedback 2026-09-21: dropdown lists (Select / SearchableSelect) inside a dialog hung out
+// past the dialog's edge. Dropdowns read this to (a) use the dialog as their collision boundary, so
+// they flip/shrink to stay inside it, and (b) cap their height. The dialog itself never resizes.
+export const DialogBoundaryContext = React.createContext<HTMLElement | null>(null);
+
 const DialogTrigger = DialogPrimitive.Trigger;
 
 const DialogPortal = DialogPrimitive.Portal;
@@ -30,11 +35,17 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => {
+  const [boundary, setBoundary] = React.useState<HTMLElement | null>(null);
+  return (
   <DialogPortal>
     <DialogOverlay />
     <DialogPrimitive.Content
-      ref={ref}
+      ref={(node) => {
+        setBoundary(node);
+        if (typeof ref === 'function') ref(node);
+        else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
+      }}
       className={cn(
         // Long unbreakable content (e.g. a long vendor name in a select trigger) used to push
         // this grid's implicit column past max-w-lg, so the dialog visually bled/scrolled
@@ -45,14 +56,15 @@ const DialogContent = React.forwardRef<
       )}
       {...props}
     >
-      {children}
+      <DialogBoundaryContext.Provider value={boundary}>{children}</DialogBoundaryContext.Provider>
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
         <Cross2Icon className="h-4 w-4" />
         <span className="sr-only">Close</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>
-));
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({

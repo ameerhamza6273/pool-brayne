@@ -4,7 +4,11 @@ import { withQuickbooksConnection, getChartOfAccounts } from "../lib/quickbooks.
 
 type Location = { id: string; type: string };
 type Stock = { item_id: string; location_id: string; quantity: number };
-type Item = { id: string; reorder_threshold: number; name?: string };
+type Item = { id: string; reorder_threshold: number; name?: string; category?: string };
+
+// Labor/service SKUs (client's 67 "service-N" SKUs, category "Labor"; older demo items use
+// "Services") aren't stocked, so they must never show as Out/Low or land on the reorder list.
+const isNonStockCategory = (category?: string) => category === "Labor" || category === "Services";
 
 export default async function inventoryRoutes(app: FastifyInstance) {
   app.get("/summary", async (req) => {
@@ -34,7 +38,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
         const storeQty = itemStock.filter((s) => storeLocationIds.has(s.location_id)).reduce((sum, s) => sum + s.quantity, 0);
         const vehicleQty = itemStock.filter((s) => !storeLocationIds.has(s.location_id)).reduce((sum, s) => sum + s.quantity, 0);
         const total = storeQty + vehicleQty;
-        const status = total === 0 ? "Out" : total <= item.reorder_threshold ? "Low" : "In Stock";
+        const status = isNonStockCategory(item.category) ? "In Stock" : total === 0 ? "Out" : total <= item.reorder_threshold ? "Low" : "In Stock";
         return { ...item, storeQty, vehicleQty, total, status };
       });
 
@@ -45,7 +49,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   app.get("/low-stock", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const [itemsRaw, stockRaw] = await Promise.all([
-        tx`select id, name, reorder_threshold from inventory_items`,
+        tx`select id, name, reorder_threshold from inventory_items where category not in ('Labor', 'Services')`,
         tx`select item_id, quantity from inventory_stock`,
       ]);
       const items = itemsRaw as unknown as Item[];

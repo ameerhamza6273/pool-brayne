@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import JsBarcode from "jsbarcode";
+import { averyLabelsPdfUrl, zebraLabelsPdfUrl } from "@/lib/label-pdf";
 import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,8 @@ import PoLineItemsEditor from "@/components/PoLineItemsEditor";
 import { inventoryApi } from "@/lib/api/inventory";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
+import { isLaborCategory } from "@/lib/labor";
+import { useConfigLists } from "@/hooks/use-config-lists";
 import { invoicingApi, type VendorBill } from "@/lib/api/invoicing";
 import { reportsApi, type VendorBillDueRow } from "@/lib/api/reports";
 import type { Database } from "@/lib/database.types";
@@ -54,44 +56,24 @@ const vendorBillStatusColors: Record<string, string> = {
   "Overdue": "bg-[#DC2626]/10 text-[#DC2626]",
 };
 
-// Client request 2026-08-27: print price stickers on Avery-style label sheets (works on any
-// label printer, incl. Zebra, since it's just a formatted print job — Avery 5160 layout:
-// 3 columns x 10 rows of 2.625" x 1" labels per letter-size sheet.
-const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost">[]) => {
+// Client request 2026-08-27: print price stickers on Avery-style label sheets (Avery 5160 layout:
+// 3 columns x 10 rows of 2.625" x 1" labels per letter-size sheet).
+// Client SMS 2026-09-21 ("remove all headers and footers"): labels are now generated as PDFs
+// (src/lib/label-pdf.ts) instead of printing an HTML page, so the browser can't stamp its own
+// date/title/URL/page-number onto them. The tab is opened synchronously (popup blockers only
+// allow that inside the click) and pointed at the PDF once it's ready.
+const openLabelPdf = async (makeUrl: () => Promise<string>) => {
   const win = window.open("", "_blank");
-  if (!win || !win.document) return;
-  const labelsHtml = items
-    .map(
-      (item) => `
-        <div class="label">
-          <div class="name">${item.name}</div>
-          <div class="row"><span class="sku">${item.sku}</span><span class="price">$${(item.price ?? item.unit_cost).toFixed(2)}</span></div>
-        </div>`
-    )
-    .join("");
-  win.document.write(`
-    <html>
-      <head>
-        <title>Print Labels</title>
-        <style>
-          @page { size: letter; margin: 0.5in 0.1875in; }
-          body { margin: 0; font-family: Arial, sans-serif; }
-          .sheet { display: grid; grid-template-columns: repeat(3, 2.625in); grid-auto-rows: 1in; }
-          .label { box-sizing: border-box; padding: 0.1in 0.15in; overflow: hidden; display: flex; flex-direction: column; justify-content: center; }
-          .name { font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          .row { display: flex; justify-content: space-between; margin-top: 4px; }
-          .sku { font-size: 9px; color: #555; }
-          .price { font-size: 13px; font-weight: 700; }
-        </style>
-      </head>
-      <body>
-        <div class="sheet">${labelsHtml}</div>
-        <script>window.onload = () => window.print();</script>
-      </body>
-    </html>
-  `);
-  win.document.close();
+  if (!win) return;
+  try {
+    win.location.href = await makeUrl();
+  } catch {
+    win.close();
+  }
 };
+
+const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost">[]) =>
+  openLabelPdf(() => averyLabelsPdfUrl(items));
 
 // Client request 2026-09-02: a real scannable barcode (Code128, from the SKU) sized for a
 // 2"x1" Zebra label printer, distinct from the text-only Avery sheet above.
@@ -100,45 +82,7 @@ const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit
 const printZebraLabels = (
   items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost" | "item_number">[],
   barcodeSource: "sku" | "itemNumber" = "sku",
-) => {
-  const win = window.open("", "_blank");
-  if (!win || !win.document) return;
-  const labelsHtml = items
-    .map((item) => {
-      const code = barcodeSource === "itemNumber" && item.item_number != null ? String(item.item_number) : item.sku;
-      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      JsBarcode(svg, code, { format: "CODE128", width: 1.5, height: 32, displayValue: false, margin: 0 });
-      return `
-        <div class="label">
-          <div class="name">${item.name}</div>
-          ${svg.outerHTML}
-          <div class="row"><span class="sku">${code}</span><span class="price">$${(item.price ?? item.unit_cost).toFixed(2)}</span></div>
-        </div>`;
-    })
-    .join("");
-  win.document.write(`
-    <html>
-      <head>
-        <title>Print Barcode Labels</title>
-        <style>
-          @page { size: 2in 1in; margin: 0; }
-          body { margin: 0; font-family: Arial, sans-serif; }
-          .label { width: 2in; height: 1in; box-sizing: border-box; padding: 0.08in 0.12in; page-break-after: always; display: flex; flex-direction: column; justify-content: center; align-items: center; }
-          .name { font-size: 10px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 1.75in; }
-          svg { max-width: 1.75in; }
-          .row { display: flex; justify-content: space-between; width: 1.75in; margin-top: 2px; }
-          .sku { font-size: 9px; color: #555; }
-          .price { font-size: 13px; font-weight: 700; }
-        </style>
-      </head>
-      <body>
-        ${labelsHtml}
-        <script>window.onload = () => window.print();</script>
-      </body>
-    </html>
-  `);
-  win.document.close();
-};
+) => openLabelPdf(() => zebraLabelsPdfUrl(items, barcodeSource));
 
 export default function Inventory() {
   const { t } = useLanguage();
@@ -207,6 +151,9 @@ export default function Inventory() {
   // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage etc.
   const [writeoffs, setWriteoffs] = useState<(InventoryWriteoff & { inventory_items: { name: string; sku: string } | null })[]>([]);
   const [writeoffOpen, setWriteoffOpen] = useState(false);
+  const [writeoffReasonFilter, setWriteoffReasonFilter] = useState("all");
+  const [writeoffFrom, setWriteoffFrom] = useState("");
+  const [writeoffTo, setWriteoffTo] = useState("");
   const [writeoffDraft, setWriteoffDraft] = useState({ itemId: "", quantity: "", reason: "Store Use", note: "" });
 
   // Client SMS 2026-09-09: "under Estimates/Quote, move Vendor Bills under Purchase Orders" --
@@ -467,7 +414,8 @@ export default function Inventory() {
         <head>
           <title>${poDetailDraft.number}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 40px; color: #0F172A; }
+            @page { margin: 0; }
+            body { font-family: Arial, sans-serif; margin: 0; padding: 0.6in; color: #0F172A; }
             h1 { font-size: 22px; margin-bottom: 4px; }
             .meta { color: #64748B; font-size: 13px; margin-bottom: 24px; }
             .meta div { margin-bottom: 2px; }
@@ -615,12 +563,31 @@ export default function Inventory() {
     loadInventory();
   };
 
+  // Manufacturer field suggestions: manufacturers already on items + the imported/managed list
+  // (Data > Import / Export). Free text is still allowed for a brand-new one.
+  const { lists: manufacturerLists } = useConfigLists();
+  const manufacturerOptions = Array.from(new Set([
+    ...items.map((p) => p.manufacturer).filter((m): m is string => Boolean(m)),
+    ...manufacturerLists.inventory_manufacturers.map((i) => i.label),
+  ])).sort((a, b) => a.localeCompare(b));
+
+  const filteredWriteoffs = writeoffs.filter((w) => {
+    if (writeoffReasonFilter !== "all" && w.reason !== writeoffReasonFilter) return false;
+    const day = new Date(w.created_at).toLocaleDateString("en-CA"); // local yyyy-mm-dd, same day the table shows
+    if (writeoffFrom && day < writeoffFrom) return false;
+    if (writeoffTo && day > writeoffTo) return false;
+    return true;
+  });
+
   const totalValue = items.reduce((sum, p) => sum + p.total * p.unit_cost, 0);
   const lowStock = items.filter((p) => p.status === "Low").length;
   const outOfStock = items.filter((p) => p.status === "Out").length;
 
   return (
     <div className="space-y-4">
+      <datalist id="inventory-manufacturer-options">
+        {manufacturerOptions.map((m) => <option key={m} value={m} />)}
+      </datalist>
       <datalist id="inventory-categories">
         {dynamicCategories.filter((c) => c !== "All").map((c) => <option key={c} value={c} />)}
       </datalist>
@@ -660,7 +627,7 @@ export default function Inventory() {
                   <div><Label>{t("Department")}</Label><Input className="mt-1" placeholder={t("e.g. Pool Care")} value={newProduct.department} onChange={(e) => setNewProduct((p) => ({ ...p, department: e.target.value }))} /></div>
                   <div><Label>{t("Sub-department")}</Label><Input className="mt-1" placeholder={t("e.g. Sanitizers")} value={newProduct.subDepartment} onChange={(e) => setNewProduct((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
                 </div>
-                <div><Label>{t("Manufacturer")}</Label><Input className="mt-1" placeholder={t("e.g. Pentair")} value={newProduct.manufacturer} onChange={(e) => setNewProduct((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
+                <div><Label>{t("Manufacturer")}</Label><Input className="mt-1" list="inventory-manufacturer-options" placeholder={t("e.g. Pentair")} value={newProduct.manufacturer} onChange={(e) => setNewProduct((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
                 <div>
                   <Label>{t("Reorder Threshold")}</Label>
                   <Input className="mt-1" type="number" placeholder="0" value={newProduct.reorderThreshold} onChange={(e) => setNewProduct((p) => ({ ...p, reorderThreshold: e.target.value }))} />
@@ -799,7 +766,11 @@ export default function Inventory() {
                       <td className="text-right py-3 px-4 text-[#0F172A]">${p.unit_cost.toFixed(2)}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{p.price !== null ? `$${p.price.toFixed(2)}` : "—"}</td>
                       <td className="text-center py-3 px-4">
-                        <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{t(p.status)}</Badge>
+                        {isLaborCategory(p.category) ? (
+                          <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">{t("Non-inventory")}</Badge>
+                        ) : (
+                          <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{t(p.status)}</Badge>
+                        )}
                       </td>
                       <td className="text-center py-3 px-4">
                         <button
@@ -938,7 +909,7 @@ export default function Inventory() {
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("New PO")}</Button>
               </DialogTrigger>
-              <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
+              <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div><Label>{t("PO Number")}</Label><Input className="mt-1" placeholder="PO-2026-001" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} /></div>
                   <div><Label>{t("Vendor")}</Label>
@@ -988,7 +959,7 @@ export default function Inventory() {
           </div>
 
           <Dialog open={!!poDetail} onOpenChange={(open) => !open && setPoDetail(null)}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto">
+            <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start">
               <DialogHeader><DialogTitle>{t("Purchase Order")} {poDetail?.number}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="flex justify-end">
@@ -1244,7 +1215,23 @@ export default function Inventory() {
         </TabsContent>
 
         <TabsContent value="writeoffs" className="mt-4 space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            {/* Client SMS 2026-09-21: search write-offs by reason code and date range. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={writeoffReasonFilter} onValueChange={setWriteoffReasonFilter}>
+                <SelectTrigger className="h-10 w-48 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Reason")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t("All Reasons")}</SelectItem>
+                  {["Store Use", "Truck Use", "Weekly Service Use", "Shrinkage", "Other"].map((r) => <SelectItem key={r} value={r}>{t(r)}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <Input type="date" className="h-10 w-auto bg-white border-[#E2E8F0]" value={writeoffFrom} onChange={(e) => setWriteoffFrom(e.target.value)} />
+              <span className="text-[#64748B] text-sm">{t("to")}</span>
+              <Input type="date" className="h-10 w-auto bg-white border-[#E2E8F0]" value={writeoffTo} onChange={(e) => setWriteoffTo(e.target.value)} />
+              {(writeoffReasonFilter !== "all" || writeoffFrom || writeoffTo) && (
+                <Button variant="ghost" className="h-10" onClick={() => { setWriteoffReasonFilter("all"); setWriteoffFrom(""); setWriteoffTo(""); }}>{t("Clear")}</Button>
+              )}
+            </div>
             <Dialog open={writeoffOpen} onOpenChange={setWriteoffOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("Write Off SKU")}</Button>
@@ -1304,7 +1291,7 @@ export default function Inventory() {
                   </tr>
                 </thead>
                 <tbody>
-                  {writeoffs.map((w) => (
+                  {filteredWriteoffs.map((w) => (
                     <tr key={w.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{w.inventory_items?.name ?? "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{w.quantity}</td>
@@ -1313,8 +1300,8 @@ export default function Inventory() {
                       <td className="py-3 px-4 text-[#64748B]">{new Date(w.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))}
-                  {writeoffs.length === 0 && (
-                    <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{t("No write-offs yet")}</td></tr>
+                  {filteredWriteoffs.length === 0 && (
+                    <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{writeoffs.length === 0 ? t("No write-offs yet") : t("No write-offs match your filters")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1434,7 +1421,7 @@ export default function Inventory() {
               <div><Label>{t("Department")}</Label><Input className="mt-1" value={editProductDraft.department} onChange={(e) => setEditProductDraft((p) => ({ ...p, department: e.target.value }))} /></div>
               <div><Label>{t("Sub-department")}</Label><Input className="mt-1" value={editProductDraft.subDepartment} onChange={(e) => setEditProductDraft((p) => ({ ...p, subDepartment: e.target.value }))} /></div>
             </div>
-            <div><Label>{t("Manufacturer")}</Label><Input className="mt-1" value={editProductDraft.manufacturer} onChange={(e) => setEditProductDraft((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
+            <div><Label>{t("Manufacturer")}</Label><Input className="mt-1" list="inventory-manufacturer-options" value={editProductDraft.manufacturer} onChange={(e) => setEditProductDraft((p) => ({ ...p, manufacturer: e.target.value }))} /></div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>{t("Barcode")}</Label><Input className="mt-1" value={editProductDraft.barcode} onChange={(e) => setEditProductDraft((p) => ({ ...p, barcode: e.target.value }))} /></div>
               <div><Label>{t("Default Distributor")}</Label><Input className="mt-1" value={editProductDraft.defaultDistributor} onChange={(e) => setEditProductDraft((p) => ({ ...p, defaultDistributor: e.target.value }))} /></div>

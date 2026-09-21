@@ -85,6 +85,25 @@ const CONFIG_LIST_DEFAULTS: Record<string, { id: string; label: string; color?: 
     { id: "duplicate_job", label: "Duplicate job / already serviced" },
     { id: "customer_moved_cancelled_account", label: "Customer moved / cancelled account" },
   ],
+  // Client SMS 2026-09-21: the reminder "Label" was free text; they want a dropdown of labels they
+  // can add to (Filter cleaning, Salt cell cleaning, Sand change, Anode replacement, etc.).
+  reminder_types: [
+    { id: "filter_cleaning", label: "Filter Cleaning" },
+    { id: "salt_cell_cleaning", label: "Salt Cell Cleaning" },
+    { id: "sand_change", label: "Sand Change" },
+    { id: "anode_replacement", label: "Anode Replacement" },
+  ],
+  // Client SMS 2026-09-21: Library Category/Manufacturer lists and the Inventory Manufacturer list became
+  // importable/exportable (Data > Import / Export), so they live in the DB instead of static arrays.
+  // Library ones start with the client's own fixed lists (same as src/lib/data.ts); inventory manufacturers
+  // start empty (the Manufacture List page is derived from the catalog; imported names are added on top).
+  library_categories: [
+    "Electrical", "Miscellaneous", "Infloor Cleaner", "Automation", "Salt System", "Cleaners",
+    "Water Feature / Landscape", "Acid Feeder", "Chlorinator / Feeder", "Ozinator / UV",
+    "Pumps / Motors", "Heater / Heat Pump", "Lights", "Warranty / Serial Number", "Timer / Freeze Guard",
+  ].map((label) => ({ id: slugify(label), label })),
+  library_manufacturers: ["Jandy", "Solaxx", "Raypak", "Century", "Pentair", "Intermatic"].map((label) => ({ id: slugify(label), label })),
+  inventory_manufacturers: [],
 };
 
 function slugify(label: string): string {
@@ -134,6 +153,41 @@ export default async function settingsRoutes(app: FastifyInstance) {
           returning item_id, label, color
         `) as unknown as { item_id: string; label: string; color: string | null }[];
         return { id: rows[0].item_id, label: rows[0].label, color: rows[0].color };
+      });
+    },
+  );
+
+  // Client SMS 2026-09-21: every Job Settings list needs an Edit button. Rename/recolor keeps the
+  // item's id (slug) stable. Job types are the only list whose label is stored as text on real
+  // rows, so a rename there is cascaded so existing jobs/recurring jobs/forms don't get orphaned.
+  app.patch<{ Params: { key: string; itemId: string }; Body: { label?: string; color?: string | null } }>(
+    "/config-lists/:key/:itemId",
+    async (req, reply) => {
+      const { key, itemId } = req.params;
+      if (!CONFIG_LIST_DEFAULTS[key]) return reply.code(400).send({ error: "Unknown list" });
+      const newLabel = req.body.label?.trim();
+      if (req.body.label !== undefined && !newLabel) return reply.code(400).send({ error: "Label can't be empty" });
+      return withTenantContext(req.userId, async (tx) => {
+        const [existing] = (await tx`
+          select label, color from tenant_config_lists where list_key = ${key} and item_id = ${itemId}
+        `) as unknown as { label: string; color: string | null }[];
+        if (!existing) return reply.code(404).send({ error: "Item not found" });
+        const label = newLabel ?? existing.label;
+        const color = req.body.color !== undefined ? req.body.color : existing.color;
+        await tx`
+          update tenant_config_lists set label = ${label}, color = ${color}
+          where list_key = ${key} and item_id = ${itemId}
+        `;
+        if (key === "job_types" && label !== existing.label) {
+          await tx`update jobs set type = ${label} where type = ${existing.label}`;
+          await tx`update recurring_jobs set job_type = ${label} where job_type = ${existing.label}`;
+          await tx`update form_templates set applies_to = ${label} where applies_to = ${existing.label}`;
+        }
+        // Reminder labels are stored as text on each customer reminder.
+        if (key === "reminder_types" && label !== existing.label) {
+          await tx`update customer_reminders set label = ${label} where label = ${existing.label}`;
+        }
+        return { id: itemId, label, color };
       });
     },
   );

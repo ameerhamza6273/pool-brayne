@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Calendar, LayoutDashboard, Truck, User, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon, Navigation,
-  X, Pencil, Trash2, Pause, Play,
+  Pencil, Trash2, Pause, Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,8 +21,15 @@ import { profilesApi } from "@/lib/api/profiles";
 import { customersApi } from "@/lib/api/customers";
 import { recurringJobsApi, type RecurringJob } from "@/lib/api/recurringJobs";
 import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
-import { geocodeAddress } from "@/lib/geocode";
+import { geocodeAddress, geocodeApproximate } from "@/lib/geocode";
+import { fetchRoadRoute } from "@/lib/routing";
 import { useLanguage } from "@/lib/language-context";
+import { customerOption } from "@/lib/customer-options";
+import { techDotColor, techStyle, unassignedColor, registerTechColors } from "@/lib/tech-colors";
+import { matchesQuery } from "@/lib/search";
+import { repeatsOn } from "@/lib/recurring";
+import ViewToggle, { useViewMode } from "@/components/ViewToggle";
+import ScheduleCalendar from "@/components/ScheduleCalendar";
 import type { Database } from "@/lib/database.types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -48,24 +55,34 @@ const typeStyle = (label: string, jobTypes: ConfigListItem[]): React.CSSProperti
   return { backgroundColor: `${color}1A`, color };
 };
 
-// Color identification by technician (not job type) across the Jobs & Dispatch views, per
-// client request 2026-08-27 — each tech gets a stable color from this palette based on their id.
-const techColorPalette = ["#0891B2", "#F59E0B", "#8B5CF6", "#3B82F6", "#16A34A", "#DC2626", "#EC4899", "#F97316"];
-const unassignedColor = "#64748B";
+// Client SMS 2026-09-21: "make the center of the map 2900 Holcomb Bridge Rd, Alpharetta GA 30022" (it was
+// starting in Austin, TX). Street-level point on Holcomb Bridge Rd from OpenStreetMap; the view then
+// re-fits to the day's pins once they load.
+const DEFAULT_MAP_CENTER: [number, number] = [33.988, -84.2754];
 
-const techStyle = (techId: string | null): React.CSSProperties => {
-  if (!techId) return { backgroundColor: `${unassignedColor}1A`, color: unassignedColor };
-  let hash = 0;
-  for (let i = 0; i < techId.length; i++) hash = (hash * 31 + techId.charCodeAt(i)) >>> 0;
-  const color = techColorPalette[hash % techColorPalette.length];
-  return { backgroundColor: `${color}1A`, color };
-};
+// Stop order on the map / route list: timed jobs by time, then untimed ones by customer name.
+const orderStops = (list: Job[]) =>
+  [...list].sort((a, b) => {
+    const at = a.scheduled_time;
+    const bt = b.scheduled_time;
+    if (at && bt) return at.localeCompare(bt);
+    if (at) return -1;
+    if (bt) return 1;
+    return (a.customers?.name ?? "").localeCompare(b.customers?.name ?? "");
+  });
 
-const techDotColor = (techId: string): string => {
-  let hash = 0;
-  for (let i = 0; i < techId.length; i++) hash = (hash * 31 + techId.charCodeAt(i)) >>> 0;
-  return techColorPalette[hash % techColorPalette.length];
-};
+const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Numbered round pin in the tech's color (client wants numbered stops like their old software).
+// Unassigned jobs get a plain gray dot; approximate locations are dashed + slightly faded.
+const stopIcon = (label: string, color: string, approx: boolean) =>
+  L.divIcon({
+    className: "",
+    html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};color:#fff;font:700 12px/22px Arial,sans-serif;text-align:center;border:2px ${approx ? "dashed" : "solid"} #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);${approx ? "opacity:.8;" : ""}">${label}</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -12],
+  });
 
 export default function Jobs() {
   const { t } = useLanguage();
@@ -80,6 +97,8 @@ export default function Jobs() {
     if (tab === "pipeline" || tab === "dispatch" || tab === "schedule" || tab === "map") setActiveTab(tab);
   }, [searchParams]);
   const [search, setSearch] = useState("");
+  const [techFilter, setTechFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [newJobOpen, setNewJobOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [technicians, setTechnicians] = useState<Profile[]>([]);
@@ -91,7 +110,15 @@ export default function Jobs() {
     customerId: "", techId: "", jobType: "", description: "", techNotes: "", amount: "",
     frequency: "weekly" as "weekly" | "biweekly" | "monthly", dayOfWeek: "1", dayOfMonth: "1",
     startDate: new Date().toISOString().slice(0, 10), endDate: "",
+    nextJobNotes: "", selectedFormIds: [] as string[], startTime: "",
   });
+  // Client SMS 2026-09-21: Recurring Jobs list gets a grid (table) view by default + a search field
+  // (customer, technician, day of the week, job type); Search row gets a date range.
+  const [recSearch, setRecSearch] = useState("");
+  const [recView, setRecView] = useViewMode("recurring-jobs");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [oneTimeTarget, setOneTimeTarget] = useState<RecurringJob | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", selectedFormIds: [] as string[] });
   // Client PDF 2026-09-18: "allow us to select the forms needed for the job. Not automatically
@@ -105,6 +132,13 @@ export default function Jobs() {
   const [newJobLineItems, setNewJobLineItems] = useState<DraftLineItem[]>([]);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [mapDate, setMapDate] = useState(() => new Date().toISOString().slice(0, 10));
+  // Map: coordinates resolved per job (filled in progressively as addresses are looked up).
+  type StopCoord = { lat: number; lng: number; approx: boolean };
+  const [stopCoords, setStopCoords] = useState<Record<string, StopCoord>>({});
+  const stopCoordsRef = useRef<Record<string, StopCoord>>({});
+  const [mapProgress, setMapProgress] = useState<{ done: number; total: number } | null>(null);
+  const drawTokenRef = useRef(0);
+  const fitStateRef = useRef({ key: "", started: false, done: false });
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
@@ -117,7 +151,7 @@ export default function Jobs() {
 
   useEffect(() => {
     loadJobs();
-    profilesApi.list().then((data) => setTechnicians(data ?? []));
+    profilesApi.list().then((data) => { registerTechColors(data ?? []); setTechnicians(data ?? []); });
     customersApi.list().then((data) => setCustomers(data ?? []));
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
     inventoryApi.summary().then((data) => setInventoryItems(data.items));
@@ -178,10 +212,14 @@ export default function Jobs() {
       dayOfMonth: newRecurring.frequency === "monthly" ? parseInt(newRecurring.dayOfMonth, 10) : null,
       startDate: newRecurring.startDate,
       endDate: newRecurring.endDate || null,
+      nextJobNotes: newRecurring.nextJobNotes || null,
+      selectedFormIds: newRecurring.selectedFormIds,
+      startTime: newRecurring.startTime || null,
     });
     setNewRecurring({
       customerId: "", techId: "", jobType: "", description: "", techNotes: "", amount: "",
       frequency: "weekly", dayOfWeek: "1", dayOfMonth: "1", startDate: new Date().toISOString().slice(0, 10), endDate: "",
+      nextJobNotes: "", selectedFormIds: [], startTime: "",
     });
     setNewRecurringOpen(false);
     loadJobs();
@@ -215,29 +253,17 @@ export default function Jobs() {
     setMapDate(d.toISOString().slice(0, 10));
   };
 
-  // Client SMS 2026-09-09: "active schedule so we can manipulate add, delete, change, drag and
-  // drop, recurring fields, full functionality" -- the old Schedule tab was a hardcoded "June
-  // 2024" grid with no navigation and no interaction at all.
-  const [scheduleMonth, setScheduleMonth] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
-  const shiftScheduleMonth = (months: number) => {
-    setScheduleMonth((m) => new Date(m.getFullYear(), m.getMonth() + months, 1));
-  };
-  const scheduleDateKey = (day: number) => {
-    const y = scheduleMonth.getFullYear();
-    const m = String(scheduleMonth.getMonth() + 1).padStart(2, "0");
-    return `${y}-${m}-${String(day).padStart(2, "0")}`;
-  };
-  const daysInScheduleMonth = new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth() + 1, 0).getDate();
-  const scheduleFirstWeekday = new Date(scheduleMonth.getFullYear(), scheduleMonth.getMonth(), 1).getDay();
-  const todayKey = new Date().toISOString().slice(0, 10);
-
-  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
-
-  const handleRescheduleDrop = async (dateKey: string, jobId: string) => {
-    await jobsApi.update(jobId, { scheduled_date: dateKey });
+  // Schedule view state (month/week/day, employee filters) lives in ScheduleCalendar; these are
+  // just the job-mutating callbacks it needs.
+  // time is only passed when dropped onto a specific hour slot (week/day view); a month-view drop
+  // moves the day and keeps the job's existing time.
+  // techId (day view's employee columns): undefined leaves the tech alone, null unassigns, a string reassigns.
+  const handleRescheduleDrop = async (jobId: string, dateKey: string, time?: string, techId?: string | null) => {
+    await jobsApi.update(jobId, {
+      scheduled_date: dateKey,
+      ...(time ? { scheduled_time: time } : {}),
+      ...(techId !== undefined ? { tech_id: techId } : {}),
+    });
     loadJobs();
   };
 
@@ -246,19 +272,23 @@ export default function Jobs() {
     loadJobs();
   };
 
-  const openNewJobForDate = (dateKey: string) => {
-    setNewJob((p) => ({ ...p, date: dateKey }));
+  const openNewJobForDate = (dateKey: string, time?: string, techId?: string | null) => {
+    setNewJob((p) => ({ ...p, date: dateKey, ...(time ? { time } : {}), ...(techId ? { techId } : {}) }));
     setNewJobOpen(true);
   };
 
   // Recurring Jobs card actions -- backend already supported update/delete, only the UI to
   // reach them was missing.
   const [editRecurring, setEditRecurring] = useState<RecurringJob | null>(null);
-  const [editRecurringDraft, setEditRecurringDraft] = useState({ techId: "", amount: "", endDate: "" });
+  const [editRecurringDraft, setEditRecurringDraft] = useState({ techId: "", amount: "", endDate: "", techNotes: "", nextJobNotes: "", selectedFormIds: [] as string[], startTime: "" });
 
   const openEditRecurring = (rj: RecurringJob) => {
     setEditRecurring(rj);
-    setEditRecurringDraft({ techId: rj.tech_id ?? "", amount: String(rj.amount), endDate: rj.end_date ?? "" });
+    setEditRecurringDraft({
+      techId: rj.tech_id ?? "", amount: String(rj.amount), endDate: rj.end_date ?? "",
+      techNotes: rj.tech_notes ?? "", nextJobNotes: rj.next_job_notes ?? "", selectedFormIds: rj.selected_form_ids ?? [],
+      startTime: rj.start_time ? rj.start_time.slice(0, 5) : "",
+    });
   };
 
   const handleSaveRecurring = async () => {
@@ -267,6 +297,10 @@ export default function Jobs() {
       techId: editRecurringDraft.techId || null,
       amount: parseFloat(editRecurringDraft.amount) || 0,
       endDate: editRecurringDraft.endDate || null,
+      techNotes: editRecurringDraft.techNotes || null,
+      nextJobNotes: editRecurringDraft.nextJobNotes || null,
+      selectedFormIds: editRecurringDraft.selectedFormIds,
+      startTime: editRecurringDraft.startTime || null,
     });
     setEditRecurring(null);
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
@@ -277,12 +311,57 @@ export default function Jobs() {
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
   };
 
+  // Client SMS 2026-09-21: "a way to convert a job to a recurring job or vice versa" (this is the vice versa).
+  const handleMakeOneTime = async () => {
+    if (!oneTimeTarget) return;
+    await recurringJobsApi.makeOneTime(oneTimeTarget.id);
+    setOneTimeTarget(null);
+    loadJobs();
+    recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
+  };
+
+  // Client SMS 2026-09-21: route order -- standard times for one tech's stops on a day (and their series).
+  const handleRouteOrder = async (items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean }[]) => {
+    const summary = await recurringJobsApi.routeOrder(items);
+    loadJobs();
+    recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
+    return summary;
+  };
+
+  // Client SMS 2026-09-21: employee color editable from the calendar's employee list.
+  const handleColorChange = async (techId: string, color: string) => {
+    await profilesApi.setColor(techId, color);
+    const data = (await profilesApi.list()) ?? [];
+    registerTechColors(data);
+    setTechnicians(data);
+  };
+
   const handleDeleteRecurring = async (rj: RecurringJob) => {
     await recurringJobsApi.remove(rj.id);
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
   };
 
-  const mapJobs = jobs.filter((j) => j.scheduled_date === mapDate);
+  // Client SMS 2026-09-21: the Search / Technician / Job Type row above the tabs narrows every tab.
+  const passesTopFilters = (j: Job) =>
+    ((j.customers?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (j.address ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      j.type.toLowerCase().includes(search.toLowerCase())) &&
+    (techFilter === "all" || (techFilter === "unassigned" ? !j.tech_id : j.tech_id === techFilter)) &&
+    (typeFilter === "all" || j.type === typeFilter) &&
+    (!dateFrom || (!!j.scheduled_date && j.scheduled_date >= dateFrom)) &&
+    (!dateTo || (!!j.scheduled_date && j.scheduled_date <= dateTo));
+
+  // The same Search / Technician / Job Type filters applied to a recurring series (used for its projected dates).
+  const passesRecurringFilters = (rj: RecurringJob) =>
+    ((rj.customers?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      (rj.address ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      rj.job_type.toLowerCase().includes(search.toLowerCase())) &&
+    (techFilter === "all" || (techFilter === "unassigned" ? !rj.tech_id : rj.tech_id === techFilter)) &&
+    (typeFilter === "all" || rj.job_type === typeFilter);
+  const recurringFiltered = recurringJobs.filter((rj) => matchesQuery(recSearch, [rj.customers?.name, rj.profiles?.name, repeatsOn(rj), rj.job_type, rj.frequency]));
+  const typeColors = Object.fromEntries(configLists.job_types.map((jt) => [jt.label, jt.color ?? unassignedColor]));
+
+  const mapJobs = jobs.filter((j) => j.scheduled_date === mapDate && passesTopFilters(j));
 
   // Jobs map view (client request 2026-08-27): plot the selected day's jobs on a free
   // OpenStreetMap/Leaflet map (no Google Maps billing account available), color-coded by tech —
@@ -290,7 +369,7 @@ export default function Jobs() {
   useEffect(() => {
     if (activeTab !== "map" || !mapContainerRef.current) return;
     if (!mapRef.current) {
-      mapRef.current = L.map(mapContainerRef.current).setView([30.2672, -97.7431], 11);
+      mapRef.current = L.map(mapContainerRef.current).setView(DEFAULT_MAP_CENTER, 11);
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "&copy; OpenStreetMap contributors",
         maxZoom: 19,
@@ -303,63 +382,121 @@ export default function Jobs() {
     };
   }, [activeTab]);
 
+  // Ids of the day's (filtered) jobs -- the effects below re-run when the set changes, including when the
+  // Search / Technician / Job Type filters do.
+  const mapJobsKey = mapJobs.map((j) => j.id).join(",");
+  const mapIdle = mapProgress === null;
+
+  // 1) Locate every job. Client SMS 2026-09-21: "not all addresses are shown on the map" -- the old code only
+  // tried job.address (often empty) and dropped a job silently if that one lookup failed. Now: the customer's
+  // saved coordinates -> the job's address, else the customer's address -> if the street address can't be
+  // found, an approximate city/zip location (flagged) -> only then "location not found" in the list.
   useEffect(() => {
-    if (activeTab !== "map" || !mapRef.current || !markersLayerRef.current) return;
+    if (activeTab !== "map") return;
     let cancelled = false;
-
     (async () => {
-      const layer = markersLayerRef.current!;
-      layer.clearLayers();
-      const points: [number, number][] = [];
-
-      for (const job of mapJobs) {
+      const todo = mapJobs.filter((j) => !stopCoordsRef.current[j.id]);
+      if (todo.length === 0) { setMapProgress(null); return; }
+      setMapProgress({ done: 0, total: todo.length });
+      let done = 0;
+      for (const job of todo) {
+        if (cancelled) return;
         let lat = job.customers?.lat ?? null;
         let lng = job.customers?.lng ?? null;
-        if ((lat === null || lng === null) && job.address) {
-          const result = await geocodeAddress(job.address);
+        let approx = false;
+        const address = job.address || job.customers?.address || null;
+        if ((lat === null || lng === null) && address) {
+          const exact = await geocodeAddress(address);
           if (cancelled) return;
-          if (result) {
-            lat = result.lat;
-            lng = result.lng;
+          if (exact) {
+            lat = exact.lat;
+            lng = exact.lng;
             if (job.customer_id) customersApi.updateCoordinates(job.customer_id, lat, lng).catch(() => {});
+          } else {
+            const near = await geocodeApproximate(address);
+            if (cancelled) return;
+            if (near) { lat = near.lat; lng = near.lng; approx = true; }
           }
         }
-        if (lat === null || lng === null) continue;
-        points.push([lat, lng]);
-        const color = job.tech_id ? techDotColor(job.tech_id) : unassignedColor;
-        L.circleMarker([lat, lng], { radius: 9, color, fillColor: color, fillOpacity: 0.85, weight: 2 })
+        done++;
+        if (lat !== null && lng !== null) {
+          stopCoordsRef.current = { ...stopCoordsRef.current, [job.id]: { lat, lng, approx } };
+          setStopCoords(stopCoordsRef.current);
+        }
+        setMapProgress({ done, total: todo.length });
+      }
+      if (!cancelled) setMapProgress(null);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, mapJobsKey]);
+
+  // 2) Draw: one numbered pin per located job, and per technician a line joining their stops in order
+  // (straight first, swapped for the real road route when the routing service answers).
+  useEffect(() => {
+    if (activeTab !== "map" || !mapRef.current || !markersLayerRef.current) return;
+    const layer = markersLayerRef.current;
+    layer.clearLayers();
+    const token = ++drawTokenRef.current;
+    const bounds: [number, number][] = [];
+    const groups = new Map<string, Job[]>();
+    for (const j of mapJobs) groups.set(j.tech_id ?? "", [...(groups.get(j.tech_id ?? "") ?? []), j]);
+
+    groups.forEach((group, techId) => {
+      const color = techId ? techDotColor(techId) : unassignedColor;
+      const line: [number, number][] = [];
+      orderStops(group).forEach((job, idx) => {
+        const c = stopCoords[job.id];
+        if (!c) return;
+        bounds.push([c.lat, c.lng]);
+        if (techId) line.push([c.lat, c.lng]);
+        const num = idx + 1;
+        const time = job.scheduled_time ? job.scheduled_time.slice(0, 5) : "";
+        L.marker([c.lat, c.lng], { icon: stopIcon(techId ? String(num) : "", color, c.approx), zIndexOffset: 100 + num })
           .bindPopup(
-            `<strong>${job.scheduled_time ?? ""} &middot; ${job.customers?.name ?? "Unknown"}</strong><br/>${job.type}<br/>Tech: ${job.profiles?.name ?? "Unassigned"}`
+            `<strong>${techId ? `${num}. ` : ""}${time ? `${time} &middot; ` : ""}${escapeHtml(job.customers?.name ?? "Unknown")}</strong><br/>${escapeHtml(job.type)}<br/>Tech: ${escapeHtml(job.profiles?.name ?? "Unassigned")}${job.address || job.customers?.address ? `<br/>${escapeHtml((job.address || job.customers?.address) as string)}` : ""}${c.approx ? "<br/><em>Approximate location</em>" : ""}`,
           )
           .addTo(layer);
+      });
+      if (techId && line.length >= 2) {
+        const straight = L.polyline(line, { color, weight: 3, opacity: 0.75, dashArray: "6 6" }).addTo(layer);
+        fetchRoadRoute(line).then((road) => {
+          if (road && drawTokenRef.current === token) {
+            straight.setLatLngs(road);
+            straight.setStyle({ dashArray: undefined, opacity: 0.85 });
+          }
+        });
       }
+    });
 
-      if (points.length > 0) {
-        mapRef.current!.fitBounds(points, { padding: [40, 40], maxZoom: 14 });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    // Fit the view once when the first pin lands and again when every address has been looked up
+    // (not on every progressive update, which would fight the user panning).
+    const fit = fitStateRef.current;
+    const key = `${mapDate}|${mapJobsKey}`;
+    if (fit.key !== key) { fit.key = key; fit.started = false; fit.done = false; }
+    if (bounds.length > 0 && (!fit.started || (mapIdle && !fit.done))) {
+      fit.started = true;
+      if (mapIdle) fit.done = true;
+      mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, mapDate, jobs]);
+  }, [activeTab, stopCoords, mapJobsKey, mapIdle, mapDate]);
 
   const routeByTech = technicians
     .map((t) => ({
       tech: t,
-      stops: mapJobs
-        .filter((j) => j.tech_id === t.id)
-        .sort((a, b) => (a.scheduled_time ?? "").localeCompare(b.scheduled_time ?? "")),
+      stops: orderStops(mapJobs.filter((j) => j.tech_id === t.id)),
     }))
     .filter((r) => r.stops.length > 0);
   const unassignedStops = mapJobs.filter((j) => !j.tech_id);
+  const locatedCount = mapJobs.filter((j) => stopCoords[j.id]).length;
+  const approxCount = mapJobs.filter((j) => stopCoords[j.id]?.approx).length;
+  const unlocatedTag = (id: string) =>
+    mapIdle && !stopCoords[id] ? <span className="ml-1 text-[10px] text-[#DC2626]">({t("location not found")})</span> : null;
 
-  const filteredJobs = jobs.filter((j) =>
-    (j.customers?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    (j.address ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    j.type.toLowerCase().includes(search.toLowerCase())
-  );
+  // Client SMS 2026-09-21: tech + job-type dropdowns to the right of "Search jobs".
+  const jobTypeFilterOptions = Array.from(new Set([...configLists.job_types.map((jt) => jt.label), ...jobs.map((j) => j.type)])).filter(Boolean);
+  const filteredJobs = jobs.filter(passesTopFilters);
 
   const jobsByStage = (stage: string) => filteredJobs.filter((j) => j.stage === stage);
 
@@ -386,7 +523,8 @@ export default function Jobs() {
                       onChange={(v) => setNewJob((p) => ({ ...p, customerId: v }))}
                       placeholder={t("Select customer")}
                       searchPlaceholder={t("Search customers...")}
-                      options={customers.map((c) => ({ value: c.id, label: c.name, sublabel: [c.phone, c.address].filter(Boolean).join(" · ") || undefined }))}
+                      options={customers.map(customerOption)}
+                      showSublabelWhenSelected
                     />
                   </div>
                 </div>
@@ -515,7 +653,8 @@ export default function Jobs() {
                       onChange={(v) => setNewRecurring((p) => ({ ...p, customerId: v }))}
                       placeholder={t("Select customer")}
                       searchPlaceholder={t("Search customers...")}
-                      options={customers.map((c) => ({ value: c.id, label: c.name }))}
+                      options={customers.map(customerOption)}
+                      showSublabelWhenSelected
                     />
                   </div>
                 </div>
@@ -545,6 +684,34 @@ export default function Jobs() {
                   <Label>{t("Tech-Only Notes (carries to every occurrence)")}</Label>
                   <Input className="mt-1" value={newRecurring.techNotes} onChange={(e) => setNewRecurring((p) => ({ ...p, techNotes: e.target.value }))} />
                 </div>
+                <div>
+                  {/* Client SMS 2026-09-21: standard start time so the weekly route keeps the same stop order. */}
+                  <Label>{t("Standard start time")}</Label>
+                  <Input type="time" className="mt-1" value={newRecurring.startTime} onChange={(e) => setNewRecurring((p) => ({ ...p, startTime: e.target.value }))} />
+                </div>
+                <div>
+                  {/* Client SMS 2026-09-21: "notes for this job only" -- goes onto the next job created, then clears. */}
+                  <Label>{t("Notes for this job only")}</Label>
+                  <Input className="mt-1" value={newRecurring.nextJobNotes} onChange={(e) => setNewRecurring((p) => ({ ...p, nextJobNotes: e.target.value }))} />
+                </div>
+                {formTemplates.length > 0 && (
+                  <div>
+                    {/* Client SMS 2026-09-21: "forms for all jobs" -- every job created from this series gets these forms. */}
+                    <Label>{t("Forms for all jobs")}</Label>
+                    <div className="mt-1 border border-[#E2E8F0] rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto">
+                      {formTemplates.map((tpl) => (
+                        <label key={tpl.id} className="flex items-center gap-2 text-sm py-1 px-1.5 rounded hover:bg-[#F8FAFC] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={newRecurring.selectedFormIds.includes(tpl.id)}
+                            onChange={() => setNewRecurring((p) => ({ ...p, selectedFormIds: p.selectedFormIds.includes(tpl.id) ? p.selectedFormIds.filter((x) => x !== tpl.id) : [...p.selectedFormIds, tpl.id] }))}
+                          />
+                          <span className="flex-1">{t(tpl.name)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>{t("Amount")}</Label>
@@ -623,14 +790,38 @@ export default function Jobs() {
       </div>
 
       {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-        <Input
-          placeholder={t("Search jobs...")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 h-10 bg-white border-[#E2E8F0]"
-        />
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+        <div className="relative w-full sm:max-w-md sm:flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+          <Input
+            placeholder={t("Search jobs...")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 h-10 bg-white border-[#E2E8F0]"
+          />
+        </div>
+        <Select value={techFilter} onValueChange={setTechFilter}>
+          <SelectTrigger className="h-10 w-full sm:w-48 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Technician")} /></SelectTrigger>
+          <SelectContent className="max-h-72">
+            <SelectItem value="all">{t("All Technicians")}</SelectItem>
+            <SelectItem value="unassigned">{t("Unassigned")}</SelectItem>
+            {technicians.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="h-10 w-full sm:w-52 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Job Type")} /></SelectTrigger>
+          <SelectContent className="max-h-72">
+            <SelectItem value="all">{t("All Job Types")}</SelectItem>
+            {jobTypeFilterOptions.map((jt) => <SelectItem key={jt} value={jt}>{jt}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {/* Client SMS 2026-09-21: date range to the right of "Search jobs". */}
+        <div className="flex items-center gap-1.5">
+          <Input type="date" aria-label={t("From")} title={t("From")} className="h-10 w-full sm:w-40 bg-white border-[#E2E8F0]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <span className="text-xs text-[#64748B]">{t("to")}</span>
+          <Input type="date" aria-label={t("To")} title={t("To")} className="h-10 w-full sm:w-40 bg-white border-[#E2E8F0]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          {(dateFrom || dateTo) && <Button variant="ghost" className="h-10 px-2 text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }}>{t("Clear")}</Button>}
+        </div>
       </div>
 
       {/* Pipeline View */}
@@ -788,83 +979,24 @@ export default function Jobs() {
       {/* Schedule View */}
       {activeTab === "schedule" && (
         <div className="space-y-4">
-          {/* Client SMS 2026-09-09: "active schedule... add, delete, change, drag and drop" --
-              real month navigation, click an empty day to add a job, drag a job chip onto another
-              day to reschedule it, and an "x" on hover to pull a job off the schedule. */}
-          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <button className="p-1 rounded hover:bg-[#F8FAFC]" onClick={() => shiftScheduleMonth(-1)}><ChevronLeft className="w-4 h-4" /></button>
-                <h3 className="font-semibold text-[#0F172A]">{scheduleMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h3>
-                <button className="p-1 rounded hover:bg-[#F8FAFC]" onClick={() => shiftScheduleMonth(1)}><ChevronRight className="w-4 h-4" /></button>
-              </div>
-              <div className="flex items-center gap-3 text-xs">
-                {technicians.map((t) => (
-                  <div key={t.id} className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full" style={{ background: techDotColor(t.id) }} />
-                    <span className="text-[#64748B]">{t.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <p className="text-xs text-[#94A3B8] -mt-2 mb-3">{t("Click an empty day to schedule a job. Drag a job onto another day to reschedule it.")}</p>
-            <div className="grid grid-cols-7 gap-2 text-center text-xs text-[#64748B] mb-2">
-              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                <div key={d} className="font-semibold py-2">{t(d)}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-2">
-              {Array.from({ length: scheduleFirstWeekday }, (_, i) => <div key={`pad-${i}`} />)}
-              {Array.from({ length: daysInScheduleMonth }, (_, i) => {
-                const day = i + 1;
-                const dateKey = scheduleDateKey(day);
-                const dayJobs = jobs.filter((j) => j.scheduled_date === dateKey);
-                const isToday = dateKey === todayKey;
-                const isDragOver = dragOverDay === dateKey;
-                return (
-                  <div
-                    key={day}
-                    onDragOver={(e) => { e.preventDefault(); setDragOverDay(dateKey); }}
-                    onDragLeave={() => setDragOverDay((cur) => (cur === dateKey ? null : cur))}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const jobId = e.dataTransfer.getData("text/job-id");
-                      if (jobId) handleRescheduleDrop(dateKey, jobId);
-                      setDragOverDay(null);
-                    }}
-                    onClick={() => openNewJobForDate(dateKey)}
-                    className={`min-h-[80px] rounded-lg border p-1.5 cursor-pointer transition-colors ${
-                      isDragOver ? "bg-[#0891B2]/10 border-[#0891B2] border-dashed" : isToday ? "bg-[#0891B2]/5 border-[#0891B2]" : "bg-white border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                    }`}
-                  >
-                    <span className={`text-xs font-medium ${isToday ? "text-[#0891B2]" : "text-[#0F172A]"}`}>{day}</span>
-                    <div className="space-y-1 mt-1">
-                      {dayJobs.map((j) => (
-                        <div
-                          key={j.id}
-                          draggable
-                          onDragStart={(e) => { e.stopPropagation(); e.dataTransfer.setData("text/job-id", j.id); e.dataTransfer.effectAllowed = "move"; }}
-                          className="group text-[10px] px-1.5 py-0.5 rounded cursor-grab active:cursor-grabbing truncate flex items-center justify-between gap-1"
-                          style={techStyle(j.tech_id)}
-                          title={j.description ?? `${j.type} — ${j.customers?.name ?? t("Unassigned")}`}
-                          onClick={(e) => { e.stopPropagation(); navigate(`/jobs/${j.id}`); }}
-                        >
-                          <span className="truncate">{j.scheduled_time} {j.customers?.name.split(" ")[0]}</span>
-                          <button
-                            className="opacity-0 group-hover:opacity-100 shrink-0"
-                            title={t("Remove from schedule")}
-                            onClick={(e) => { e.stopPropagation(); handleUnschedule(j.id); }}
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          {/* Client SMS 2026-09-09: real add/delete/change/drag-and-drop schedule. Client SMS 2026-09-21:
+              month/week/day views + an employee panel to show/hide individual people. */}
+          <ScheduleCalendar
+            jobs={filteredJobs}
+            technicians={technicians}
+            onOpenJob={(id) => navigate(`/jobs/${id}`)}
+            onReschedule={handleRescheduleDrop}
+            onNewJob={openNewJobForDate}
+            onUnschedule={handleUnschedule}
+            allJobs={jobs}
+            recurring={recurringJobs.filter(passesRecurringFilters)}
+            typeColors={typeColors}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onOpenRecurring={(id) => { const rj = recurringJobs.find((r) => r.id === id); if (rj) openEditRecurring(rj); }}
+            onColorChange={handleColorChange}
+            onRouteOrder={handleRouteOrder}
+          />
 
           {/* Recurring Jobs -- client PDF 2026-09-05: real schedule, not the old read-only
               "Recurring Routes" (never linked to actual jobs). Each generates a real job
@@ -872,37 +1004,107 @@ export default function Jobs() {
               Client SMS 2026-09-09: "recurring fields, full functionality" -- pause/resume,
               edit, and delete a series (backend already supported this, UI didn't expose it). */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
-            <h3 className="font-semibold text-[#0F172A] mb-3">{t("Recurring Jobs")}</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {recurringJobs.map((rj) => (
-                <div key={rj.id} className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-medium text-[#0F172A]">{rj.customers?.name ?? "—"}</h4>
-                    <Badge className={`text-[10px] px-1.5 py-0 ${rj.active ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
-                      {rj.active ? rj.frequency : t("Paused")}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1 text-sm text-[#64748B]">
-                    <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {rj.job_type}</p>
-                    <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {rj.profiles?.name ?? t("Unassigned")}</p>
-                    <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t("Since")} {rj.start_date}{rj.end_date ? ` · ${t("ends")} ${rj.end_date}` : ` · ${t("no end date")}`}</p>
-                  </div>
-                  <div className="flex items-center gap-3 mt-3 pt-2 border-t border-[#E2E8F0]">
-                    <button className="text-xs text-[#0891B2] font-medium flex items-center gap-1" onClick={() => handleToggleRecurringActive(rj)}>
-                      {rj.active ? <><Pause className="w-3 h-3" /> {t("Pause")}</> : <><Play className="w-3 h-3" /> {t("Resume")}</>}
-                    </button>
-                    <button className="text-xs text-[#64748B] font-medium flex items-center gap-1" onClick={() => openEditRecurring(rj)}>
-                      <Pencil className="w-3 h-3" /> {t("Edit")}
-                    </button>
-                    <button className="text-xs text-[#DC2626] font-medium flex items-center gap-1" onClick={() => handleDeleteRecurring(rj)}>
-                      <Trash2 className="w-3 h-3" /> {t("Delete")}
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {recurringJobs.length === 0 && <p className="text-sm text-[#64748B] col-span-full py-2">{t("No recurring jobs set up yet.")}</p>}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+              <h3 className="font-semibold text-[#0F172A]">{t("Recurring Jobs")}</h3>
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+                <Input placeholder={t("Search customer, technician, day of the week, or job type...")} value={recSearch} onChange={(e) => setRecSearch(e.target.value)} className="pl-9 h-9 bg-white border-[#E2E8F0]" />
+              </div>
+              <ViewToggle mode={recView} onChange={setRecView} />
             </div>
+            {recView === "table" ? (
+              <div className="overflow-x-auto border border-[#E2E8F0] rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Job Type")}</th>
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Technician")}</th>
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Repeats")}</th>
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Time")}</th>
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Since")}</th>
+                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Ends")}</th>
+                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                      <th className="py-2.5 px-3"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recurringFiltered.map((rj) => (
+                      <tr key={rj.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                        <td className="py-2.5 px-3 font-medium text-[#0F172A]">{rj.customers?.name ?? "—"}</td>
+                        <td className="py-2.5 px-3 text-[#64748B]">{rj.job_type}</td>
+                        <td className="py-2.5 px-3 text-[#64748B]">{rj.profiles?.name ?? t("Unassigned")}</td>
+                        <td className="py-2.5 px-3 text-[#64748B]">{(rj.frequency === "weekly" ? t("Weekly") : rj.frequency === "biweekly" ? t("Every 2 weeks") : t("Monthly"))} · {t(repeatsOn(rj))}</td>
+                        <td className="py-2.5 px-3 text-[#64748B]">{rj.start_time ? rj.start_time.slice(0, 5) : "—"}</td>
+                        <td className="py-2.5 px-3 text-[#64748B]">{rj.start_date}</td>
+                        <td className="py-2.5 px-3 text-[#64748B]">{rj.end_date ?? "—"}</td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Badge className={`text-[10px] px-1.5 py-0 ${rj.active ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F1F5F9] text-[#64748B]"}`}>{rj.active ? t("Active") : t("Paused")}</Badge>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <div className="flex items-center justify-end gap-3 whitespace-nowrap">
+                            <button className="text-xs text-[#0891B2] font-medium flex items-center gap-1" onClick={() => handleToggleRecurringActive(rj)}>
+                              {rj.active ? <><Pause className="w-3 h-3" /> {t("Pause")}</> : <><Play className="w-3 h-3" /> {t("Resume")}</>}
+                            </button>
+                            <button className="text-xs text-[#64748B] font-medium flex items-center gap-1" onClick={() => openEditRecurring(rj)}><Pencil className="w-3 h-3" /> {t("Edit")}</button>
+                            <button className="text-xs text-[#64748B] font-medium" onClick={() => setOneTimeTarget(rj)}>{t("Make one-time")}</button>
+                            <button className="text-xs text-[#DC2626] font-medium flex items-center gap-1" onClick={() => handleDeleteRecurring(rj)}><Trash2 className="w-3 h-3" /> {t("Delete")}</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {recurringFiltered.length === 0 && (
+                      <tr><td colSpan={9} className="py-6 text-center text-[#64748B]">{recurringJobs.length === 0 ? t("No recurring jobs set up yet.") : t("No recurring jobs match your search.")}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {recurringFiltered.map((rj) => (
+                  <div key={rj.id} className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium text-[#0F172A]">{rj.customers?.name ?? "—"}</h4>
+                      <Badge className={`text-[10px] px-1.5 py-0 ${rj.active ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        {rj.active ? rj.frequency : t("Paused")}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1 text-sm text-[#64748B]">
+                      <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {rj.job_type} · {t(repeatsOn(rj))}</p>
+                      <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {rj.profiles?.name ?? t("Unassigned")}</p>
+                      <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t("Since")} {rj.start_date}{rj.end_date ? ` · ${t("ends")} ${rj.end_date}` : ` · ${t("no end date")}`}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2 border-t border-[#E2E8F0]">
+                      <button className="text-xs text-[#0891B2] font-medium flex items-center gap-1" onClick={() => handleToggleRecurringActive(rj)}>
+                        {rj.active ? <><Pause className="w-3 h-3" /> {t("Pause")}</> : <><Play className="w-3 h-3" /> {t("Resume")}</>}
+                      </button>
+                      <button className="text-xs text-[#64748B] font-medium flex items-center gap-1" onClick={() => openEditRecurring(rj)}>
+                        <Pencil className="w-3 h-3" /> {t("Edit")}
+                      </button>
+                      <button className="text-xs text-[#64748B] font-medium" onClick={() => setOneTimeTarget(rj)}>{t("Make one-time")}</button>
+                      <button className="text-xs text-[#DC2626] font-medium flex items-center gap-1" onClick={() => handleDeleteRecurring(rj)}>
+                        <Trash2 className="w-3 h-3" /> {t("Delete")}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {recurringFiltered.length === 0 && <p className="text-sm text-[#64748B] col-span-full py-2">{recurringJobs.length === 0 ? t("No recurring jobs set up yet.") : t("No recurring jobs match your search.")}</p>}
+              </div>
+            )}
           </div>
+
+          <Dialog open={!!oneTimeTarget} onOpenChange={(open) => !open && setOneTimeTarget(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>{t("Make this a one-time job?")}</DialogTitle></DialogHeader>
+              <p className="text-sm text-[#64748B]">
+                {oneTimeTarget?.customers?.name} — {oneTimeTarget?.job_type}. {t("The recurring schedule is removed and its upcoming job stays as a normal one-time job. No more repeats will be created.")}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setOneTimeTarget(null)}>{t("Cancel")}</Button>
+                <Button className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleMakeOneTime}>{t("Make one-time")}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={!!editRecurring} onOpenChange={(open) => !open && setEditRecurring(null)}>
             <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -923,6 +1125,35 @@ export default function Jobs() {
                   <Label>{t("End Date")}</Label>
                   <Input type="date" className="mt-1" value={editRecurringDraft.endDate} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, endDate: e.target.value }))} />
                 </div>
+                <div>
+                  <Label>{t("Standard start time")}</Label>
+                  <Input type="time" className="mt-1" value={editRecurringDraft.startTime} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, startTime: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>{t("Tech-Only Notes (carries to every occurrence)")}</Label>
+                  <Input className="mt-1" value={editRecurringDraft.techNotes} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, techNotes: e.target.value }))} />
+                </div>
+                <div>
+                  <Label>{t("Notes for this job only")}</Label>
+                  <Input className="mt-1" value={editRecurringDraft.nextJobNotes} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, nextJobNotes: e.target.value }))} />
+                </div>
+                {formTemplates.length > 0 && (
+                  <div>
+                    <Label>{t("Forms for all jobs")}</Label>
+                    <div className="mt-1 border border-[#E2E8F0] rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto">
+                      {formTemplates.map((tpl) => (
+                        <label key={tpl.id} className="flex items-center gap-2 text-sm py-1 px-1.5 rounded hover:bg-[#F8FAFC] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editRecurringDraft.selectedFormIds.includes(tpl.id)}
+                            onChange={() => setEditRecurringDraft((p) => ({ ...p, selectedFormIds: p.selectedFormIds.includes(tpl.id) ? p.selectedFormIds.filter((x) => x !== tpl.id) : [...p.selectedFormIds, tpl.id] }))}
+                          />
+                          <span className="flex-1">{t(tpl.name)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveRecurring}>{t("Save Changes")}</Button>
               </div>
             </DialogContent>
@@ -946,12 +1177,16 @@ export default function Jobs() {
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
-              <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px]">{mapJobs.length} job{mapJobs.length === 1 ? "" : "s"}</Badge>
+              <div className="flex items-center gap-2">
+                {mapProgress && <span className="text-[11px] text-[#0891B2]">{t("Locating addresses...")} {mapProgress.done}/{mapProgress.total}</span>}
+                {approxCount > 0 && <span className="text-[11px] text-[#64748B]">{approxCount} {t("approximate (dashed) — exact address not found")}</span>}
+                <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px]">{locatedCount} / {mapJobs.length} {t("on map")}</Badge>
+              </div>
             </div>
-            <div ref={mapContainerRef} className="w-full h-[480px] rounded-lg overflow-hidden" />
+            <div ref={mapContainerRef} className="w-full h-[calc(100vh-340px)] min-h-[480px] rounded-lg overflow-hidden" />
           </div>
 
-          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4 space-y-4 max-h-[560px] overflow-y-auto">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4 space-y-4 lg:max-h-[calc(100vh-260px)] lg:min-h-[560px] overflow-y-auto">
             <h3 className="font-semibold text-[#0F172A]">{t("Daily Route by Technician")}</h3>
             {routeByTech.map(({ tech, stops }) => (
               <div key={tech.id}>
@@ -961,9 +1196,10 @@ export default function Jobs() {
                   <span className="text-xs text-[#64748B]">({stops.length})</span>
                 </div>
                 <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
-                  {stops.map((s) => (
-                    <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2]" onClick={() => navigate(`/jobs/${s.id}`)}>
-                      {s.scheduled_time} &middot; {s.customers?.name}
+                  {stops.map((s, i) => (
+                    <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2] flex items-start gap-1.5" onClick={() => navigate(`/jobs/${s.id}`)}>
+                      <span className="w-4 h-4 rounded-full text-[9px] font-bold text-white flex items-center justify-center shrink-0 mt-px" style={{ background: techDotColor(tech.id) }}>{i + 1}</span>
+                      <span>{s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}</span>
                     </div>
                   ))}
                 </div>
@@ -979,7 +1215,7 @@ export default function Jobs() {
                 <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
                   {unassignedStops.map((s) => (
                     <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2]" onClick={() => navigate(`/jobs/${s.id}`)}>
-                      {s.scheduled_time} &middot; {s.customers?.name}
+                      {s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}
                     </div>
                   ))}
                 </div>

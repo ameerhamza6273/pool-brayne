@@ -15,6 +15,8 @@ import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
+import { laborFirst } from "@/lib/labor";
+import { customerOption } from "@/lib/customer-options";
 import type { Database } from "@/lib/database.types";
 
 type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
@@ -117,7 +119,8 @@ export default function EstimateDetail() {
   // subtotal lines, not one combined Subtotal.
   const materialsSubtotal = items.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const laborSubtotal = items.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-  const tax = subtotal * 0.0825;
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
+  const tax = materialsSubtotal * 0.0825;
   const total = subtotal + tax;
   const downPayment = estimate.down_payment ?? 0;
   const remainingBalance = total - downPayment;
@@ -222,7 +225,7 @@ export default function EstimateDetail() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 print:hidden">
         <button onClick={() => navigate("/invoicing")} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -260,7 +263,7 @@ export default function EstimateDetail() {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => window.print()}>
           <Download className="w-4 h-4 text-[#0891B2]" /> {t("Download PDF")}
         </Button>
@@ -284,7 +287,7 @@ export default function EstimateDetail() {
       </div>
       {/* No email-sending service is wired up (no SendGrid) -- the link above is real and works,
           but reaching the customer's inbox is a manual copy/mailto step, not automatic. */}
-      <p className="text-xs text-[#94A3B8]">{t("Share the approval link above with the customer — there's no automatic email delivery yet.")}</p>
+      <p className="text-xs text-[#94A3B8] print:hidden">{t("Share the approval link above with the customer — there's no automatic email delivery yet.")}</p>
 
       {editing && (
         <Card className="border-[#E2E8F0] shadow-sm">
@@ -297,7 +300,8 @@ export default function EstimateDetail() {
                   onChange={(v) => setEditDraft((p) => ({ ...p, customerId: v }))}
                   placeholder={t("Select customer")}
                   searchPlaceholder={t("Search customers...")}
-                  options={customers.map((c) => ({ value: c.id, label: c.name, sublabel: [c.phone, c.email].filter(Boolean).join(" · ") || undefined }))}
+                  options={customers.map(customerOption)}
+                  showSublabelWhenSelected
                 />
               </div>
             </div>
@@ -423,7 +427,7 @@ export default function EstimateDetail() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((li, idx: number) => (
+                {laborFirst(items).map((li, idx: number) => (
                   <tr key={idx} className="border-b border-[#F1F5F9]">
                     <td className="py-3 text-[#0F172A]">
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}

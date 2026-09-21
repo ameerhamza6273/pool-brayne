@@ -4,6 +4,7 @@ import { Factory, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { inventoryApi } from "@/lib/api/inventory";
 import { useLanguage } from "@/lib/language-context";
+import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 
 // Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list") — distinct
 // manufacturers already recorded on inventory items, with a count each; clicking one jumps to
@@ -12,6 +13,7 @@ export default function Manufacturers() {
   const [manufacturers, setManufacturers] = useState<{ manufacturer: string; item_count: number }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useViewMode("manufacturers");
   const navigate = useNavigate();
   const { t } = useLanguage();
 
@@ -29,14 +31,47 @@ export default function Manufacturers() {
         <p className="text-sm text-[#64748B] mt-0.5">{t("Distinct manufacturers recorded across your inventory catalog.")}</p>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-        <Input placeholder={t("Search manufacturer...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+          <Input placeholder={t("Search manufacturer...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+        </div>
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading...")}</div>}
 
-      {!isLoading && (
+      {!isLoading && viewMode === "table" && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Manufacturer")}</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Items")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {manufacturers.filter((m) => m.manufacturer.toLowerCase().includes(search.toLowerCase())).map((m) => (
+                  <tr
+                    key={m.manufacturer}
+                    onClick={() => navigate(`/inventory?search=${encodeURIComponent(m.manufacturer)}`)}
+                    className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer"
+                  >
+                    <td className="py-3 px-4 font-medium text-[#0F172A]">{m.manufacturer}</td>
+                    <td className="py-3 px-4 text-right text-[#64748B]">{m.item_count}</td>
+                  </tr>
+                ))}
+                {manufacturers.length === 0 && (
+                  <tr><td colSpan={2} className="py-8 text-center text-[#64748B]">{t("No manufacturers recorded yet.")}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && viewMode === "cards" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {manufacturers.filter((m) => m.manufacturer.toLowerCase().includes(search.toLowerCase())).map((m) => (
             <button

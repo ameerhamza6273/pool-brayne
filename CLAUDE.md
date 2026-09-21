@@ -2,6 +2,9 @@
 
 > Yeh file Claude Code khud-ba-khud har naye session ki shuruwaat mein read kar leta hai.
 > Naye terminal mein sirf kehna: "project read kar lo" — is file se sab context mil jayega.
+> **Rule for Claude (2026-09-21):** har naye client message se PEHLE `CLIENT_REQUESTS.md` padho — client ko baar-baar wahi baat
+> dohrani pad rahi hai (yehi uski frustration hai). Jo item wahan ✅ hai use dobara mat banao, sirf "kahan milega" batao; naya item
+> milte hi wahan add karo aur kaam hone par status/location update karo. Client se sawal ek sath, sirf zaroori wale.
 > **Rule for Claude:** har meaningful session ke aakhir mein (ya jab user kahe) `## Session
 > Changelog` mein neeche ek nayi dated **one-liner** entry add karo — kya build/fix hua, kya
 > pending reh gaya. **Verbose play-by-play mat likho** (exact click sequences, step-by-step
@@ -88,6 +91,13 @@ GPS; PoolBrayne's trucks use a different, API-less consumer tracker — see Inte
   that queue. **Gotcha:** never name a `.map()`/`.filter()` loop variable `t` in a file that also
   destructures `const { t } = useLanguage()` — it silently shadows the translate function within
   that callback (several sessions have hit this; rename the loop var instead, e.g. `tpl`/`row`).
+- **Labor vs materials (2026-09-21 gotcha):** the client's 67 labor SKUs (`service-1…67`) are
+  `inventory_items.category = "Labor"`, `taxable = false`; the older demo POS items use
+  `"Services"`. Anywhere labor is distinguished from materials must use
+  `isLaborCategory()` (`src/lib/labor.ts`; backend inventory.ts has the same check) — never
+  compare to `"Services"` alone (that made the Estimate labor picker show only 7 demo items).
+  Labor isn't stocked (shown "Non-inventory", excluded from Out/Low/reorder) and isn't taxed:
+  Estimate/Invoice/PublicEstimate tax is display-only (backend stores no tax) = 8.25% × materials.
 - No automated tests in the repo.
 - **Gotcha (bit a live deploy 2026-09-18):** `npx tsc --noEmit -p .` is **not** the same check
   Vercel/Railway run and can pass while the real build fails. Both `package.json`s' actual
@@ -513,3 +523,106 @@ history was condensed into the structural sections above on 2026-09-10.)*
   picker, JobDetail Documents/Forms order, Settings Job Types add+delete with a full page reload
   to confirm persistence, FormBuilder's Applies-To list). `tsc --noEmit` clean on both frontend and
   backend throughout.
+- **2026-09-21** — Client SMS #1 (+4 reference screenshots of a competitor's tech app). Built: POS
+  returns/exchanges can now be closed out (payment section was hidden for negative totals; cash
+  over-typing is capped; card refunds intentionally not offered), full payment is the default on
+  Complete Sale (Add = split), Item # is POS's first column, per-line "Return this item" toggle;
+  labor SKUs now actually appear under Labor (was the `"Services"`-only bug, see Architecture),
+  are non-inventory and untaxed, and sort above materials; Settings > Job Settings got an Edit
+  (rename/color) on all 7 lists (job-type rename cascades to jobs/recurring_jobs/form_templates);
+  search added to Payments, Directory, Forms, Inventory Write-Offs (reason + date range), and
+  tech/job-type dropdowns beside Jobs' search. Verified live on prod data (nothing submitted;
+  Settings edit tested on a temp item, deleted). **Left for client answers** (asked, not guessed):
+  "grid view default" meaning (table vs cards) for Directory/Library/Forms/Form Builder/
+  Manufacturers/Campaigns, which write-off search was meant, Field view additions (existing job
+  photos, Library, before/after photos, internal notes/photos), card refunds + tax-on-returns in POS.
+  Same day (client SMS #2 + screenshot of their old system's emailed invoice PDF): rebuilt
+  InvoiceDetail's document to mirror it (dark 4-box header band, Breakdown of Services with Job
+  Description / Trip Details photo grid / dated Service Performed / SI-No line-item table / totals);
+  `GET /api/invoices/:id` now also returns `job`, `photos`, `serviceNotes` (additive). "Service
+  Performed" = that customer's customer_notes written on the service day (tech Job Notes aren't
+  linked to jobs). **Not done:** Send-via-Email/SMS still non-functional (needs SendGrid/Twilio
+  accounts), and no business-logo upload exists (tenants has no logo column).
+  Same day (client SMS #3 + 3 screenshots of their old Schedule): Jobs > Schedule is now a new
+  `ScheduleCalendar` component (month/week/day, hourly grid, employee panel to show/hide individual
+  people + Select All/Unassigned/Show Completed, TEAM/TECH/CONTRACTORS tabs via `employment_type`,
+  stage chips w/ counts, click-empty-slot -> New Job prefilled with date+time, drag to another
+  day/time). Tech color helpers moved to `src/lib/tech-colors.ts`. Jobs page's top Search/Tech/Job-Type
+  filters now also narrow the Schedule. Blocks are drawn 1h tall (jobs have no duration field);
+  most real jobs have no start time so they sit in the "Other" row. Drag-to-time-slot not tested
+  on live data (would mutate real jobs).
+  Same day, follow-ups: (1) client's "grid view default" done as table-by-default + Cards toggle
+  (`ViewToggle`/`useViewMode`, localStorage per page) on Directory, Library, Forms, Form Builder,
+  Manufacturers, Campaigns (Automations + Seasonal) -- interpreted as rows/columns grid, not confirmed
+  with client. (2) Field (technician) view reordered: Description, Existing Photos (unlabeled job
+  photos), Items/Parts, Documents, Library (browse/open), Before/After photos (`job_attachments.label`
+  = before/after), Forms, Job Notes, Internal Notes/Photos (notes reuse `jobs.tech_notes`, which
+  recurring jobs carry forward; photos label `internal` are excluded from the invoice Trip Details).
+  (3) Design rule from the dev: when the client sends screenshots of their old system, keep our
+  theme (cyan/navy, rounded cards) and copy only structure/purpose -- invoice header restyled
+  accordingly; Schedule got per-day and per-employee job counts for easier navigation.
+- **2026-09-21 (client SMS #4: "remove all headers and footers" + screenshot of a Zebra label print preview)** —
+  the browser was stamping date/title/"about:blank"/page-number onto printed labels (CSS `@page { margin: 0 }`
+  didn't stop it on their setup). Zebra + Avery labels are now generated as PDFs (`src/lib/label-pdf.ts`, jsPDF
+  loaded on demand, opened via `openLabelPdf` in Inventory.tsx -- tab opened synchronously, then pointed at the
+  blob) so the PDF viewer prints them with no browser header/footer; label names now wrap to 2 lines instead of
+  truncating. Everything else that prints (PO view, invoice/estimate "Download PDF", dashboard) got global
+  `@media print { @page { margin: 0 } body { padding: .5in } }` in index.css, and AppShell's sidebar/top bars/
+  bottom nav + the invoice/estimate action bars are `print:hidden` (previously the whole app chrome printed).
+  Verified: PDFs generated and rendered via pdf.js on real catalog items; the invoice/estimate/PO print output
+  itself was not visually checked (browser print preview isn't automatable).
+- **2026-09-21 (client SMS #5: Reminders + 5 frames of a screen-recording of their old Schedule)** — Reminders: the
+  reminder "Label" (Reports > Reminders and CustomerDetail) is now a dropdown of a new tenant-editable `reminder_types`
+  config list (seeded Filter Cleaning / Salt Cell Cleaning / Sand Change / Anode Replacement; editable in Settings > Job
+  Settings; "+ Add new label..." swaps in an input in the same row; rename cascades to `customer_reminders.label`), and
+  customer pickers (`SearchableSelect` via `customerOption()` in `src/lib/customer-options.ts`, POS Attach Customer) show
+  the address under the name (`showSublabelWhenSelected` keeps it visible after choosing). Schedule: Day view is now one
+  colored column per ticked employee with job count + day total in the header (click a slot / drop a job in a column to
+  schedule/reassign for that person), job hover tooltip shows who/where/description, and the Map tab obeys the same top
+  Search/Tech/Job-Type filters. Popups (client: dropdown lists hung out of dialogs, dialogs must not resize): `DialogContent`
+  provides `DialogBoundaryContext`; `SelectContent` and `SearchableSelect` inside a dialog use it as collision boundary and
+  cap at 150px, with a visible scrollbar (index.css), `AddressAutocomplete` list also 150px. Backend: `DB_POOL_MAX` env knob
+  (default 10 = unchanged) -- a local dev backend + Railway on the same Supabase session pooler exceeds its client limit
+  (EMAXCONNSESSION); run dev with DB_POOL_MAX=4. Not live-tested: Day-view drag-to-reassign (would mutate real jobs).
+- **2026-09-21 (client SMS #6: "not all addresses are shown on the map ... route line between jobs and numbered like the other software")** —
+  Jobs > Map rewritten in Jobs.tsx as two effects: *locate* (customer's saved lat/lng -> `job.address || customers.address` via
+  Nominatim -> if not found, `geocodeApproximate` in geocode.ts: street without house number, then city+state+zip, then zip,
+  flagged dashed/"approximate" and remembered in localStorage `geo-approx:*`; exact hits still saved to the customer via
+  `updateCoordinates`; genuinely unlocatable jobs show "(location not found)" in the list) and *draw* (numbered pin per job in
+  the tech's color, per-tech line joining stops in time order -- straight first, upgraded to the real road route from the public
+  OSRM demo server in `src/lib/routing.ts`; unassigned jobs = gray dots, no line). The old effect only tried `job.address` and
+  dropped a job silently on one failed lookup, and its deps ignored the top filters. Verified live on 2026-09-21 (29 jobs): 10 -> 29/29 on map,
+  6 route lines, 16 approximate. First load of a day is slow (Nominatim ~1 req/s, progress shown); later loads reuse saved coordinates.
+  Gotcha: a shell `node -e '......'` once wrote real backspace characters into geocode.ts -- write edit scripts to a file instead.
+- **2026-09-21 (client SMS #7: calendar/recurring/data/map/popups batch + annotated Map screenshot)** —
+  Map: fills the viewport height (was fixed 480px; the client's red-box screenshot), default center is 2900 Holcomb Bridge Rd
+  (`DEFAULT_MAP_CENTER`, was Austin TX). Popups: Create Estimate, New Task, New/Detail Purchase Order are 90vw x 90vh.
+  Recurring: table (grid) view by default + toggle + one search box (customer / tech / day of week / job type); "Make
+  one-time" on the series list and on JobDetail; JobDetail "Make Recurring" (job becomes the series' first occurrence);
+  templates got `next_job_notes` ("notes for this job only": copied onto the next generated job's description, then
+  cleared) and `selected_form_ids` ("forms for all jobs": copied to every occurrence) -- migration
+  20260921100000 (also `profiles.color`), applied to prod. Calendar: future occurrences of recurring jobs are *projected*
+  (dashed chip with repeat icon, click opens the series) because the server only creates the next real job when the current
+  one completes (`src/lib/recurring.ts` mirrors backend `nextOccurrenceDate`; anchor = latest real occurrence); Color-by
+  Employee | Job type (localStorage) with legend; employee color swatch in the panel (`profiles.color`,
+  `registerTechColors()` in tech-colors.ts); Jobs top row got a From/To date range (also filters projected dates).
+  Data > Import / Export (`/data-transfer`, `DataTransfer.tsx`, backend `routes/dataTransfer.ts`, `lib/csv.ts`): CSV export
+  + import (template download, chunks of 300, re-runnable: match by customer name+address / SKU / vendor name, update only changed
+  fields) for Customers, Inventory, Vendors, Inventory Categories, Inventory Manufacturers, Library Categories, Library
+  Manufacturers. Library lists + a new `inventory_manufacturers` list are now tenant_config_lists (defaults seeded from
+  data.ts); Inventory's Manufacturer field has datalist suggestions. Verified live (imports incl. update/skip/bad-row paths, test rows
+  removed; recurring<->one-time round trip left data unchanged; color edit reset). **Interpreted / not done:** the garbled line
+  "Allow us the option to click on an option to click" (assumed: clicking a calendar job opens it -- already true); Settings
+  has no UI cards for the two Library lists / inventory manufacturers (manage them via CSV import).
+- **2026-09-21 (client SMS #8)** — schedule employee-filter screenshot/SMS arrived a 2nd time (already built) + teammate note that the client is frustrated
+  by repeating himself. Added `CLIENT_REQUESTS.md` (every request -> status -> where to find it -> what's still needed from the client) and the rule at the
+  top of this file + a feedback memory. No code changes.
+- **2026-09-22 (client SMS #9: "standard time on all jobs ... weekly routes keep the same order" + "schedule is very busy")** —
+  `recurring_jobs.start_time` (migration 20260921120000, applied to prod): every generated occurrence inherits it as
+  `jobs.scheduled_time`; `createTemplateFromJob` copies the job's time into a new series; projected calendar chips carry it.
+  New Route order dialog (`RouteOrderDialog.tsx`, day-view column header) -> `POST /api/recurring-jobs/route-order`: gives a tech's
+  stops for a day sequential times, sets the series' standard time for stops in a series, and can turn plain jobs into weekly
+  series ("Repeat weekly"). Month view is capped at 5 chips/day + "+N more" (opens the day), each employee row has an "only"
+  button, and the schedule remembers view + employee selection (localStorage `schedule-prefs`). Data facts (2026-09-21):
+  only 20/150 jobs had a time, 74 weekly series, 8 Weekly Maintenance jobs unlinked. Verified live + rolled back all test data.
+  Added the new rows to CLIENT_REQUESTS.md.

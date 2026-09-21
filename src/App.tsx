@@ -25,6 +25,7 @@ import Directory from "@/pages/Directory";
 import Reports from "@/pages/Reports";
 import Library from "@/pages/Library";
 import Manufacturers from "@/pages/Manufacturers";
+import DataTransfer from "@/pages/DataTransfer";
 import Forms from "@/pages/Forms";
 import FormBuilder from "@/pages/FormBuilder";
 import PublicForm from "@/pages/PublicForm";
@@ -77,6 +78,7 @@ function AppRoutes() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/library" element={<Library />} />
         <Route path="/manufacturers" element={<Manufacturers />} />
+        <Route path="/data-transfer" element={<DataTransfer />} />
         <Route path="/forms" element={<Forms />} />
         <Route path="/form-builder" element={<FormBuilder />} />
         <Route path="/settings" element={<Settings />} />

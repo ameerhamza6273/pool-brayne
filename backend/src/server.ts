@@ -23,6 +23,7 @@ import libraryRoutes from "./routes/library.js";
 import publicRoutes from "./routes/public.js";
 import formTemplatesRoutes from "./routes/formTemplates.js";
 import recurringJobsRoutes from "./routes/recurringJobs.js";
+import dataTransferRoutes from "./routes/dataTransfer.js";
 
 const app = Fastify({ logger: true });
 
@@ -61,6 +62,7 @@ await app.register(libraryRoutes, { prefix: "/api/library" });
 await app.register(publicRoutes, { prefix: "/api/public" });
 await app.register(formTemplatesRoutes, { prefix: "/api/form-templates" });
 await app.register(recurringJobsRoutes, { prefix: "/api/recurring-jobs" });
+await app.register(dataTransferRoutes, { prefix: "/api/data" });
 
 const port = Number(process.env.PORT ?? 4000);
 app.listen({ port, host: "0.0.0.0" }).catch((err) => {

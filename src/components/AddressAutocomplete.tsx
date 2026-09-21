@@ -63,7 +63,7 @@ export default function AddressAutocomplete({
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
       {open && suggestions.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-[#E2E8F0] bg-white shadow-lg">
+        <div data-dropdown-list className="absolute z-50 mt-1 w-full max-h-[150px] overflow-y-auto rounded-lg border border-[#E2E8F0] bg-white shadow-lg">
           {suggestions.map((s, i) => (
             <button
               key={i}

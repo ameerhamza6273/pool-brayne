@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
-import { libraryCategories, libraryManufacturers } from "@/lib/data";
+import { useConfigLists } from "@/hooks/use-config-lists";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
+import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { matchesQuery } from "@/lib/search";
 
 // Sidebar restructure (client PDF 2026-09-06, "Employee section > Library") — a generic
@@ -26,12 +27,15 @@ export default function Library() {
   const [isLoading, setIsLoading] = useState(true);
   // Client excel sheet 2026-09-18: Library's category/manufacturer lists are its own fixed
   // vocabulary now, not shared with Inventory's product taxonomy (see src/lib/data.ts).
-  const categories = libraryCategories;
-  const manufacturers = libraryManufacturers;
+  // Client SMS 2026-09-21: these two lists are now DB-backed so they can be imported/exported as CSV.
+  const { lists: configLists } = useConfigLists();
+  const categories = configLists.library_categories.map((i) => i.label);
+  const manufacturers = configLists.library_manufacturers.map((i) => i.label);
   const [uploadCategory, setUploadCategory] = useState("");
   const [uploadManufacturer, setUploadManufacturer] = useState("");
   const [uploading, setUploading] = useState(false);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useViewMode("library");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [manufacturerFilter, setManufacturerFilter] = useState("All");
   const [tagging, setTagging] = useState<LibraryDocument | null>(null);
@@ -138,11 +142,51 @@ export default function Library() {
             {manufacturers.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
           </SelectContent>
         </Select>
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading library...")}</div>}
 
-      {!isLoading && (
+      {!isLoading && viewMode === "table" && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Document")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Category")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Manufacturer")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Uploaded By")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                  <th className="w-20 py-3 px-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((d) => (
+                  <tr key={d.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                    <td className="py-3 px-4">
+                      <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-[#0891B2] hover:underline break-words flex items-center gap-2"><FileText className="w-4 h-4 shrink-0" /> {d.name}</a>
+                    </td>
+                    <td className="py-3 px-4 text-[#64748B]">{d.category ?? "—"}</td>
+                    <td className="py-3 px-4 text-[#64748B]">{d.manufacturer ?? "—"}</td>
+                    <td className="py-3 px-4 text-[#64748B]">{d.uploaded_by_name ?? t("Unknown")}</td>
+                    <td className="py-3 px-4 text-[#64748B]">{new Date(d.created_at).toLocaleDateString()}</td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center justify-end gap-3">
+                        <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit category / manufacturer")} onClick={() => openTagDialog(d)}><Pencil className="w-4 h-4" /></button>
+                        <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => handleDelete(d.id)}><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-[#64748B]">{t("No documents in the library yet.")}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && viewMode === "cards" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((d) => (
             <div key={d.id} className="bg-white rounded-xl p-4 border border-[#E2E8F0] shadow-sm flex items-start gap-3">

@@ -17,4 +17,6 @@ export const profilesApi = {
     api.patch<Profile>(`/api/profiles/${id}`, data),
 
   remove: (id: string) => api.del(`/api/profiles/${id}`),
+
+  setColor: (id: string, color: string | null) => api.patch<Profile>(`/api/profiles/${id}/color`, { color }),
 };

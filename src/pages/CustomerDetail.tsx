@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { customersApi, type CustomerAttachment, type CustomerDetailBundle, type PreviousSale, type CustomerServiceForm } from "@/lib/api/customers";
 import { reportsApi, type CustomerReminder } from "@/lib/api/reports";
+import ReminderLabelSelect from "@/components/ReminderLabelSelect";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { formatPhoneInput } from "@/lib/phone";
@@ -527,7 +528,7 @@ export default function CustomerDetail() {
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{t("Add Reminder Type")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
-                <div><Label>{t("Label")}</Label><Input className="mt-1" placeholder="e.g. Filter Cleaning" value={reminderTypeDraft.label} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, label: e.target.value }))} /></div>
+                <div><Label>{t("Label")}</Label><ReminderLabelSelect value={reminderTypeDraft.label} onChange={(label) => setReminderTypeDraft((p) => ({ ...p, label }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
                   <div><Label>{t("Frequency (months)")}</Label><Input type="number" className="mt-1" placeholder="e.g. 4" value={reminderTypeDraft.frequencyMonths} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, frequencyMonths: e.target.value }))} /></div>
                   <div><Label>{t("Next Due")}</Label><Input type="date" className="mt-1" value={reminderTypeDraft.nextDue} onChange={(e) => setReminderTypeDraft((p) => ({ ...p, nextDue: e.target.value }))} /></div>

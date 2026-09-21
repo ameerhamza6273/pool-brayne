@@ -117,6 +117,11 @@ export default function JobDetail() {
   const [job, setJob] = useState<JobRow | null>(null);
   const [descEditing, setDescEditing] = useState(false);
   const [descDraft, setDescDraft] = useState("");
+  // Client SMS 2026-09-21: "a way to convert a job to a recurring job or vice versa".
+  const [makeRecurringOpen, setMakeRecurringOpen] = useState(false);
+  const [recurringDraft, setRecurringDraft] = useState({ frequency: "weekly" as "weekly" | "biweekly" | "monthly", endDate: "" });
+  const [oneTimeOpen, setOneTimeOpen] = useState(false);
+  const [convertingRecurring, setConvertingRecurring] = useState(false);
   const [techEditing, setTechEditing] = useState(false);
   const [techNotesEditing, setTechNotesEditing] = useState(false);
   const [techNotesDraft, setTechNotesDraft] = useState("");
@@ -518,6 +523,17 @@ export default function JobDetail() {
               </DialogContent>
             </Dialog>
           )}
+          {job.recurring_job_id ? (
+            <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => setOneTimeOpen(true)}>
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("Make one-time")}</span>
+            </Button>
+          ) : (
+            <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => setMakeRecurringOpen(true)}>
+              <RefreshCw className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("Make Recurring")}</span>
+            </Button>
+          )}
           {job.converted_to_estimate_id ? (
             <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={() => navigate(`/invoicing/estimates/${job.converted_to_estimate_id}`)}>
               <span className="hidden sm:inline">{t("View Estimate")}</span>
@@ -552,6 +568,73 @@ export default function JobDetail() {
       </div>
 
       {formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
+
+      <Dialog open={makeRecurringOpen} onOpenChange={setMakeRecurringOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{t("Make this job recurring")}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-[#64748B]">{t("This job becomes the first one in a repeating series. The next ones are created as each one is completed, and show on the calendar in advance.")}</p>
+            <div>
+              <Label>{t("Repeats")}</Label>
+              <Select value={recurringDraft.frequency} onValueChange={(v) => setRecurringDraft((p) => ({ ...p, frequency: v as "weekly" | "biweekly" | "monthly" }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="weekly">{t("Weekly")}</SelectItem>
+                  <SelectItem value="biweekly">{t("Every 2 weeks")}</SelectItem>
+                  <SelectItem value="monthly">{t("Monthly")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>{t("End Date")} ({t("optional")})</Label>
+              <Input type="date" className="mt-1" value={recurringDraft.endDate} onChange={(e) => setRecurringDraft((p) => ({ ...p, endDate: e.target.value }))} />
+            </div>
+            <Button
+              className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white"
+              disabled={convertingRecurring}
+              onClick={async () => {
+                setConvertingRecurring(true);
+                const day = job.scheduled_date ? new Date(`${job.scheduled_date}T00:00:00`) : new Date();
+                await recurringJobsApi.fromJob(job.id, {
+                  frequency: recurringDraft.frequency,
+                  dayOfWeek: recurringDraft.frequency !== "monthly" ? day.getDay() : null,
+                  dayOfMonth: recurringDraft.frequency === "monthly" ? day.getDate() : null,
+                  endDate: recurringDraft.endDate || null,
+                });
+                setConvertingRecurring(false);
+                setMakeRecurringOpen(false);
+                loadJob();
+              }}
+            >
+              {convertingRecurring ? t("Working...") : t("Make Recurring")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={oneTimeOpen} onOpenChange={setOneTimeOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{t("Make this a one-time job?")}</DialogTitle></DialogHeader>
+          <p className="text-sm text-[#64748B]">{t("The recurring schedule is removed and this job stays as a normal one-time job. No more repeats will be created.")}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setOneTimeOpen(false)}>{t("Cancel")}</Button>
+            <Button
+              className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white"
+              disabled={convertingRecurring}
+              onClick={async () => {
+                if (!job.recurring_job_id) return;
+                setConvertingRecurring(true);
+                await recurringJobsApi.makeOneTime(job.recurring_job_id);
+                setConvertingRecurring(false);
+                setOneTimeOpen(false);
+                loadJob();
+              }}
+            >
+              {convertingRecurring ? t("Working...") : t("Make one-time")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {job.status === "Written Off" && job.write_off_reason && (
         <div className="p-3 rounded-lg bg-[#64748B]/5 border border-[#64748B]/20">

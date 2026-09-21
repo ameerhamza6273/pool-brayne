@@ -1374,6 +1374,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar: string | null
+          color: string | null
           created_at: string
           current_job_id: string | null
           email: string
@@ -1389,6 +1390,7 @@ export type Database = {
         }
         Insert: {
           avatar?: string | null
+          color?: string | null
           created_at?: string
           current_job_id?: string | null
           email: string
@@ -1404,6 +1406,7 @@ export type Database = {
         }
         Update: {
           avatar?: string | null
+          color?: string | null
           created_at?: string
           current_job_id?: string | null
           email?: string

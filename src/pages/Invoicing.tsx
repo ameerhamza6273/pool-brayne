@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Layers, ClipboardList, Camera, X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { matchesQuery } from "@/lib/search";
+import { customerOption } from "@/lib/customer-options";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -50,6 +52,7 @@ const daysBetween = (a: string, b: string) => Math.round((new Date(a).getTime() 
 export default function Invoicing() {
   const { t } = useLanguage();
   const [search, setSearch] = useState("");
+  const [paymentSearch, setPaymentSearch] = useState("");
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -308,7 +311,7 @@ export default function Invoicing() {
     });
   };
 
-  const customerOptions = customers.map((c) => ({ value: c.id, label: c.name, sublabel: [c.phone, c.email].filter(Boolean).join(" · ") || undefined }));
+  const customerOptions = customers.map(customerOption);
   const customersWithOpenInvoices = customers.filter((c) => invoices.some((i) => i.customer_id === c.id && i.status !== "Paid"));
   const customersWithOpenInvoicesOptions = customersWithOpenInvoices.map((c) => ({ value: c.id, label: c.name }));
   const openInvoicesForCustomer = invoices.filter((i) => i.customer_id === bulkInvoiceCustomerId && i.status !== "Paid");
@@ -422,7 +425,7 @@ export default function Invoicing() {
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
                   <div className="mt-1">
-                    <SearchableSelect value={newInvoice.customerId} onChange={(v) => setNewInvoice((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} />
+                    <SearchableSelect value={newInvoice.customerId} onChange={(v) => setNewInvoice((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} showSublabelWhenSelected />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -576,7 +579,7 @@ export default function Invoicing() {
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
                   <div className="mt-1">
-                    <SearchableSelect value={bulkForm.customerId} onChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} />
+                    <SearchableSelect value={bulkForm.customerId} onChange={(v) => setBulkForm((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} showSublabelWhenSelected />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -622,7 +625,7 @@ export default function Invoicing() {
                 <Copy className="w-4 h-4" /> {t("New Estimate")}
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-2xl lg:max-w-4xl w-[90vw] max-h-[85vh] overflow-y-auto">
+            <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start">
               <DialogHeader><DialogTitle>{t("Create New Estimate")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 {estimateTemplates.length > 0 && (
@@ -639,7 +642,7 @@ export default function Invoicing() {
                 <div>
                   <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
                   <div className="mt-1">
-                    <SearchableSelect value={newEstimate.customerId} onChange={(v) => setNewEstimate((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} />
+                    <SearchableSelect value={newEstimate.customerId} onChange={(v) => setNewEstimate((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} showSublabelWhenSelected />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -920,7 +923,7 @@ export default function Invoicing() {
                   <Plus className="w-4 h-4" /> {t("New Task")}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+              <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start">
                 <DialogHeader><DialogTitle>{editTask ? t("Edit Task") : t("New Task")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>
@@ -934,7 +937,7 @@ export default function Invoicing() {
                         }}
                         placeholder={t("Select customer")}
                         searchPlaceholder={t("Search customers...")}
-                        options={customerOptions}
+                        options={customerOptions} showSublabelWhenSelected
                       />
                     </div>
                   </div>
@@ -1089,7 +1092,12 @@ export default function Invoicing() {
           </div>
         </TabsContent>
 
-        <TabsContent value="payments" className="mt-4">
+        <TabsContent value="payments" className="mt-4 space-y-3">
+          {/* Client SMS 2026-09-21: search Payments by customer name, amount or date. */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+            <Input placeholder={t("Search by customer, amount, or date...")} value={paymentSearch} onChange={(e) => setPaymentSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+          </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1104,7 +1112,7 @@ export default function Invoicing() {
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.map((pay) => {
+                  {payments.filter((pay) => matchesQuery(paymentSearch, [pay.customers?.name, pay.invoices?.number, String(pay.amount), pay.paid_at, pay.method])).map((pay) => {
                     const method = paymentMethods[pay.method ?? ""] || { icon: CreditCard, label: pay.method ?? "—" };
                     const MethodIcon = method.icon;
                     return (

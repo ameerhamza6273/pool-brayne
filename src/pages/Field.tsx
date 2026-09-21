@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ArrowLeft, MapPin, Clock, Phone, Camera, CheckCircle2, Navigation,
-  ChevronRight, Wrench, User, DollarSign, Minus, Plus, Eraser,
+  ChevronRight, Wrench, User, DollarSign, Minus, Plus, Eraser, FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,8 @@ import DocumentsSection, { type DocumentAttachment } from "@/components/Document
 import { supabase } from "@/lib/supabase";
 import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
+import { isLaborCategory } from "@/lib/labor";
+import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
 
 type Job = Database["public"]["Tables"]["jobs"]["Row"] & { customers: { name: string; address: string | null } | null };
@@ -44,7 +46,12 @@ export default function Field() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<"dispatched" | "en_route" | "arrived" | "completed">("dispatched");
-  const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
+  // label: "before" / "after" / "internal" for photos taken in this view; anything else (no label)
+  // is a photo that was already on the job before the tech got there.
+  const [photos, setPhotos] = useState<{ id: string; url: string; label: string | null }[]>([]);
+  const [internalNotes, setInternalNotes] = useState("");
+  const [librarySearch, setLibrarySearch] = useState("");
+  const photoLabelRef = useRef<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
@@ -87,16 +94,21 @@ export default function Field() {
 
   const currentJob = myJobs.find((j) => j.id === activeJobId) ?? null;
   const currentStepIdx = statusSteps.findIndex((s) => s.id === jobStatus);
+  const beforePhotos = photos.filter((p) => p.label === "before");
+  const afterPhotos = photos.filter((p) => p.label === "after");
+  const internalPhotos = photos.filter((p) => p.label === "internal");
+  const existingPhotos = photos.filter((p) => p.label !== "before" && p.label !== "after" && p.label !== "internal");
 
   const selectJob = (job: Job) => {
     setActiveJobId(job.id);
     setJobStatus(job.status === "In Progress" ? "en_route" : "dispatched");
     setNotes("");
+    setInternalNotes(job.tech_notes ?? "");
     setSignatureUrl(null);
     setPartsUsed({});
     setFormError("");
     jobsApi.getAttachments(job.id).then((attachments) => {
-      setPhotos(attachments.filter((a) => a.type === "photo").map((a) => ({ id: a.id, url: a.url })));
+      setPhotos(attachments.filter((a) => a.type === "photo").map((a) => ({ id: a.id, url: a.url, label: a.label })));
       const sig = attachments.find((a) => a.type === "signature");
       setSignatureUrl(sig?.url ?? null);
       setJobDocuments(attachments.filter((a) => a.type === "document"));
@@ -105,21 +117,34 @@ export default function Field() {
     jobsApi.getForms(job.id).then(setJobForms);
   };
 
-  const uploadAttachment = async (jobId: string, file: Blob, filename: string, type: "photo" | "signature") => {
+  const uploadAttachment = async (jobId: string, file: Blob, filename: string, type: "photo" | "signature", label?: string | null) => {
     const path = `${tenantId}/${jobId}/${type}-${Date.now()}-${filename}`;
     const { error } = await supabase.storage.from("job-attachments").upload(path, file);
     if (error) throw error;
     const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
-    return jobsApi.addAttachment(jobId, { type, url: data.publicUrl });
+    return jobsApi.addAttachment(jobId, { type, url: data.publicUrl, label: label ?? null });
   };
 
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!currentJob || !e.target.files) return;
     for (const file of Array.from(e.target.files)) {
-      const attachment = await uploadAttachment(currentJob.id, file, file.name, "photo");
-      setPhotos((prev) => [...prev, { id: attachment.id, url: attachment.url }]);
+      const label = photoLabelRef.current;
+      const attachment = await uploadAttachment(currentJob.id, file, file.name, "photo", label);
+      setPhotos((prev) => [...prev, { id: attachment.id, url: attachment.url, label }]);
     }
     e.target.value = "";
+  };
+
+  const pickPhoto = (label: "before" | "after" | "internal") => {
+    photoLabelRef.current = label;
+    fileInputRef.current?.click();
+  };
+
+  // Internal notes reuse jobs.tech_notes (the "tech-only notes" already shown on JobDetail).
+  const saveInternalNotes = async () => {
+    if (!currentJob || internalNotes === (currentJob.tech_notes ?? "")) return;
+    await jobsApi.update(currentJob.id, { tech_notes: internalNotes });
+    setMyJobs((prev) => prev.map((j) => (j.id === currentJob.id ? { ...j, tech_notes: internalNotes } : j)));
   };
 
   const clearSignatureCanvas = () => {
@@ -415,6 +440,20 @@ export default function Field() {
               </div>
             </div>
 
+            {/* Client SMS 2026-09-21: photos already on the job before the tech arrives. */}
+            {existingPhotos.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Existing Photos")}</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {existingPhotos.map((photo) => (
+                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10 block">
+                      <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Line Items — client feedback 2026-09-11: "Show all items in the job / estimate
                 for the job they are doing for that day." job_line_items already carries over an
                 estimate's items on convert-to-job, so this is the merged, single source. */}
@@ -446,7 +485,7 @@ export default function Field() {
               />
               <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-[#E2E8F0]">
                 {inventoryItems
-                  .filter((item) => item.category !== "Services")
+                  .filter((item) => !isLaborCategory(item.category))
                   .filter((item) => {
                     // Client request 2026-09-04: with 2,500+ real parts, showing everything before
                     // the user types anything was the same "unpaginated big list" issue seen
@@ -486,6 +525,75 @@ export default function Field() {
               </div>
             </div>
 
+            {/* Documents — client feedback 2026-09-11: "Show documents (still need a document
+                section... these are pdfs for estimates showing scope of work)." Read/attach only
+                here; techs pick from the Library instead of re-uploading a scope-of-work PDF. */}
+            <DocumentsSection
+              documents={jobDocuments}
+              onUpload={handleUploadDocument}
+              uploading={docsUploading}
+              libraryDocuments={libraryDocuments}
+              onAttachExisting={handleAttachLibraryDocument}
+            />
+
+            {/* Library — the company document library, browse/open only (attaching to the job is the
+                Documents section above). */}
+            <div>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Library")}</p>
+              <Input
+                placeholder={t("Search library documents...")}
+                className="mb-2 h-9 text-sm"
+                value={librarySearch}
+                onChange={(e) => setLibrarySearch(e.target.value)}
+              />
+              <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-[#E2E8F0]">
+                {libraryDocuments
+                  .filter((d) => matchesQuery(librarySearch, [d.name, d.category, d.manufacturer]))
+                  .slice(0, 30)
+                  .map((d) => (
+                    <a key={d.id} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#F8FAFC]">
+                      <FileText className="w-4 h-4 text-[#0891B2] shrink-0" />
+                      <span className="flex-1 min-w-0 truncate text-[#0F172A]">{d.name}</span>
+                      {d.category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] shrink-0">{d.category}</span>}
+                    </a>
+                  ))}
+                {libraryDocuments.filter((d) => matchesQuery(librarySearch, [d.name, d.category, d.manufacturer])).length === 0 && (
+                  <p className="px-3 py-3 text-sm text-[#64748B]">{t("No library documents found.")}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Photos taken before / after the work. */}
+            <div>
+              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Photos — Before / After")}</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
+              {(["before", "after"] as const).map((kind) => (
+                <div key={kind} className="mb-3">
+                  <p className="text-xs text-[#64748B] mb-1">{kind === "before" ? t("Before") : t("After")}</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(kind === "before" ? beforePhotos : afterPhotos).map((photo) => (
+                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10 block">
+                      <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
+                    </a>
+                  ))}
+                    <button
+                    onClick={() => pickPhoto(kind)}
+                    className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center"
+                  >
+                    <Camera className="w-5 h-5 text-[#64748B]" />
+                  </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* Forms — client feedback 2026-09-11: forms only ever showed on desktop JobDetail,
                 which a technician never opens; same suggested-template rule reused here. */}
             {suggestedTemplates.length > 0 && (
@@ -504,43 +612,6 @@ export default function Field() {
               </div>
             )}
 
-            {/* Documents — client feedback 2026-09-11: "Show documents (still need a document
-                section... these are pdfs for estimates showing scope of work)." Read/attach only
-                here; techs pick from the Library instead of re-uploading a scope-of-work PDF. */}
-            <DocumentsSection
-              documents={jobDocuments}
-              onUpload={handleUploadDocument}
-              uploading={docsUploading}
-              libraryDocuments={libraryDocuments}
-              onAttachExisting={handleAttachLibraryDocument}
-            />
-
-            {/* Photos */}
-            <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Photos")}</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handlePhotoSelect}
-              />
-              <div className="grid grid-cols-4 gap-2">
-                {photos.map((photo) => (
-                  <div key={photo.id} className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10">
-                    <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
-                  </div>
-                ))}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center"
-                >
-                  <Camera className="w-5 h-5 text-[#64748B]" />
-                </button>
-              </div>
-            </div>
-
             {/* Notes */}
             <div>
               <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Job Notes")}</p>
@@ -550,6 +621,33 @@ export default function Field() {
                 placeholder={t("Add notes about this job... (saved to customer record on completion)")}
                 className="w-full h-20 p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
               />
+            </div>
+
+            {/* Internal notes / photos — staff only (notes reuse jobs.tech_notes; photos are labelled
+                "internal" so the invoice's Trip Details skips them). */}
+            <div>
+              <p className="text-sm font-medium text-[#0F172A] mb-1">{t("Internal Notes / Photos")}</p>
+              <p className="text-[11px] text-[#94A3B8] mb-2">{t("Staff only — never shown to the customer.")}</p>
+              <textarea
+                value={internalNotes}
+                onChange={(e) => setInternalNotes(e.target.value)}
+                onBlur={saveInternalNotes}
+                placeholder={t("Internal notes about this job...")}
+                className="w-full h-20 p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
+              />
+              <div className="grid grid-cols-4 gap-2 mt-2">
+                {internalPhotos.map((photo) => (
+                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10 block">
+                      <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
+                    </a>
+                  ))}
+                <button
+                    onClick={() => pickPhoto("internal")}
+                    className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center"
+                  >
+                    <Camera className="w-5 h-5 text-[#64748B]" />
+                  </button>
+              </div>
             </div>
 
             {/* Signature */}

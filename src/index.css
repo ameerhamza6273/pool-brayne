@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Client SMS 2026-09-21: "remove all headers and footers" on anything printed. */
+@media print {
+  @page { margin: 0; }
+  body { padding: 0.5in; background: #fff; }
+}
+
 @layer base {
   :root {
     --background: 210 40% 98%;
@@ -83,4 +89,31 @@
 }
 .sidebar-scroll::-webkit-scrollbar-thumb:hover {
   background-color: rgba(255, 255, 255, 0.32);
+}
+
+/* Client feedback 2026-09-21: dropdown lists (Select + SearchableSelect) should show a scrollbar at the
+   side so it's obvious they scroll. Radix hides the Select viewport's native scrollbar, hence !important. */
+[cmdk-list],
+[data-dropdown-list],
+[data-radix-select-viewport] {
+  scrollbar-width: thin !important;
+  scrollbar-color: #94A3B8 #F1F5F9;
+}
+[cmdk-list]::-webkit-scrollbar,
+[data-dropdown-list]::-webkit-scrollbar,
+[data-radix-select-viewport]::-webkit-scrollbar {
+  display: block !important;
+  width: 8px;
+}
+[cmdk-list]::-webkit-scrollbar-track,
+[data-dropdown-list]::-webkit-scrollbar-track,
+[data-radix-select-viewport]::-webkit-scrollbar-track {
+  background: #F1F5F9;
+  border-radius: 8px;
+}
+[cmdk-list]::-webkit-scrollbar-thumb,
+[data-dropdown-list]::-webkit-scrollbar-thumb,
+[data-radix-select-viewport]::-webkit-scrollbar-thumb {
+  background: #94A3B8;
+  border-radius: 8px;
 }

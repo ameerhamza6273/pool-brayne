@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { useLanguage } from "@/lib/language-context";
+import { isLaborCategory } from "@/lib/labor";
 import type { LineItemInput } from "@/lib/api/invoicing";
 import type { ItemWithStock } from "@/lib/api/inventory";
 
@@ -66,10 +67,11 @@ export default function LineItemsEditor({
                     searchPlaceholder={t("Search item #, SKU, name, or description...")}
                     emptyText={t("No matching items.")}
                     // Client meeting 2026-09: "making sure the labor is linked to our labor SKUs
-                    // and materials are linked to our material SKUs" -- reuses the same
-                    // category === "Services" convention POS already uses to distinguish labor.
+                    // and materials are linked to our material SKUs". Client SMS 2026-09-21: the
+                    // 67 imported labor SKUs are category "Labor" (not "Services"), so they never
+                    // showed under Labor -- isLaborCategory covers both.
                     options={inventoryItems
-                      .filter((inv) => (li.itemType === "labor" ? inv.category === "Services" : inv.category !== "Services"))
+                      .filter((inv) => (li.itemType === "labor" ? isLaborCategory(inv.category) : !isLaborCategory(inv.category)))
                       .map((inv) => ({
                       value: inv.id,
                       // Client SMS 2026-09-04 (staff, "Michael"): "typing our item number,

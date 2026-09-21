@@ -3,7 +3,7 @@ import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import {
   LayoutDashboard, Users, Wrench, Package, Truck, Clock, Receipt, Megaphone, Settings,
   Search, ChevronDown, ChevronRight, Menu, MoreHorizontal, X, Droplets, Phone, ScanLine, ClipboardList, Calendar, Copy,
-  BookUser, BarChart3, ListChecks, Handshake, Boxes, Briefcase, Database, BookOpen, Factory, FileStack, Wand2,
+  BookUser, BarChart3, ListChecks, Handshake, Boxes, Briefcase, Database, BookOpen, Factory, FileStack, Wand2, ArrowLeftRight,
 } from "lucide-react";
 import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
@@ -76,6 +76,7 @@ const navSections: (NavLink | NavGroup)[] = [
       { path: "/inventory", label: "Inventory List", icon: Package },
       { path: "/inventory?tab=suppliers", label: "Vendor List", icon: Boxes },
       { path: "/manufacturers", label: "Manufacture List", icon: Factory },
+      { path: "/data-transfer", label: "Import / Export", icon: ArrowLeftRight },
     ],
   },
   {
@@ -139,7 +140,7 @@ export default function AppShell() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 bg-[#0C2A3A] text-white fixed h-screen z-40">
+      <aside className="hidden lg:flex flex-col w-64 bg-[#0C2A3A] text-white fixed h-screen z-40 print:hidden">
         <div className="p-6 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-[#0891B2] flex items-center justify-center">
@@ -237,9 +238,9 @@ export default function AppShell() {
           flex item past the viewport, dragging the whole page (sidebar included) into a
           horizontal scroll -- min-w-0 lets it shrink so page-internal tables scroll within their
           own overflow-x-auto instead of blowing out the layout. */}
-      <div className="flex-1 lg:ml-64 flex flex-col min-h-screen min-w-0">
+      <div className="flex-1 lg:ml-64 print:ml-0 flex flex-col min-h-screen min-w-0">
         {/* Desktop Top Bar */}
-        <header className="hidden lg:flex items-center gap-4 px-6 py-3 bg-white border-b border-[#E2E8F0] sticky top-0 z-30">
+        <header className="hidden lg:flex items-center gap-4 px-6 py-3 bg-white border-b border-[#E2E8F0] sticky top-0 z-30 print:hidden">
           <div className="flex-1 max-w-md relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
             <Input
@@ -269,7 +270,7 @@ export default function AppShell() {
         </header>
 
         {/* Mobile Header */}
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-[#E2E8F0] sticky top-0 z-30">
+        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-[#E2E8F0] sticky top-0 z-30 print:hidden">
           <div className="flex items-center gap-2">
             <Sheet open={searchOpen} onOpenChange={setSearchOpen}>
               <SheetTrigger asChild>
@@ -326,12 +327,12 @@ export default function AppShell() {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0">
+        <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 min-w-0 print:p-0">
           <Outlet />
         </main>
 
         {/* Mobile Bottom Tab Bar */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#E2E8F0] z-50 flex justify-around items-center h-16 px-2">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[#E2E8F0] z-50 flex justify-around items-center h-16 px-2 print:hidden">
           {visibleMobileTabs.map((tab) => {
             const Icon = tab.icon;
             const active = tab.path === "more" ? false : isActive(tab.path);

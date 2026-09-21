@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { CheckCircle2, XCircle, Droplets } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { laborFirst } from "@/lib/labor";
 import { invoicingApi, type PublicEstimate as PublicEstimateBundle } from "@/lib/api/invoicing";
 
 // Client PDF 2026-09-06: "I am sending a sample email for an estimate it will have an 'Approve
@@ -51,7 +52,8 @@ export default function PublicEstimate() {
   const subtotal = lineItems.length > 0 ? lineItems.reduce((s, li) => s + li.amount, 0) : 0;
   const materialsSubtotal = lineItems.filter((li) => li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
   const laborSubtotal = lineItems.filter((li) => li.item_type === "labor").reduce((s, li) => s + li.amount, 0);
-  const tax = subtotal * 0.0825;
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
+  const tax = materialsSubtotal * 0.0825;
   const total = subtotal + tax;
   const remainingBalance = total - (estimate.down_payment ?? 0);
   const alreadyResponded = estimate.status === "Accepted" || estimate.status === "Declined";
@@ -93,7 +95,7 @@ export default function PublicEstimate() {
                 </tr>
               </thead>
               <tbody>
-                {lineItems.map((li, idx) => (
+                {laborFirst(lineItems).map((li, idx) => (
                   <tr key={idx} className="border-b border-[#F1F5F9]">
                     <td className="py-2 text-[#0F172A]">
                       {li.description}

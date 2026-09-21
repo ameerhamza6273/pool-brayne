@@ -52,7 +52,7 @@ export default function PointOfSale() {
   const [isLoading, setIsLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<PosOrder[]>([]);
-  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [customers, setCustomers] = useState<{ id: string; name: string; address: string | null }[]>([]);
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -139,7 +139,7 @@ export default function PointOfSale() {
     ]);
     setProducts(productsData);
     setTransactions(transactionsData as PosOrder[]);
-    setCustomers(customersData.map((c) => ({ id: c.id, name: c.name })));
+    setCustomers(customersData.map((c) => ({ id: c.id, name: c.name, address: c.address })));
     setIsLoading(false);
   }, []);
 
@@ -226,11 +226,26 @@ export default function PointOfSale() {
   };
 
   const remainingTender = total - tenderLines.reduce((s, t) => s + t.amount, 0);
+  // Client SMS 2026-09-21: returns/exchanges (negative total) couldn't be closed out -- the
+  // payment section was hidden and every amount check assumed a positive balance.
+  const isRefund = total < -0.01;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
+  // Full payment is the default: with nothing "Add"ed yet, Complete Sale takes the whole total
+  // with the selected method (Card still goes through its own form). Once a partial has been
+  // added, the remainder must be covered explicitly, same as before.
+  const canComplete = Math.abs(remainingTender) <= 0.01
+    ? true
+    : tenderLines.length === 0 && tenderMethod !== "Card";
 
   const addCashTender = () => {
     const amt = parseFloat(tenderAmount);
-    if (!amt || amt <= 0) return;
-    setTenderLines((prev) => [...prev, { method: tenderMethod, amount: amt }]);
+    if (!amt) return;
+    // Capped at what's still due (sign follows the sale) so an over-typed amount can't strand
+    // the sale with a negative "remaining" that never reaches zero.
+    const capped = round2(Math.min(Math.abs(amt), Math.abs(remainingTender)));
+    if (capped <= 0) return;
+    setTenderLines((prev) => [...prev, { method: tenderMethod, amount: remainingTender < 0 ? -capped : capped }]);
     setTenderAmount("");
   };
 
@@ -242,9 +257,16 @@ export default function PointOfSale() {
   const removeTender = (index: number) => setTenderLines((prev) => prev.filter((_, i) => i !== index));
 
   const completeSale = async () => {
-    if (Math.abs(remainingTender) > 0.01) return;
+    if (!canComplete) return;
+    let lines = tenderLines;
+    if (Math.abs(remainingTender) > 0.01) {
+      lines = [{ method: tenderMethod, amount: round2(total) }];
+    } else if (lines.length === 0) {
+      // Even exchange (net $0): the order still needs one payment row.
+      lines = [{ method: "Cash", amount: 0 }];
+    }
     const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(transactions.length + 1).padStart(3, "0")}`;
-    const paymentLabel = tenderLines.length > 1 ? `Split (${tenderLines.map((t) => t.method).join(" + ")})` : tenderLines[0].method;
+    const paymentLabel = lines.length > 1 ? `Split (${lines.map((t) => t.method).join(" + ")})` : lines[0].method;
 
     await posApi.checkout({
       customerId,
@@ -252,7 +274,7 @@ export default function PointOfSale() {
       tax,
       total,
       note: saleNote.trim() || null,
-      payments: tenderLines.map((t) => ({ method: t.method, amount: t.amount, opaqueData: t.opaqueData })),
+      payments: lines.map((t) => ({ method: t.method, amount: t.amount, opaqueData: t.opaqueData })),
       items: cart.map((item) => ({
         id: item.id,
         name: item.name,
@@ -469,6 +491,7 @@ export default function PointOfSale() {
                           <span className="text-[10px] text-[#64748B] font-medium">{p.stock} {t("in stock")}</span>
                         )}
                       </div>
+                      {p.item_number != null && <p className="text-[10px] text-[#64748B] font-mono mb-0.5">#{p.item_number}</p>}
                       <p className="text-sm font-semibold text-[#0F172A] leading-snug mb-1 line-clamp-2">{p.name}</p>
                       <p className="text-[10px] text-[#64748B] font-mono">{p.sku}</p>
                       <p className="text-base font-bold text-[#0891B2] mt-2">${(p.price ?? 0).toFixed(2)}</p>
@@ -481,6 +504,7 @@ export default function PointOfSale() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Item #")}</th>
                       <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
                       <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("SKU")}</th>
                       <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Category")}</th>
@@ -498,6 +522,7 @@ export default function PointOfSale() {
                           onClick={() => addToCart(p)}
                           className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer"
                         >
+                          <td className="py-2 px-3 text-[#64748B] text-xs">{p.item_number ?? "—"}</td>
                           <td className="py-2 px-3 font-medium text-[#0F172A]">{p.name}</td>
                           <td className="py-2 px-3 text-[#64748B] font-mono text-xs">{p.sku}</td>
                           <td className="py-2 px-3">
@@ -591,7 +616,17 @@ export default function PointOfSale() {
                   <div key={index} className="flex items-center gap-2 py-2 border-b border-[#F1F5F9] last:border-0">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-[#0F172A] truncate">{item.name}{item.qty < 0 ? ` (${t("Return")})` : ""}</p>
-                      <p className="text-xs text-[#64748B]">${item.price.toFixed(2)} / {item.unit}</p>
+                      <p className="text-xs text-[#64748B]">
+                        ${item.price.toFixed(2)} / {item.unit}
+                        {" · "}
+                        <button
+                          type="button"
+                          className="text-[#0891B2] hover:underline"
+                          onClick={() => setCart((prev) => prev.map((c, i) => (i === index ? { ...c, qty: -c.qty } : c)))}
+                        >
+                          {item.qty < 0 ? t("Undo return") : t("Return this item")}
+                        </button>
+                      </p>
                       <input
                         placeholder={t("Serial # (optional)")}
                         className="mt-1 h-6 w-full text-xs border-0 border-b border-dashed border-[#E2E8F0] bg-transparent px-0 focus:outline-none focus:border-[#0891B2]"
@@ -652,7 +687,7 @@ export default function PointOfSale() {
                 </div>
                 <div className="flex justify-between pt-2 border-t border-[#E2E8F0]">
                   <span className="font-semibold text-[#0F172A]">{t("Total")}</span>
-                  <span className="text-xl font-bold text-[#0891B2]">${total.toFixed(2)}</span>
+                  <span className="text-xl font-bold text-[#0891B2]">{money(total)}</span>
                 </div>
               </div>
 
@@ -666,10 +701,16 @@ export default function PointOfSale() {
                 </Button>
                 <Button
                   className="h-12 gap-2 bg-[#0891B2] hover:bg-[#0E7490] text-white flex-[2]"
-                  onClick={() => { setTenderLines([]); setTenderAmount(""); setPaymentOpen(true); }}
+                  onClick={() => {
+                    setTenderLines([]);
+                    setTenderAmount("");
+                    // A refund can't be pushed to a card through Accept.js (that only charges).
+                    if (isRefund && tenderMethod === "Card") setTenderMethod("Cash");
+                    setPaymentOpen(true);
+                  }}
                 >
                   <CreditCard className="w-5 h-5" />
-                  {t("Charge")} ${total.toFixed(2)}
+                  {isRefund ? t("Refund") : t("Charge")} {money(isRefund ? Math.abs(total) : total)}
                 </Button>
               </div>
             </div>
@@ -800,7 +841,12 @@ export default function PointOfSale() {
                       {name === "Walk-in" ? "WI" : name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                     </AvatarFallback>
                   </Avatar>
-                  <span className="text-sm font-medium text-[#0F172A]">{name}</span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-[#0F172A]">{name}</span>
+                    {customers.find((c) => c.name === name)?.address && (
+                      <span className="block text-xs text-[#64748B] truncate">{customers.find((c) => c.name === name)?.address}</span>
+                    )}
+                  </span>
                   {customerName === name && <CheckCircle2 className="w-4 h-4 text-[#16A34A] ml-auto" />}
                 </button>
               ))}
@@ -856,9 +902,9 @@ export default function PointOfSale() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="bg-[#F8FAFC] rounded-xl p-4 text-center">
-              <p className="text-sm text-[#64748B] font-medium">{remainingTender > 0.01 ? t("Remaining Due") : t("Amount Due")}</p>
-              <p className="text-3xl font-bold text-[#0891B2] mt-1">${Math.max(remainingTender, 0).toFixed(2)}</p>
-              <p className="text-xs text-[#64748B] mt-1">{cart.reduce((s, i) => s + i.qty, 0)} {t("items")} · {customerName} · {t("Total")} ${total.toFixed(2)}</p>
+              <p className="text-sm text-[#64748B] font-medium">{isRefund ? t("Refund Due") : remainingTender > 0.01 ? t("Remaining Due") : t("Amount Due")}</p>
+              <p className="text-3xl font-bold text-[#0891B2] mt-1">${Math.abs(remainingTender).toFixed(2)}</p>
+              <p className="text-xs text-[#64748B] mt-1">{cart.reduce((s, i) => s + i.qty, 0)} {t("items")} · {customerName} · {t("Total")} {money(total)}</p>
             </div>
 
             {/* Client request 2026-09-03: split tender — combine cash/card/ACH/check, or several
@@ -869,7 +915,7 @@ export default function PointOfSale() {
                   <div key={i} className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm">
                     <span className="font-medium text-[#0F172A]">{tenderLine.method}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[#0F172A]">${tenderLine.amount.toFixed(2)}</span>
+                      <span className="text-[#0F172A]">{money(tenderLine.amount)}</span>
                       <button onClick={() => removeTender(i)} className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1 rounded">
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -879,16 +925,16 @@ export default function PointOfSale() {
               </div>
             )}
 
-            {remainingTender > 0.01 && (
+            {Math.abs(remainingTender) > 0.01 && (
               <div>
-                <Label className="mb-2 block">{t("Add Payment")}</Label>
-                <div className="grid grid-cols-4 gap-2 mb-2">
+                <Label className="mb-2 block">{isRefund ? t("Refund Method") : t("Payment Method")}</Label>
+                <div className={`grid ${isRefund ? "grid-cols-3" : "grid-cols-4"} gap-2 mb-2`}>
                   {([
                     { key: "Cash", icon: Banknote, label: "Cash" },
                     { key: "Card", icon: CreditCard, label: "Card" },
                     { key: "ACH", icon: FileText, label: "ACH" },
                     { key: "Check", icon: FileText, label: "Check" },
-                  ] as const).map((m) => {
+                  ] as const).filter((m) => !(isRefund && m.key === "Card")).map((m) => {
                     const Icon = m.icon;
                     return (
                       <button
@@ -913,16 +959,21 @@ export default function PointOfSale() {
                     onCharge={async (opaqueData) => addCardTender(remainingTender, opaqueData)}
                   />
                 ) : (
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      placeholder={`${t("Up to")} $${remainingTender.toFixed(2)}`}
-                      className="flex-1"
-                      value={tenderAmount}
-                      onChange={(e) => setTenderAmount(e.target.value)}
-                    />
-                    <Button variant="outline" className="border-[#E2E8F0]" onClick={addCashTender}>{t("Add")}</Button>
-                    <Button variant="outline" className="border-[#E2E8F0]" onClick={() => setTenderAmount(remainingTender.toFixed(2))}>{t("Full")}</Button>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder={`${t("Up to")} $${Math.abs(remainingTender).toFixed(2)}`}
+                        className="flex-1"
+                        value={tenderAmount}
+                        onChange={(e) => setTenderAmount(e.target.value)}
+                      />
+                      <Button variant="outline" className="border-[#E2E8F0]" onClick={addCashTender}>{t("Add")}</Button>
+                      <Button variant="outline" className="border-[#E2E8F0]" onClick={() => setTenderAmount(Math.abs(remainingTender).toFixed(2))}>{t("Full")}</Button>
+                    </div>
+                    {tenderLines.length === 0 && (
+                      <p className="text-xs text-[#64748B]">{t("Complete Sale takes the full amount with the method selected above. To split the payment, enter an amount and press Add.")}</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -930,11 +981,11 @@ export default function PointOfSale() {
 
             <Button
               className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2"
-              disabled={tenderLines.length === 0 || Math.abs(remainingTender) > 0.01}
+              disabled={!canComplete}
               onClick={completeSale}
             >
               <CheckCircle2 className="w-5 h-5" />
-              {t("Complete Sale")} · ${total.toFixed(2)}
+              {t("Complete Sale")} · {money(total)}
             </Button>
           </div>
         </DialogContent>
@@ -952,7 +1003,7 @@ export default function PointOfSale() {
             <div className="bg-[#F8FAFC] rounded-xl p-4 mt-4 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-[#64748B]">{t("Items")}</span><span className="font-medium text-[#0F172A]">{completedSale?.items}</span></div>
               <div className="flex justify-between"><span className="text-[#64748B]">{t("Payment")}</span><span className="font-medium text-[#0F172A]">{completedSale?.payment}</span></div>
-              <div className="flex justify-between pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">{t("Total")}</span><span className="font-bold text-[#0891B2]">${completedSale?.total.toFixed(2)}</span></div>
+              <div className="flex justify-between pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">{t("Total")}</span><span className="font-bold text-[#0891B2]">{completedSale ? money(completedSale.total) : ""}</span></div>
             </div>
             <p className="text-xs text-[#64748B] mt-3">{t("Inventory levels updated automatically.")}</p>
             <div className="flex gap-2 mt-5">

@@ -7,6 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/SearchableSelect";
+import { customerOption } from "@/lib/customer-options";
+import ReminderLabelSelect from "@/components/ReminderLabelSelect";
 import { reportsApi, type ItemMovementRow, type DepositRow, type InvoiceDueRow, type CustomerReminder, type ValuationRow } from "@/lib/api/reports";
 import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
@@ -82,7 +84,7 @@ export default function Reports() {
   const [invoicesDue, setInvoicesDue] = useState<InvoiceDueRow[]>([]);
   const [reminders, setReminders] = useState<CustomerReminder[]>([]);
   const [valuation, setValuation] = useState<ValuationRow[]>([]);
-  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [customers, setCustomers] = useState<{ id: string; name: string; address: string | null; phone: string | null }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [reminderOpen, setReminderOpen] = useState(false);
@@ -105,7 +107,7 @@ export default function Reports() {
     setInvoicesDue(dueData ?? []);
     setReminders(remindersData ?? []);
     setValuation(valuationData ?? []);
-    setCustomers((customersData ?? []).map((c) => ({ id: c.id, name: c.name })));
+    setCustomers((customersData ?? []).map((c) => ({ id: c.id, name: c.name, address: c.address, phone: c.phone })));
     setIsLoading(false);
   }, [start, end]);
 
@@ -279,11 +281,12 @@ export default function Reports() {
                         onChange={(v) => setNewReminder((p) => ({ ...p, customerId: v }))}
                         placeholder={t("Select customer")}
                         searchPlaceholder={t("Search customers...")}
-                        options={customers.map((c) => ({ value: c.id, label: c.name }))}
+                        options={customers.map(customerOption)}
+                        showSublabelWhenSelected
                       />
                     </div>
                   </div>
-                  <div><Label>{t("Label")}</Label><Input className="mt-1" placeholder={t("e.g. Filter Cleaning")} value={newReminder.label} onChange={(e) => setNewReminder((p) => ({ ...p, label: e.target.value }))} /></div>
+                  <div><Label>{t("Label")}</Label><ReminderLabelSelect value={newReminder.label} onChange={(label) => setNewReminder((p) => ({ ...p, label }))} /></div>
                   <div className="grid grid-cols-2 gap-4">
                     <div><Label>{t("Frequency (months)")}</Label><Input type="number" className="mt-1" placeholder="e.g. 4" value={newReminder.frequencyMonths} onChange={(e) => setNewReminder((p) => ({ ...p, frequencyMonths: e.target.value }))} /></div>
                     <div><Label>{t("Next Due")}</Label><Input type="date" className="mt-1" value={newReminder.nextDue} onChange={(e) => setNewReminder((p) => ({ ...p, nextDue: e.target.value }))} /></div>

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
@@ -36,6 +37,7 @@ const campaignStatusColors: Record<string, string> = {
 export default function Campaigns() {
   const { t } = useLanguage();
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useViewMode("campaigns");
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [seasonalCampaigns, setSeasonalCampaigns] = useState<SeasonalCampaign[]>([]);
   const [smsConversations, setSmsConversations] = useState<SmsConversation[]>([]);
@@ -97,6 +99,7 @@ export default function Campaigns() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-[#0F172A]">{t("Campaigns & Follow-Up")}</h1>
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading campaigns...")}</div>}
@@ -123,6 +126,38 @@ export default function Campaigns() {
 
         {/* Automations */}
         <TabsContent value="automations" className="mt-4">
+          {viewMode === "table" && (
+            <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Automation")}</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Trigger")}</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Channel")}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Enrolled")}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Conversion")}</th>
+                      <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Active")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {automations.map((a) => (
+                      <tr key={a.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]" title={a.description ?? undefined}>
+                        <td className="py-3 px-4 font-medium text-[#0F172A]">{a.name}</td>
+                        <td className="py-3 px-4 text-[#64748B]">{a.trigger_label}</td>
+                        <td className="py-3 px-4 text-[#64748B]">{a.channel}</td>
+                        <td className="py-3 px-4 text-right text-[#0F172A]">{a.enrolled_count}</td>
+                        <td className="py-3 px-4 text-right font-medium text-[#16A34A]">{a.conversion_rate}</td>
+                        <td className="py-3 px-4 text-center"><Switch checked={a.active} /></td>
+                      </tr>
+                    ))}
+                    {automations.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[#64748B]">{t("No automations yet.")}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {viewMode === "cards" && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {automations.map((a) => {
               const Icon = iconMap[a.icon ?? ""] || Zap;
@@ -161,6 +196,7 @@ export default function Campaigns() {
               );
             })}
           </div>
+          )}
         </TabsContent>
 
         {/* Seasonal Campaigns */}
@@ -182,6 +218,42 @@ export default function Campaigns() {
               </DialogContent>
             </Dialog>
           </div>
+          {viewMode === "table" && (
+            <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Campaign")}</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Audience")}</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Scheduled")}</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Sent")}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Open Rate")}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Bookings")}</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Revenue")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {seasonalCampaigns.map((c) => (
+                      <tr key={c.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                        <td className="py-3 px-4 font-medium text-[#0F172A]">{c.name}</td>
+                        <td className="py-3 px-4"><Badge className={`${campaignStatusColors[c.status]} text-[10px] px-1.5 py-0`}>{t(c.status)}</Badge></td>
+                        <td className="py-3 px-4 text-right text-[#0F172A]">{c.audience_size}</td>
+                        <td className="py-3 px-4 text-[#64748B]">{c.scheduled_date ?? "—"}</td>
+                        <td className="py-3 px-4 text-[#64748B]">{c.sent_date ?? "—"}</td>
+                        <td className="py-3 px-4 text-right text-[#0891B2]">{c.sent_date ? c.open_rate : "—"}</td>
+                        <td className="py-3 px-4 text-right text-[#16A34A]">{c.sent_date ? c.bookings : "—"}</td>
+                        <td className="py-3 px-4 text-right text-[#16A34A]">{c.sent_date ? `${c.revenue?.toLocaleString()}` : "—"}</td>
+                      </tr>
+                    ))}
+                    {seasonalCampaigns.length === 0 && <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">{t("No campaigns yet.")}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {viewMode === "cards" && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             {seasonalCampaigns.map((c) => (
               <Card key={c.id} className="border-[#E2E8F0] shadow-sm">
@@ -224,6 +296,7 @@ export default function Campaigns() {
               </Card>
             ))}
           </div>
+          )}
         </TabsContent>
 
         {/* SMS Inbox */}

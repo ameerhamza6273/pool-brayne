@@ -18,6 +18,7 @@ import type { Database } from "@/lib/database.types";
 import { contentCategories } from "@/lib/data";
 import { useLanguage } from "@/lib/language-context";
 import { useConfigLists } from "@/hooks/use-config-lists";
+import type { ConfigListKey, ConfigListItem } from "@/lib/api/configLists";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Integration = Database["public"]["Tables"]["integrations"]["Row"];
@@ -117,7 +118,31 @@ export default function Settings() {
   // Client PDF 2026-09-18: Job Types/Statuses, Estimate Statuses, Call Types/Sources,
   // Reschedule Types, Cancellation Reasons -- previously hardcoded arrays with non-functional
   // Add/Delete buttons, now DB-backed and editable.
-  const { lists: configLists, addItem: addConfigItem, removeItem: removeConfigItem } = useConfigLists();
+  const { lists: configLists, addItem: addConfigItem, updateItem: updateConfigItem, removeItem: removeConfigItem } = useConfigLists();
+  // Client SMS 2026-09-21: one shared Edit dialog for all 7 lists (label, plus color for the lists that have one).
+  const [editingConfig, setEditingConfig] = useState<{ key: ConfigListKey; id: string; label: string; color: string | null } | null>(null);
+  const [editConfigSaving, setEditConfigSaving] = useState(false);
+  const [editConfigError, setEditConfigError] = useState("");
+  const openEditConfig = (key: ConfigListKey, item: ConfigListItem) => {
+    setEditConfigError("");
+    const hasColor = key === "job_types" || key === "job_statuses" || key === "estimate_statuses";
+    setEditingConfig({ key, id: item.id, label: item.label, color: hasColor ? (item.color ?? "#64748B") : null });
+  };
+  const saveEditConfig = async () => {
+    if (!editingConfig || !editingConfig.label.trim()) return;
+    setEditConfigSaving(true);
+    setEditConfigError("");
+    try {
+      await updateConfigItem(editingConfig.key, editingConfig.id, {
+        label: editingConfig.label.trim(),
+        ...(editingConfig.color !== null ? { color: editingConfig.color } : {}),
+      });
+      setEditingConfig(null);
+    } catch (err) {
+      setEditConfigError(err instanceof Error ? err.message : "Couldn't save");
+    }
+    setEditConfigSaving(false);
+  };
   const qboStatus = new URLSearchParams(window.location.search).get("qbo");
 
   const loadSettings = useCallback(async () => {
@@ -708,6 +733,7 @@ export default function Settings() {
                   <div key={jt.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <span className="w-3 h-3 rounded-full shrink-0" style={{ background: jt.color ?? "#64748B" }} />
                     <span className="text-sm font-medium text-[#0F172A] flex-1">{t(jt.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => openEditConfig("job_types", jt)}><Pencil className="w-4 h-4" /></button>
                     <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("job_types", jt.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -730,6 +756,7 @@ export default function Settings() {
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color ?? "#64748B" }} />
                     <span className="text-sm font-medium text-[#0F172A] flex-1">{t(s.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => openEditConfig("job_statuses", s)}><Pencil className="w-4 h-4" /></button>
                     <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("job_statuses", s.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -752,6 +779,7 @@ export default function Settings() {
                   <div key={s.id} className="flex items-center gap-3 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.color ?? "#64748B" }} />
                     <span className="text-sm font-medium text-[#0F172A] flex-1">{t(s.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => openEditConfig("estimate_statuses", s)}><Pencil className="w-4 h-4" /></button>
                     <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("estimate_statuses", s.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
@@ -774,6 +802,7 @@ export default function Settings() {
                   {configLists.call_types.map((c) => (
                     <div key={c.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                       <span className="text-sm text-[#0F172A] flex-1">{t(c.label)}</span>
+                      <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => openEditConfig("call_types", c)}><Pencil className="w-3.5 h-3.5" /></button>
                       <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("call_types", c.id)}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
@@ -793,6 +822,7 @@ export default function Settings() {
                   {configLists.call_sources.map((c) => (
                     <div key={c.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                       <span className="text-sm text-[#0F172A] flex-1">{t(c.label)}</span>
+                      <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => openEditConfig("call_sources", c)}><Pencil className="w-3.5 h-3.5" /></button>
                       <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("call_sources", c.id)}><Trash2 className="w-3.5 h-3.5" /></button>
                     </div>
                   ))}
@@ -815,6 +845,7 @@ export default function Settings() {
                 {configLists.reschedule_types.map((r) => (
                   <div key={r.id} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <span className="text-sm text-[#0F172A] flex-1">{t(r.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => openEditConfig("reschedule_types", r)}><Pencil className="w-3.5 h-3.5" /></button>
                     <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("reschedule_types", r.id)}><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 ))}
@@ -836,7 +867,30 @@ export default function Settings() {
                 {configLists.cancellation_reasons.map((r) => (
                   <div key={r.id} className="flex items-start gap-2 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                     <span className="text-sm text-[#0F172A] flex-1">{t(r.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#0891B2] shrink-0" title={t("Edit")} onClick={() => openEditConfig("cancellation_reasons", r)}><Pencil className="w-4 h-4" /></button>
                     <button className="text-[#64748B] hover:text-[#DC2626] shrink-0" onClick={() => removeConfigItem("cancellation_reasons", r.id)}><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Reminder Types — the dropdown of labels used when adding a customer service reminder */}
+          <Card className="border-[#E2E8F0] shadow-sm">
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-5 h-5 text-[#0891B2]" />
+                  <h3 className="font-semibold text-[#0F172A]">{t("Reminder Types")}</h3>
+                </div>
+                <AddListItemRow big placeholder={t("New reminder type")} onAdd={(label) => addConfigItem("reminder_types", label)} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {configLists.reminder_types.map((r) => (
+                  <div key={r.id} className="flex items-center gap-2 p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    <span className="text-sm text-[#0F172A] flex-1">{t(r.label)}</span>
+                    <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => openEditConfig("reminder_types", r)}><Pencil className="w-4 h-4" /></button>
+                    <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => removeConfigItem("reminder_types", r.id)}><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>
@@ -905,6 +959,45 @@ export default function Settings() {
         </TabsContent>
       </Tabs>
       )}
+
+      <Dialog open={editingConfig !== null} onOpenChange={(open) => { if (!open) setEditingConfig(null); }}>
+        <DialogContent className="sm:max-w-sm max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{t("Edit")}</DialogTitle></DialogHeader>
+          {editingConfig && (
+            <div className="space-y-4 pt-2">
+              <div>
+                <Label>{t("Name")}</Label>
+                <Input
+                  autoFocus
+                  className="mt-1"
+                  value={editingConfig.label}
+                  onChange={(e) => setEditingConfig((p) => (p ? { ...p, label: e.target.value } : p))}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveEditConfig(); }}
+                />
+              </div>
+              {editingConfig.color !== null && (
+                <div>
+                  <Label>{t("Color")}</Label>
+                  <input
+                    type="color"
+                    value={editingConfig.color}
+                    onChange={(e) => setEditingConfig((p) => (p ? { ...p, color: e.target.value } : p))}
+                    className="mt-1 h-9 w-14 rounded border border-[#E2E8F0] cursor-pointer p-0.5 block"
+                  />
+                </div>
+              )}
+              {editingConfig.key === "job_types" && (
+                <p className="text-xs text-[#64748B]">{t("Renaming a job type also updates existing jobs, recurring jobs and forms that use it.")}</p>
+              )}
+              {editConfigError && <p className="text-sm text-[#DC2626]">{editConfigError}</p>}
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setEditingConfig(null)}>{t("Cancel")}</Button>
+                <Button className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={editConfigSaving || !editingConfig.label.trim()} onClick={saveEditConfig}>{t("Save")}</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -4,6 +4,9 @@ import postgres from "postgres";
 // doesn't need to change: `date` columns as plain "YYYY-MM-DD" strings (not JS Date -> full ISO
 // timestamp), `numeric` columns as JS numbers (not strings).
 const sql = postgres(process.env.DATABASE_URL!, {
+  // Default 10 (unchanged for production). A second backend on the same Supabase session-mode pooler
+  // (e.g. a local dev server next to Railway) can exceed its client limit -- set DB_POOL_MAX lower there.
+  max: Number(process.env.DB_POOL_MAX) || 10,
   prepare: false,
   types: {
     date: {

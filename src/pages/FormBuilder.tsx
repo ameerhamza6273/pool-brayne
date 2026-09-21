@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { formTemplatesApi, type FormTemplate, type FormField, type FormFieldType } from "@/lib/api/formTemplates";
 import { useLanguage } from "@/lib/language-context";
 import { useConfigLists } from "@/hooks/use-config-lists";
+import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 
 const fieldTypeLabels: Record<FormFieldType, string> = {
   text: "Short Text",
@@ -32,6 +33,7 @@ export default function FormBuilder() {
   const { lists: configLists } = useConfigLists();
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [viewMode, setViewMode] = useViewMode("form-builder");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<FormTemplate | null>(null);
   const [draft, setDraft] = useState({ name: "", description: "", appliesTo: "any", customerVisible: false, required: false });
@@ -188,9 +190,55 @@ export default function FormBuilder() {
         </Dialog>
       </div>
 
+      <div className="flex justify-end">
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
+      </div>
+
       {isLoading && <div className="text-center py-8 text-[#64748B]">{translate("Loading forms...")}</div>}
 
-      {!isLoading && (
+      {!isLoading && viewMode === "table" && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Form")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Applies To")}</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Fields")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Visibility")}</th>
+                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Required")}</th>
+                  <th className="w-20 py-3 px-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {templates.map((tpl) => (
+                  <tr key={tpl.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
+                    <td className="py-3 px-4 font-medium text-[#0F172A]">{tpl.name}</td>
+                    <td className="py-3 px-4 text-[#64748B]">{tpl.applies_to ? translate(tpl.applies_to) : "—"}</td>
+                    <td className="py-3 px-4 text-right text-[#64748B]">{tpl.fields.length}</td>
+                    <td className="py-3 px-4">
+                      <Badge className={`text-[10px] px-1.5 py-0 gap-1 ${tpl.customer_visible ? "bg-[#16A34A]/10 text-[#16A34A]" : "bg-[#F1F5F9] text-[#64748B]"}`}>
+                        {tpl.customer_visible ? <Eye className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5" />}
+                        {tpl.customer_visible ? translate("Customer visible") : translate("Internal only")}
+                      </Badge>
+                    </td>
+                    <td className="py-3 px-4 text-center">{tpl.required && <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px] px-1.5 py-0">{translate("Required")}</Badge>}</td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => openEdit(tpl)} className="text-[#64748B] hover:text-[#0891B2] p-1"><Pencil className="w-3.5 h-3.5" /></button>
+                        {!tpl.is_builtin && <button onClick={() => handleDelete(tpl.id)} className="text-[#64748B] hover:text-[#DC2626] p-1"><Trash2 className="w-3.5 h-3.5" /></button>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {templates.length === 0 && <tr><td colSpan={6} className="py-10 text-center text-[#64748B]">{translate("No forms yet — create your first one.")}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && viewMode === "cards" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {templates.map((t) => (
             <div key={t.id} className="bg-white rounded-xl p-4 border border-[#E2E8F0] shadow-sm">

@@ -1,9 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useContext } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { DialogBoundaryContext } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/language-context";
 
 export type SearchableSelectOption = { value: string; label: string; sublabel?: string };
@@ -25,6 +26,7 @@ export function SearchableSelect({
   searchPlaceholder = "Search...",
   emptyText = "No results.",
   className,
+  showSublabelWhenSelected = false,
 }: {
   options: SearchableSelectOption[];
   value: string;
@@ -33,10 +35,17 @@ export function SearchableSelect({
   searchPlaceholder?: string;
   emptyText?: string;
   className?: string;
+  // Keeps the option's second line (e.g. a customer's address) visible in the closed box too.
+  showSublabelWhenSelected?: boolean;
 }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // Client feedback 2026-09-21: inside a dialog the list must not hang out past the dialog's edge or
+  // resize the dialog -- it stays a floating list, but uses the dialog as its collision boundary
+  // (flips/shrinks to fit inside it) and is capped at 150px tall, scrolling beyond that.
+  const dialogBoundary = useContext(DialogBoundaryContext);
+  const closeAndReset = (o: boolean) => { setOpen(o); if (!o) setQuery(""); };
   const selected = options.find((o) => o.value === value);
   const effectivePlaceholder = placeholder === "Select..." ? t("Select...") : placeholder;
   const effectiveSearchPlaceholder = searchPlaceholder === "Search..." ? t("Search...") : searchPlaceholder;
@@ -51,50 +60,64 @@ export function SearchableSelect({
   }, [options, query]);
   const hiddenCount = (query.trim() ? options.filter((o) => `${o.label} ${o.sublabel ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())).length : options.length) - visible.length;
 
+  const triggerButton = (
+    <Button
+      type="button"
+      variant="outline"
+      role="combobox"
+      aria-expanded={open}
+      className={cn("w-full justify-between font-normal", showSublabelWhenSelected && selected?.sublabel && "h-auto min-h-10 py-1.5", !selected && "text-muted-foreground", className)}
+    >
+      <span className="truncate text-left">
+        {selected ? selected.label : effectivePlaceholder}
+        {showSublabelWhenSelected && selected?.sublabel && <span className="block text-xs text-muted-foreground truncate">{selected.sublabel}</span>}
+      </span>
+      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+    </Button>
+  );
+
+  const listBody = (
+    <Command shouldFilter={false}>
+      <CommandInput placeholder={effectiveSearchPlaceholder} value={query} onValueChange={setQuery} />
+      <CommandList className={dialogBoundary ? "max-h-[min(150px,max(56px,calc(var(--radix-popover-content-available-height,200px)-46px)))]" : undefined}>
+        <CommandEmpty>{effectiveEmptyText}</CommandEmpty>
+        <CommandGroup>
+          {visible.map((o) => (
+            <CommandItem
+              key={o.value}
+              value={o.value}
+              onSelect={(v) => {
+                onChange(v === value ? "" : v);
+                closeAndReset(false);
+              }}
+            >
+              <Check className={cn("mr-2 h-4 w-4", value === o.value ? "opacity-100" : "opacity-0")} />
+              <div className="flex flex-col">
+                <span>{o.label}</span>
+                {o.sublabel && <span className="text-xs text-muted-foreground">{o.sublabel}</span>}
+              </div>
+            </CommandItem>
+          ))}
+          {hiddenCount > 0 && (
+            <p className="px-2 py-1.5 text-xs text-muted-foreground">
+              +{hiddenCount} {t("more — keep typing to narrow down")}
+            </p>
+          )}
+        </CommandGroup>
+      </CommandList>
+    </Command>
+  );
+
   return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className={cn("w-full justify-between font-normal", !selected && "text-muted-foreground", className)}
-        >
-          <span className="truncate">{selected ? selected.label : effectivePlaceholder}</span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput placeholder={effectiveSearchPlaceholder} value={query} onValueChange={setQuery} />
-          <CommandList>
-            <CommandEmpty>{effectiveEmptyText}</CommandEmpty>
-            <CommandGroup>
-              {visible.map((o) => (
-                <CommandItem
-                  key={o.value}
-                  value={o.value}
-                  onSelect={(v) => {
-                    onChange(v === value ? "" : v);
-                    setOpen(false);
-                  }}
-                >
-                  <Check className={cn("mr-2 h-4 w-4", value === o.value ? "opacity-100" : "opacity-0")} />
-                  <div className="flex flex-col">
-                    <span>{o.label}</span>
-                    {o.sublabel && <span className="text-xs text-muted-foreground">{o.sublabel}</span>}
-                  </div>
-                </CommandItem>
-              ))}
-              {hiddenCount > 0 && (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                  +{hiddenCount} {t("more — keep typing to narrow down")}
-                </p>
-              )}
-            </CommandGroup>
-          </CommandList>
-        </Command>
+    <Popover open={open} onOpenChange={closeAndReset}>
+      <PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        align="start"
+        collisionBoundary={dialogBoundary ?? undefined}
+        collisionPadding={6}
+      >
+        {listBody}
       </PopoverContent>
     </Popover>
   );
