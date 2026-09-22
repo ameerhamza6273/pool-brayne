@@ -51,6 +51,17 @@ const dict: Record<string, string> = {
   // technician read as "technology") -- hand-pinned so the common Settings > Team labels are
   // reliably correct rather than depending on Google Translate's guess.
   "Add Tech": "Agregar Técnico", "Edit Tech": "Editar Técnico", "Role": "Rol",
+  // Client QA sweep 2026-09-22: POS payment dialog auto-translated "Check" (the payment method,
+  // as in a paper cheque) to "Controlar" (verb "to control/verify") and "Full" (full payment) to
+  // "Lleno" (a container being full) -- same class of ambiguous-word mistranslation as above.
+  "Check": "Cheque", "Full": "Completo",
+  // Customers page tag filters: "VIP" (an acronym, should stay as-is) auto-translated to
+  // "personaje" (unrelated -- "character/celebrity"); "Lapsed" translated literally to
+  // "Transcurrido" ("elapsed [time]") instead of the CRM sense (customer gone inactive).
+  "VIP": "VIP", "Lapsed": "Inactivo",
+  // Campaigns tab: "Performance" (marketing sense, as in Reports) auto-translated to "Actuación"
+  // (theatrical "acting/performance") instead of the business sense.
+  "Performance": "Rendimiento",
 };
 
 const CACHE_KEY = "poolbrayne_es_translations_v1";

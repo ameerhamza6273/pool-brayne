@@ -80,6 +80,9 @@ Last updated: 2026-09-22
 2. **Email account** — free SendGrid account + API key (or their business email SMTP details) so invoices and purchase-order emails can be sent from the CRM. (Text messages via Twilio can come later.)
 3. **POS returns:** refund back to the customer's card, or cash/check only?
 4. One SMS line was cut off: *"Allow us the option to click on an option to click…"* — what was the rest?
+5. **Inventory (2026-09-18 list):** *"Remove the original in inventory list (default list we started with)"* — which list? A leftover demo category, or the old imported product list?
+6. **Documents (2026-09-18 list):** *"Need a Document folder to put from 'Document List'"* — folders inside Library, or a Documents section on each Job/Estimate?
+7. *(confirm only)* Inventory edit "need a drop down" — Manufacturer now suggests from a list; is that the field you meant?
 
 ## Not built (deliberately, no client request yet)
 
