@@ -629,4 +629,4 @@ history was condensed into the structural sections above on 2026-09-10.)*
 - **2026-09-23 (client SMS #10: positive feedback on schedule/printer/item #s + "delete button on inventory SKUs with a permanent-delete popup"; file "customers-template new.csv")** —
   Inventory Catalog: trash icon + confirm dialog -> `DELETE /api/inventory/items/:id` (409 with reason if the SKU has job_parts_used [FK restrict] or
   write-offs; stock cascades, POS lines keep description). Customer CSV import/export got front_gate_code/house_gate_code/padlock_code/access_notes,
-  mapped onto `customers.gate_codes` keys frontGate/houseGate/padlock/notes (merged, blanks don't clear). SQL verified in a rolled-back transaction; UI not browser-tested.
+  mapped onto `customers.gate_codes` keys frontGate/houseGate/padlock/notes (merged, blanks don't clear). SQL verified in a rolled-back transaction; popup shown live on local dev (cancelled, nothing deleted). Pushed 9cf17fc, Vercel + Railway Ready.
