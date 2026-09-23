@@ -225,6 +225,29 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   // Client PDF 2026-09-05: "Vendor list (with addresses, contact names, phone numbers — some
   // vendors have multiple locations we put from)". A supplier is the vendor identity; each
   // location is a separate address/contact a PO can be placed from.
+  // Client SMS 2026-09-23: delete button on inventory SKUs (behind a "this is permanent" confirm).
+  // Stock rows cascade and past POS sales keep their line description (item_id set null), but a SKU
+  // that was used as a part on a job (FK restrict) or written off is refused, so no history is lost.
+  app.delete<{ Params: { id: string } }>("/items/:id", async (req, reply) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [usage] = (await tx`
+        select (select count(*) from job_parts_used where item_id = ${id})::int as jobs,
+               (select count(*) from inventory_writeoffs where item_id = ${id})::int as writeoffs
+      `) as unknown as { jobs: number; writeoffs: number }[];
+      if (usage.jobs > 0 || usage.writeoffs > 0) {
+        const parts = [
+          usage.jobs > 0 ? `used as a part on ${usage.jobs} job${usage.jobs === 1 ? "" : "s"}` : null,
+          usage.writeoffs > 0 ? `has ${usage.writeoffs} write-off${usage.writeoffs === 1 ? "" : "s"}` : null,
+        ].filter(Boolean);
+        return reply.code(409).send({ error: `This SKU can't be deleted because it ${parts.join(" and ")}. Its history must be kept.` });
+      }
+      const deleted = await tx`delete from inventory_items where id = ${id} returning id`;
+      if (deleted.length === 0) return reply.code(404).send({ error: "Item not found" });
+      return { id };
+    });
+  });
+
   // Client SMS 2026-09-09: "able to edit and delete vendors from list" — cascades to that
   // vendor's locations and vendor bills (schema-level on-delete-cascade), and clears
   // purchase_orders.supplier_id (on-delete-set-null) rather than deleting past POs.

@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-09-22
+Last updated: 2026-09-23
 
 ---
 
@@ -61,6 +61,8 @@ Last updated: 2026-09-22
 | Grid view as default on Directory, Library, Forms, Form Builder, Manufacturers, Campaigns | ✅ | Each page (table by default, cards toggle) |
 | Edit button on every Job Settings list (job types, statuses, estimate statuses, call types/sources, reschedule types, cancellation reasons) | ✅ | Settings › Job Settings (pencil icon) |
 | Search fields: Payments, Write-offs (reason + dates), Directory, Forms | ✅ | Those pages |
+| **Delete a SKU** with a "this is permanent" confirmation | ✅ | Inventory › Catalog › red trash icon next to the pencil. SKUs already used on a job or written off can't be deleted (the popup says why) so history is kept |
+| Customer CSV: front gate code, house gate code, padlock code, access notes | ✅ | Data › Import / Export › Customer List (template + export include them; same fields as the customer page's Gate Codes card) |
 | **CSV import & export** for Customers, Inventory, Vendors, Inventory Categories, Inventory Manufacturers, Library Categories, Library Manufacturers | ✅ | Data › **Import / Export** |
 | Reminders: show address under the customer's name | ✅ | Reports › Reminders, and every customer picker |
 | Reminders: add your own labels to the dropdown (Filter cleaning, Salt cell cleaning, Sand change, Anode replacement, …) | ✅ | Reminder label dropdown › "+ Add new label…" ; manage in Settings › Job Settings › Reminder Types |

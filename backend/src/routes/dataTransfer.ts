@@ -55,8 +55,9 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
 
       // ---------------------------------------------------------------- customers
       if (dataset === "customers") {
-        const existing = (await tx`select id, name, address, phone, email, type, first_name, last_name from customers`) as unknown as {
+        const existing = (await tx`select id, name, address, phone, email, type, first_name, last_name, gate_codes from customers`) as unknown as {
           id: string; name: string; address: string | null; phone: string | null; email: string | null; type: string | null; first_name: string | null; last_name: string | null;
+          gate_codes: Record<string, string> | null;
         }[];
         const byKey = new Map(existing.map((c) => [`${lc(c.name)}|${lc(c.address)}`, c]));
         const toInsert: Record<string, unknown>[] = [];
@@ -70,6 +71,9 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
           const key = `${lc(name)}|${lc(address)}`;
           const typeRaw = lc(str(row.type));
           const type = typeRaw === "commercial" ? "Commercial" : typeRaw === "residential" ? "Residential" : null;
+          // Gate/access columns -> the same gate_codes jsonb keys the customer page edits; blank cells leave a value alone.
+          const gateIn: Record<string, string | null> = { frontGate: str(row.front_gate_code), houseGate: str(row.house_gate_code), padlock: str(row.padlock_code), notes: str(row.access_notes) };
+          const gateSet = Object.fromEntries(Object.entries(gateIn).filter(([, v]) => v !== null)) as Record<string, string>;
           const patch: Record<string, unknown> = {};
           const found = byKey.get(key);
           if (found) {
@@ -77,22 +81,26 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
             for (const [col, val] of Object.entries(cand)) {
               if (val !== null && val !== (found as unknown as Record<string, string | null>)[col]) patch[col] = val;
             }
+            const curGate = found.gate_codes ?? {};
+            if (Object.entries(gateSet).some(([k, v]) => curGate[k] !== v)) patch.gate_codes = { ...curGate, ...gateSet };
             if (Object.keys(patch).length === 0) { result.skipped++; return; }
             toInsert.push({ __update: found.id, ...patch });
           } else if (seen.has(key)) {
             result.skipped++;
           } else {
             seen.add(key);
-            toInsert.push({ tenant_id: tenantId, name, first_name: first, last_name: last, type: type ?? "Residential", email: str(row.email), phone: str(row.phone), address });
+            toInsert.push({ tenant_id: tenantId, name, first_name: first, last_name: last, type: type ?? "Residential", email: str(row.email), phone: str(row.phone), address, gate_codes: gateSet });
           }
         });
         const news = toInsert.filter((r) => !("__update" in r));
         for (let i = 0; i < news.length; i += 300) {
-          await tx`insert into customers ${tx(news.slice(i, i + 300), "tenant_id", "name", "first_name", "last_name", "type", "email", "phone", "address")}`;
+          const chunk: Record<string, unknown>[] = news.slice(i, i + 300).map((r) => ({ ...r, gate_codes: tx.json(r.gate_codes as Record<string, string>) }));
+          await tx`insert into customers ${tx(chunk, "tenant_id", "name", "first_name", "last_name", "type", "email", "phone", "address", "gate_codes")}`;
         }
         result.created += news.length;
         for (const u of toInsert.filter((r) => "__update" in r)) {
           const { __update, ...patch } = u as { __update: string } & Record<string, unknown>;
+          if (patch.gate_codes) patch.gate_codes = tx.json(patch.gate_codes as Record<string, string>);
           await tx`update customers set ${tx(patch)} where id = ${__update}`;
           result.updated++;
         }

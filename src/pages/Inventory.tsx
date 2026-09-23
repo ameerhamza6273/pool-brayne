@@ -95,6 +95,9 @@ export default function Inventory() {
   // Client request 2026-09-04: editing a product previously only opened a 2-field Cost/Price
   // dialog -- now opens a full "Add Product"-shaped editor with every field.
   const [editProductItem, setEditProductItem] = useState<ItemWithStock | null>(null);
+  const [deleteItem, setDeleteItem] = useState<ItemWithStock | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editProductDraft, setEditProductDraft] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
@@ -212,6 +215,23 @@ export default function Inventory() {
     setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "" });
     setAddOpen(false);
     loadInventory();
+  };
+
+  // Client SMS 2026-09-23: delete a SKU, behind a "this is permanent" confirmation. The backend
+  // refuses SKUs that have job/write-off history and says why (shown in the same popup).
+  const confirmDeleteItem = async () => {
+    if (!deleteItem) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await inventoryApi.deleteItem(deleteItem.id);
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(deleteItem.id); return next; });
+      setDeleteItem(null);
+      loadInventory();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
+    }
+    setIsDeleting(false);
   };
 
   // Client request 2026-09-04: full product edit (every field, same shape as Add Product) —
@@ -781,9 +801,12 @@ export default function Inventory() {
                           <Landmark className={`w-4 h-4 ${(p.qbo_accounts as QboAccounts | null)?.income ? "text-[#16A34A]" : ""}`} />
                         </button>
                       </td>
-                      <td className="text-center py-3 px-4">
+                      <td className="text-center py-3 px-4 whitespace-nowrap">
                         <button className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#64748B]" title={t("Edit Product")} onClick={() => openEditProduct(p)}>
                           <Pencil className="w-4 h-4" />
+                        </button>
+                        <button className="p-1.5 rounded hover:bg-[#FEF2F2] text-[#DC2626]" title={t("Delete SKU")} onClick={() => { setDeleteError(""); setDeleteItem(p); }}>
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </td>
                     </tr>
@@ -1350,6 +1373,26 @@ export default function Inventory() {
 
       {/* Client request 2026-09-04: full product edit, same shape as Add Product plus every
           other field a real item carries (barcode, distributor, unit, taxable). */}
+      <Dialog open={!!deleteItem} onOpenChange={(open) => { if (!open && !isDeleting) setDeleteItem(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>{t("Delete SKU permanently?")}</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1 text-sm">
+            <div className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+              <p className="font-medium text-[#0F172A]">{deleteItem?.name}</p>
+              <p className="text-xs text-[#64748B] font-mono mt-0.5">SKU: {deleteItem?.sku}{deleteItem?.item_number != null ? ` · Item # ${deleteItem.item_number}` : ""}</p>
+            </div>
+            <p className="text-[#475569]">{t("Are you sure you want to permanently delete this SKU? This action cannot be undone. Its stock quantities will be removed; past sales keep their line description.")}</p>
+            {deleteError && <p className="rounded-md bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] p-2.5 text-xs">{t(deleteError)}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" disabled={isDeleting} onClick={() => setDeleteItem(null)}>{t("Cancel")}</Button>
+              <Button className="bg-[#DC2626] hover:bg-[#B91C1C] text-white" disabled={isDeleting || !!deleteError} onClick={confirmDeleteItem}>
+                <Trash2 className="w-4 h-4 mr-1.5" />{isDeleting ? t("Deleting...") : t("Delete Permanently")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!editProductItem} onOpenChange={(open) => !open && setEditProductItem(null)}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{t("Edit Product")} — {editProductItem?.name}</DialogTitle></DialogHeader>

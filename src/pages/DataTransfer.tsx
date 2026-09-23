@@ -43,11 +43,16 @@ const datasets: Dataset[] = [
     title: "Customer List",
     description: "Customers with contact details. Matched by name + address, so re-importing updates instead of duplicating.",
     icon: Users,
-    columns: ["name", "first_name", "last_name", "type", "email", "phone", "address"],
+    // Client 2026-09-23 (customers-template new.csv): gate/access columns = the customer page's Gate Codes card (customers.gate_codes).
+    columns: ["name", "first_name", "last_name", "type", "email", "phone", "address", "front_gate_code", "house_gate_code", "padlock_code", "access_notes"],
     required: [["name"], ["first_name", "last_name"]],
     filename: "customers.csv",
-    sample: { name: "Jane Smith", first_name: "Jane", last_name: "Smith", type: "Residential", email: "jane@example.com", phone: "(555) 123-4567", address: "123 Main St, Alpharetta, GA 30022" },
-    fetchRows: async () => (await customersApi.list()) as unknown as Record<string, unknown>[],
+    sample: { name: "Jane Smith", first_name: "Jane", last_name: "Smith", type: "Residential", email: "jane@example.com", phone: "(555) 123-4567", address: "123 Main St, Alpharetta, GA 30022", front_gate_code: "#1234", house_gate_code: "#5678", padlock_code: "0000", access_notes: "Dog in backyard" },
+    fetchRows: async () =>
+      (await customersApi.list()).map((c) => {
+        const gc = (c.gate_codes ?? {}) as Record<string, string>;
+        return { ...c, front_gate_code: gc.frontGate ?? "", house_gate_code: gc.houseGate ?? "", padlock_code: gc.padlock ?? "", access_notes: gc.notes ?? "" } as unknown as Record<string, unknown>;
+      }),
   },
   {
     key: "inventory",

@@ -626,3 +626,7 @@ history was condensed into the structural sections above on 2026-09-10.)*
   button, and the schedule remembers view + employee selection (localStorage `schedule-prefs`). Data facts (2026-09-21):
   only 20/150 jobs had a time, 74 weekly series, 8 Weekly Maintenance jobs unlinked. Verified live + rolled back all test data.
   Added the new rows to CLIENT_REQUESTS.md.
+- **2026-09-23 (client SMS #10: positive feedback on schedule/printer/item #s + "delete button on inventory SKUs with a permanent-delete popup"; file "customers-template new.csv")** —
+  Inventory Catalog: trash icon + confirm dialog -> `DELETE /api/inventory/items/:id` (409 with reason if the SKU has job_parts_used [FK restrict] or
+  write-offs; stock cascades, POS lines keep description). Customer CSV import/export got front_gate_code/house_gate_code/padlock_code/access_notes,
+  mapped onto `customers.gate_codes` keys frontGate/houseGate/padlock/notes (merged, blanks don't clear). SQL verified in a rolled-back transaction; UI not browser-tested.

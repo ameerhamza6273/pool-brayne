@@ -79,6 +79,8 @@ export const inventoryApi = {
   updatePricing: (itemId: string, unitCost: number, price: number | null) =>
     api.patch<InventoryItem>(`/api/inventory/items/${itemId}/pricing`, { unitCost, price }),
 
+  deleteItem: (itemId: string) => api.del<{ id: string }>(`/api/inventory/items/${itemId}`),
+
   updateItem: (
     itemId: string,
     data: {
