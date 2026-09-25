@@ -360,6 +360,28 @@ vendor, different payment processor).
     text `<Input>`**, no dropdown — a very plausible reading of (c) if the client means that field
     specifically.
 
+11. **LIVE QA STATUS for the 2026-09-25 work (session ended mid-QA — resume here BEFORE telling the client anything).**
+    Dev's rule: test everything live first, collect ALL issues, fix in ONE batch, push ONCE, re-verify. Client must not find a single mistake.
+    **Verified live OK:** POS (edit price, right-click cost, disclaimer + printed receipt, past-sale receipt notes/re-print, browser
+    double-click guard), Customer > Previous Sales receipt, Estimate form (empty price, category filter, drag, notes; order persistence via API),
+    Documents on Estimate/Invoice/**Job** (upload, Use-file-name default, rename, delete, **Attach from Library**), Data > Document List,
+    Schedule (Tasks/Estimates/Techs-with-jobs boxes, quick views, resize bars, route-order drag + Temporary UI), **route-order Apply backend
+    (Temporary re-times only the job; Permanent also sets the series time)**, Jobs defaults + Month button + hint, Timesheets (clock in/reload/out,
+    edit time, request + approve/reply), Spanish across all these screens.
+    **OPEN ISSUES found, not fixed yet (fix together):**
+    (1) Server-side duplicate-sale guard FAILS under a near-simultaneous 2nd request (2 checkouts 0.4s apart both saved) — the 10s DB check runs
+    before the 1st insert commits. Fix idea: in-process in-flight map keyed cashier+total+items (+keep DB check); browser guard already blocks normal clicks.
+    (2) JobDetail shows job type "Repair" untranslated in the Items/value line — wrap in t().
+    (3) PERFORMANCE: on JobDetail, opening the line-item editor ("Agregar artículos") and adding a line FREEZES the tab 30s+ (renderer
+    unresponsive); first click on "Add document" there also froze. Estimate dialog does not freeze. Suspect: LineItemsEditor per-line
+    category/manufacturer Sets + SearchableSelect options over ~2,600 inventory items recomputed every render on a heavy page — memoize
+    (useMemo per itemType) / check SearchableSelect rendering all options. MUST fix before client sees it.
+    **NOT tested yet:** Job/Invoice line-item drag+save via UI (blocked by #3), PO unit cost empty box, Timesheets Deny / per-employee Approve /
+    Approve Week / week arrows / "Only people with hours" / delete entry from popup, Field-page Clock In click, tech-role login (needs a test tech
+    account — dev OK'd creating one in Settings > Team and deleting it after), real printer dialog, POS "Show more", Jobs "Show all technicians"
+    link, map pin popup in Spanish.
+    All QA test data from this session was deleted (0 leftovers).
+
 ## Session Changelog
 
 *(Short one-liners only — see the rule at the top of this file. Older detailed session-by-session
