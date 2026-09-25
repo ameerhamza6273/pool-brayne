@@ -59,7 +59,7 @@ export default function ClockCard({ name, onChange, compact }: { name: string; o
   return (
     <Card className="border-[#E2E8F0] shadow-sm">
       <CardContent className={compact ? "p-4" : "p-5"}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className={compact ? "flex flex-col md:flex-row md:items-center md:justify-between gap-3" : "flex flex-col sm:flex-row sm:items-center justify-between gap-4"}>
           <div className="flex items-center gap-4 min-w-0">
             <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 ${open ? "bg-[#16A34A]/10" : "bg-[#F1F5F9]"}`}>
               <Clock className={`w-6 h-6 ${open ? "text-[#16A34A]" : "text-[#64748B]"}`} />
@@ -76,12 +76,12 @@ export default function ClockCard({ name, onChange, compact }: { name: string; o
               )}
             </div>
           </div>
-          <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          <div className={compact ? "grid grid-cols-2 gap-2 md:flex md:items-center md:shrink-0" : "flex flex-col sm:flex-row gap-2 sm:items-center"}>
             <Input
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={open ? t("Note for this shift (optional)") : t("Note (optional)")}
-              className="h-10 sm:w-56"
+              className={compact ? "h-10 col-span-2 md:w-44" : "h-10 sm:w-56"}
             />
             <Button
               onClick={toggle}

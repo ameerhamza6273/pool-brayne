@@ -62,6 +62,23 @@ const dict: Record<string, string> = {
   // Campaigns tab: "Performance" (marketing sense, as in Reports) auto-translated to "Actuación"
   // (theatrical "acting/performance") instead of the business sense.
   "Performance": "Rendimiento",
+  // Live QA 2026-09-25: more ambiguous short words Google got wrong -- weekday abbreviations were read
+  // as verbs ("Wed" -> "Casarse" = to marry, "Sat" -> "Se sentó" = sat down), "OT" (overtime) as "Antiguo
+  // Testamento", "Clock In" as "Regístrese" (sign up), "Clear" as "Claro" (light), "Lead" as "Dirigir"
+  // (to lead), "Amount" as "Cantidad" (same word as Qty), "jobs" as "empleos" (employment), "TECH" as
+  // "Tecnología", "Estimate" as the verb "Estimar".
+  "Sun": "Dom", "Mon": "Lun", "Tue": "Mar", "Wed": "Mié", "Thu": "Jue", "Fri": "Vie", "Sat": "Sáb",
+  "OT": "H. extra", "Total OT": "Total h. extra",
+  "Clock In": "Marcar entrada", "Clock Out": "Marcar salida", "Approve Week": "Aprobar semana",
+  "Clocked in at": "Entrada a las", "Not clocked in": "Sin marcar entrada", "On the clock": "Trabajando",
+  "Clear": "Borrar", "Lead": "Prospecto", "Amount": "Importe", "jobs": "trabajos",
+  "TEAM": "EQUIPO", "TECH": "TÉCNICOS", "CONTRACTORS": "CONTRATISTAS",
+  "Estimate": "Presupuesto", "Estimates": "Presupuestos", "Open Estimate": "Abrir presupuesto",
+  "Task": "Tarea", "Receipt notes": "Notas del recibo", "Save Notes": "Guardar notas",
+  "Edit price": "Editar precio", "Receipt Disclaimer": "Aviso en el recibo",
+  "Techs with jobs": "Técnicos con trabajos", "Make a Request": "Hacer una solicitud",
+  "Weekly Hours": "Horas semanales", "Action": "Acción", "Approve": "Aprobar", "Deny": "Rechazar",
+  "Add document": "Agregar documento", "Use file name": "Usar nombre de archivo", "Document List": "Lista de documentos",
 };
 
 const CACHE_KEY = "poolbrayne_es_translations_v1";

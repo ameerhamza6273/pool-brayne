@@ -916,6 +916,17 @@ export default function Jobs() {
           {(dateFrom || dateTo) && <Button variant="ghost" className="h-10 px-2 text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }}>{t("Clear")}</Button>}
         </div>
       </div>
+      {/* The automatic "my jobs, today" default can leave the board empty (e.g. the owner has no jobs today) --
+          say what's being shown and offer one click to see everyone, so it never looks broken. */}
+      {(activeTab === "pipeline" || activeTab === "map") && !techTouched && techFilter !== "all" && (
+        <div className="flex flex-wrap items-center gap-2 -mt-2 text-xs text-[#64748B]">
+          <span>
+            {t("Showing")} <b className="text-[#0F172A]">{technicians.find((p) => p.id === techFilter)?.name ?? ""}</b>
+            {activeTab === "pipeline" && !dateTouched ? ` · ${t("Today")}` : ""} ({filteredJobs.length} {t("jobs")})
+          </span>
+          <button className="font-semibold text-[#0891B2] hover:underline" onClick={() => setTechFilter("all")}>{t("Show all technicians")}</button>
+        </div>
+      )}
 
       {/* Pipeline View */}
       {activeTab === "pipeline" && (

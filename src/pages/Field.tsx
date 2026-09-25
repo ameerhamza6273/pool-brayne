@@ -306,7 +306,7 @@ export default function Field() {
   };
 
   return (
-    <div className="space-y-4 max-w-lg mx-auto">
+    <div className="space-y-4 max-w-lg md:max-w-3xl mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3">
         {!fieldOnly && (
@@ -337,6 +337,7 @@ export default function Field() {
       </div>
 
       {/* Client SMS 2026-09-25: techs clock in / out and make requests from their phone (they can only open /field). */}
+      {/* Stacked on phones, one row on wider screens. */}
       <ClockCard name={user?.name ?? ""} compact />
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading your jobs...")}</div>}
