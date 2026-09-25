@@ -46,13 +46,15 @@ const toLocalInput = (iso: string | null) => {
 const fromLocalInput = (v: string) => (v ? new Date(v).toISOString() : null);
 const entryHours = (e: TimeEntry, now: number) => Math.max(0, ((e.clock_out ? new Date(e.clock_out).getTime() : now) - new Date(e.clock_in).getTime()) / 3600000);
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const fmtTime = (iso: string, locale?: string) => new Date(iso).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
 
 type EntryDraft = { id: string | null; employeeId: string; clockIn: string; clockOut: string; notes: string };
 
 export default function Timesheets() {
   const { user, profileId, role } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  // Dates follow the chosen language (they used to always print in English).
+  const locale = lang === "es" ? "es-US" : "en-US";
   const navigate = useNavigate();
   const isOffice = role !== "technician" && role !== "contractor";
   const [isLoading, setIsLoading] = useState(true);
@@ -209,7 +211,7 @@ export default function Timesheets() {
     }
   };
 
-  const weekLabel = `${weekDates[0].toLocaleDateString(undefined, { month: "short", day: "numeric" })} – ${weekDates[6].toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+  const weekLabel = `${weekDates[0].toLocaleDateString(locale, { month: "short", day: "numeric" })} – ${weekDates[6].toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" })}`;
   const statusBadge = (s: string) => s === "Approved" ? "bg-[#16A34A]/10 text-[#16A34A]" : s === "Denied" ? "bg-[#DC2626]/10 text-[#DC2626]" : "bg-[#F59E0B]/10 text-[#F59E0B]";
 
   return (
@@ -468,7 +470,7 @@ export default function Timesheets() {
                   <div key={e.id} className="flex items-start gap-3 px-3 py-2 text-sm">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-[#0F172A]">
-                        {new Date(e.clock_in).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · {fmtTime(e.clock_in)} – {e.clock_out ? fmtTime(e.clock_out) : <span className="text-[#16A34A]">{t("still clocked in")}</span>}
+                        {new Date(e.clock_in).toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" })} · {fmtTime(e.clock_in, locale)} – {e.clock_out ? fmtTime(e.clock_out, locale) : <span className="text-[#16A34A]">{t("still clocked in")}</span>}
                         <span className="ml-2 text-[#0891B2]">{round2(entryHours(e, now))} h</span>
                         {e.edited_by && <span className="ml-2 text-[10px] text-[#94A3B8]">({t("edited")})</span>}
                       </p>
@@ -519,7 +521,7 @@ export default function Timesheets() {
                 </div>
               </div>
               <div><Label>{t("Notes")}</Label><Textarea className="mt-1 min-h-[70px]" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} /></div>
-              {draftError && <p className="text-sm text-[#DC2626]">{draftError}</p>}
+              {draftError && <p className="text-sm text-[#DC2626]">{t(draftError)}</p>}
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" onClick={() => setDraft(null)}>{t("Cancel")}</Button>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5" disabled={saving} onClick={saveDraft}><Check className="w-4 h-4" /> {saving ? t("Saving...") : t("Save")}</Button>

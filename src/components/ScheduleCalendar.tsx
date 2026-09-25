@@ -146,7 +146,9 @@ export default function ScheduleCalendar({
   onNewJob: (dateKey: string, time?: string, techId?: string | null) => void;
   onUnschedule: (jobId: string) => void;
 }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  // Dates follow the chosen language (they used to always print in English).
+  const locale = lang === "es" ? "es-US" : "en-US";
   // Remembered per browser so the schedule opens the way it was left (the client opens it every day).
   const prefs = useMemo<{ view?: View; hidden?: string[]; showUnassigned?: boolean; showCompleted?: boolean; showTasks?: boolean; showEstimates?: boolean; busyOnly?: boolean }>(() => {
     try { return JSON.parse(localStorage.getItem("schedule-prefs") ?? "{}"); } catch { return {}; }
@@ -240,15 +242,15 @@ export default function ScheduleCalendar({
   const weekTitle = (() => {
     const a = weekDays[0];
     const b = weekDays[6];
-    const mon = (d: Date) => d.toLocaleDateString(undefined, { month: "short" });
+    const mon = (d: Date) => d.toLocaleDateString(locale, { month: "short" });
     return a.getMonth() === b.getMonth()
       ? `${mon(a)} ${a.getDate()} – ${b.getDate()}, ${b.getFullYear()}`
       : `${mon(a)} ${a.getDate()} – ${mon(b)} ${b.getDate()}, ${b.getFullYear()}`;
   })();
   const title = view === "month"
-    ? anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    ? anchor.toLocaleDateString(locale, { month: "long", year: "numeric" })
     : view === "day"
-      ? anchor.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", year: "numeric" })
+      ? anchor.toLocaleDateString(locale, { weekday: "long", month: "short", day: "numeric", year: "numeric" })
       : weekTitle;
 
   // Employee panel scope (TEAM = everyone, TECH = employees, CONTRACTORS).
@@ -570,7 +572,7 @@ export default function ScheduleCalendar({
                   }
                   return (
                     <div key={c.key} className={`text-center text-xs font-semibold py-2 ${c.dateKey === todayKey ? "text-[#0891B2] bg-[#0891B2]/5" : "text-[#0F172A]"}`}>
-                      {c.date.toLocaleDateString(undefined, { weekday: "short" })} {c.date.getMonth() + 1}/{c.date.getDate()}
+                      {c.date.toLocaleDateString(locale, { weekday: "short" })} {c.date.getMonth() + 1}/{c.date.getDate()}
                       <div className="text-[10px] font-normal text-[#64748B]">{colJobs.length} {t("jobs")}</div>
                     </div>
                   );
@@ -660,7 +662,7 @@ export default function ScheduleCalendar({
       <RouteOrderDialog
         open={orderCol !== null}
         onClose={() => setOrderCol(null)}
-        title={orderCol ? `${orderCol.name} · ${fromKey(orderCol.dateKey).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}` : ""}
+        title={orderCol ? `${orderCol.name} · ${fromKey(orderCol.dateKey).toLocaleDateString(locale, { weekday: "long", month: "short", day: "numeric" })}` : ""}
         rows={orderRows}
         onApply={onRouteOrder}
       />

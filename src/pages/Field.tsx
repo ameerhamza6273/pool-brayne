@@ -365,7 +365,7 @@ export default function Field() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="font-medium text-sm text-[#0F172A] truncate">{job.customers?.name ?? "—"}</p>
-                  <Badge className={`${typeColors[job.type] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{job.type}</Badge>
+                  <Badge className={`${typeColors[job.type] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{t(job.type)}</Badge>
                 </div>
                 <p className="text-xs text-[#64748B]">{job.scheduled_time ?? "—"} &middot; {job.address}</p>
               </div>
@@ -439,7 +439,7 @@ export default function Field() {
               <div className="flex items-center justify-between p-2 rounded-lg bg-[#F8FAFC]">
                 <div className="flex items-center gap-2">
                   <Wrench className="w-4 h-4 text-[#0891B2]" />
-                  <span className="text-sm text-[#0F172A]">{currentJob.type}</span>
+                  <span className="text-sm text-[#0F172A]">{t(currentJob.type)}</span>
                 </div>
                 <span className="text-base font-bold text-[#0891B2]">${currentJob.amount.toFixed(2)}</span>
               </div>
@@ -559,7 +559,7 @@ export default function Field() {
                     <a key={d.id} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#F8FAFC]">
                       <FileText className="w-4 h-4 text-[#0891B2] shrink-0" />
                       <span className="flex-1 min-w-0 truncate text-[#0F172A]">{d.name}</span>
-                      {d.category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] shrink-0">{d.category}</span>}
+                      {d.category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] shrink-0">{t(d.category)}</span>}
                     </a>
                   ))}
                 {libraryDocuments.filter((d) => matchesQuery(librarySearch, [d.name, d.category, d.manufacturer])).length === 0 && (

@@ -1,3 +1,4 @@
+import { esDictionary } from "@/lib/es-dictionary";
 import { createContext, useContext, useState, useRef, useEffect, type ReactNode } from "react";
 
 type Lang = "en" | "es";
@@ -14,6 +15,8 @@ type LangCtx = {
 // Anything not listed here still gets translated automatically -- see the auto-translate cache
 // below -- this dict just avoids a flash-of-English + network call for common words.
 const dict: Record<string, string> = {
+  // Hand-checked Spanish for the whole app (see es-dictionary.ts); the entries below override it.
+  ...esDictionary,
   "Job Details": "Detalles del Trabajo", "Customer": "Cliente", "Scheduled": "Programado",
   "Assigned": "Asignado", "Address": "Dirección", "Description": "Descripción",
   "Line Items": "Artículos", "Customer Signature": "Firma del Cliente",
@@ -78,6 +81,9 @@ const dict: Record<string, string> = {
   "Edit price": "Editar precio", "Receipt Disclaimer": "Aviso en el recibo",
   "Techs with jobs": "Técnicos con trabajos", "Make a Request": "Hacer una solicitud",
   "Weekly Hours": "Horas semanales", "Action": "Acción", "Approve": "Aprobar", "Deny": "Rechazar",
+  // Form Builder field label: "Check Valve" (pool plumbing part) came out as "volume control".
+  "Check Valve?": "¿Válvula de retención?", "Check Valve": "Válvula de retención",
+  "Repair": "Reparación", "Maintenance": "Mantenimiento", "Weekly Maintenance": "Mantenimiento semanal",
   "Showing": "Mostrando", "Show all technicians": "Ver todos los técnicos", "Clear dates": "Borrar fechas",
   "Add document": "Agregar documento", "Use file name": "Usar nombre de archivo", "Document List": "Lista de documentos",
 };

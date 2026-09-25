@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { posApi, receiptNumber, type PosOrderDetail } from "@/lib/api/pos";
 import { settingsApi } from "@/lib/api/settings";
-import { printReceipt, type ReceiptBusiness } from "@/lib/pos-receipt";
+import { printReceipt, receiptLabels, type ReceiptBusiness } from "@/lib/pos-receipt";
 import { useLanguage } from "@/lib/language-context";
 
 // Client SMS 2026-09-25: "click a recent transaction and bring up a receipt, then give an option to edit (add
@@ -16,7 +16,9 @@ import { useLanguage } from "@/lib/language-context";
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
 
 export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: string | null; onClose: () => void; onSaved?: () => void }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  // Dates follow the chosen language (they used to always print in English).
+  const locale = lang === "es" ? "es-US" : "en-US";
   const [data, setData] = useState<PosOrderDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -54,11 +56,11 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
     const subtotal = Number(o.subtotal);
     const tax = Number(o.tax);
     const total = Number(o.total);
-    const methods = data.payments.length > 1 ? `Split (${data.payments.map((p) => p.method).join(" + ")})` : (data.payments[0]?.method ?? o.payment_method ?? "");
+    const methods = data.payments.length > 1 ? `${t("Split")} (${data.payments.map((p) => t(p.method)).join(" + ")})` : t(data.payments[0]?.method ?? o.payment_method ?? "");
     const ok = printReceipt({
       number: receiptNumber(o.id),
       date: new Date(o.created_at),
-      customer: o.customer_name ?? "Walk-in",
+      customer: o.customer_name ?? t("Walk-in"),
       lines: data.items.map((i) => ({ name: i.description, sku: i.sku ?? "", qty: Number(i.quantity), price: Number(i.unit_price) })),
       subtotal,
       // Discount isn't stored separately; it's whatever makes subtotal + tax reach the total.
@@ -67,7 +69,7 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
       total,
       payment: methods,
       note: note.trim() || null,
-    }, business);
+    }, business, receiptLabels(t, locale));
     setPrintBlocked(!ok);
     // Print window opens first (straight from the click, so pop-up blockers allow it), then the note is saved.
     if (dirty) await saveNote();
@@ -80,19 +82,19 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
         <DialogHeader>
           <DialogTitle>{t("Receipt")} {orderId ? receiptNumber(orderId) : ""}</DialogTitle>
         </DialogHeader>
-        {error && <p className="text-sm text-[#DC2626]">{error}</p>}
+        {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
         {!data && !error && <p className="text-sm text-[#64748B] py-6 text-center">{t("Loading...")}</p>}
         {data && o && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><p className="text-xs text-[#64748B]">{t("Date")}</p><p className="font-medium text-[#0F172A]">{new Date(o.created_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</p></div>
+              <div><p className="text-xs text-[#64748B]">{t("Date")}</p><p className="font-medium text-[#0F172A]">{new Date(o.created_at).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" })}</p></div>
               <div><p className="text-xs text-[#64748B]">{t("Customer")}</p><p className="font-medium text-[#0F172A]">{o.customer_name ?? t("Walk-in")}</p></div>
               {o.cashier_name && <div><p className="text-xs text-[#64748B]">{t("Cashier")}</p><p className="font-medium text-[#0F172A]">{o.cashier_name}</p></div>}
               <div>
                 <p className="text-xs text-[#64748B]">{t("Payment")}</p>
                 <div className="flex flex-wrap gap-1 mt-0.5">
                   {(data.payments.length ? data.payments : [{ method: o.payment_method ?? "—", amount: Number(o.total) }]).map((p, i) => (
-                    <Badge key={i} className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{p.method} {money(Number(p.amount))}</Badge>
+                    <Badge key={i} className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{t(p.method)} {money(Number(p.amount))}</Badge>
                   ))}
                 </div>
               </div>

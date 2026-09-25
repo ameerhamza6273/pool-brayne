@@ -17,7 +17,7 @@ import { posApi, receiptNumber, type SalesReport } from "@/lib/api/pos";
 import ReceiptDialog from "@/components/ReceiptDialog";
 import { customersApi } from "@/lib/api/customers";
 import { settingsApi } from "@/lib/api/settings";
-import { printReceipt, type ReceiptBusiness, type ReceiptData } from "@/lib/pos-receipt";
+import { printReceipt, receiptLabels, type ReceiptBusiness, type ReceiptData } from "@/lib/pos-receipt";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
@@ -51,7 +51,7 @@ const categoryColors: Record<string, string> = {
 const TAX_RATE = 0.0825;
 
 export default function PointOfSale() {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [isLoading, setIsLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<PosOrder[]>([]);
@@ -339,7 +339,7 @@ export default function PointOfSale() {
       lines = [{ method: "Cash", amount: 0 }];
     }
     const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(transactions.length + 1).padStart(3, "0")}`;
-    const paymentLabel = lines.length > 1 ? `Split (${lines.map((t) => t.method).join(" + ")})` : lines[0].method;
+    const paymentLabel = lines.length > 1 ? `${t("Split")} (${lines.map((l) => t(l.method)).join(" + ")})` : t(lines[0].method);
 
     const saved = await posApi.checkout({
       customerId,
@@ -362,7 +362,7 @@ export default function PointOfSale() {
     setCompletedSale({
       number, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0),
       receipt: {
-        number, date: new Date(), customer: customerName,
+        number, date: new Date(), customer: customerName === "Walk-in" ? t("Walk-in") : customerName,
         lines: cart.map((i) => ({ name: i.name, sku: i.sku, qty: i.qty, price: i.price })),
         subtotal, discount: discountAmount, tax, total, payment: paymentLabel, note: saleNote.trim() || null,
       },
@@ -692,7 +692,7 @@ export default function PointOfSale() {
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] hover:bg-[#F1F5F9] text-left"
             >
               <User className="w-4 h-4 text-[#64748B]" />
-              <span className="text-sm font-medium text-[#0F172A] flex-1 truncate">{customerName}</span>
+              <span className="text-sm font-medium text-[#0F172A] flex-1 truncate">{customerName === "Walk-in" ? t("Walk-in") : customerName}</span>
               <Plus className="w-4 h-4 text-[#0891B2]" />
             </button>
           </div>
@@ -874,7 +874,7 @@ export default function PointOfSale() {
                     <span className="block text-[10px] text-[#94A3B8]">{receiptNumber(tx.id)}</span>
                   </td>
                   <td className="py-3 px-4 font-medium text-[#0F172A]">
-                    {tx.customers?.name ?? "Walk-in"}
+                    {tx.customers?.name ?? t("Walk-in")}
                     {tx.note && <span className="block text-xs font-normal text-[#94A3B8] truncate max-w-[220px]" title={tx.note}>{tx.note}</span>}
                   </td>
                   <td className="py-3 px-4 text-right text-[#0F172A]">{tx.item_count}</td>
@@ -882,7 +882,7 @@ export default function PointOfSale() {
                   <td className="py-3 px-4 text-right text-[#0F172A]">${tx.tax.toFixed(2)}</td>
                   <td className="py-3 px-4 text-right font-semibold text-[#0F172A]">${tx.total.toFixed(2)}</td>
                   <td className="py-3 px-4 text-center">
-                    <Badge className={`text-[10px] px-2 py-0 ${tx.payment_method === "Cash" ? "bg-[#16A34A]/10 text-[#16A34A]" : tx.payment_method === "Card" ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#7C3AED]/10 text-[#7C3AED]"}`}>{tx.payment_method}</Badge>
+                    <Badge className={`text-[10px] px-2 py-0 ${tx.payment_method === "Cash" ? "bg-[#16A34A]/10 text-[#16A34A]" : tx.payment_method === "Card" ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#7C3AED]/10 text-[#7C3AED]"}`}>{t(tx.payment_method ?? "")}</Badge>
                   </td>
                   <td className="py-3 px-4 text-right">
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-[#0891B2]"><Receipt className="w-3.5 h-3.5" /> {t("Receipt")}</span>
@@ -1113,7 +1113,7 @@ export default function PointOfSale() {
               </div>
             )}
 
-            {saleError && <p className="text-sm text-[#DC2626]">{saleError}</p>}
+            {saleError && <p className="text-sm text-[#DC2626]">{t(saleError)}</p>}
             <Button
               className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2"
               disabled={!canComplete || submitting}
@@ -1166,7 +1166,7 @@ export default function PointOfSale() {
             )}
             {printBlocked && <p className="text-xs text-[#DC2626] mt-2">{t("The browser blocked the print window — allow pop-ups for this site and try again.")}</p>}
             <div className="flex gap-2 mt-5">
-              <Button variant="outline" className="flex-1 gap-2" onClick={() => { if (completedSale) setPrintBlocked(!printReceipt(completedSale.receipt, receiptBusiness)); }}>
+              <Button variant="outline" className="flex-1 gap-2" onClick={() => { if (completedSale) setPrintBlocked(!printReceipt(completedSale.receipt, receiptBusiness, receiptLabels(t, lang === "es" ? "es-US" : "en-US"))); }}>
                 <Printer className="w-4 h-4" /> {t("Print")}
               </Button>
               <Button className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2" onClick={() => setReceiptOpen(false)}>

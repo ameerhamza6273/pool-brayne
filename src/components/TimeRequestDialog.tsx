@@ -97,7 +97,7 @@ export default function TimeRequestDialog({
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
-          {error && <p className="text-sm text-[#DC2626]">{error}</p>}
+          {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
           <div className="flex gap-2 justify-end">
             <Button variant="outline" onClick={onClose}>{t("Cancel")}</Button>
             <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={saving} onClick={save}>{saving ? t("Saving...") : t("Send Request")}</Button>

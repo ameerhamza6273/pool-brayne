@@ -173,7 +173,7 @@ export default function RouteOrderDialog({
           {order.length === 0 && <p className="text-sm text-[#64748B] text-center py-6">{t("No stops on this day.")}</p>}
         </div>
 
-        {error && <p className="text-sm text-[#DC2626]">{error}</p>}
+        {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
         {done && (
           <p className="text-sm text-[#16A34A]">
             {t("Saved")}: {done.jobsTimed} {t("jobs timed")}, {done.seriesTimed} {t("repeating series updated")}{done.madeRecurring > 0 ? `, ${done.madeRecurring} ${t("made weekly")}` : ""}.

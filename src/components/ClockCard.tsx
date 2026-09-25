@@ -16,7 +16,9 @@ const two = (n: number) => String(n).padStart(2, "0");
 const fmtElapsed = (sec: number) => `${two(Math.floor(sec / 3600))}:${two(Math.floor((sec % 3600) / 60))}:${two(sec % 60)}`;
 
 export default function ClockCard({ name, onChange, compact }: { name: string; onChange?: () => void; compact?: boolean }) {
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
+  // Dates follow the chosen language (they used to always print in English).
+  const locale = lang === "es" ? "es-US" : "en-US";
   const [open, setOpen] = useState<TimeEntry | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -68,7 +70,7 @@ export default function ClockCard({ name, onChange, compact }: { name: string; o
               <p className="text-sm font-medium text-[#0F172A] truncate">{name}</p>
               {open ? (
                 <>
-                  <p className="text-xs text-[#64748B]">{t("Clocked in at")} {new Date(open.clock_in).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</p>
+                  <p className="text-xs text-[#64748B]">{t("Clocked in at")} {new Date(open.clock_in).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })}</p>
                   <p className="text-lg font-bold text-[#0891B2]">{fmtElapsed(elapsed)}</p>
                 </>
               ) : (
@@ -95,7 +97,7 @@ export default function ClockCard({ name, onChange, compact }: { name: string; o
             </Button>
           </div>
         </div>
-        {error && <p className="text-sm text-[#DC2626] mt-2">{error}</p>}
+        {error && <p className="text-sm text-[#DC2626] mt-2">{t(error)}</p>}
       </CardContent>
       <TimeRequestDialog open={requestOpen} onClose={() => setRequestOpen(false)} onSaved={onChange} />
     </Card>

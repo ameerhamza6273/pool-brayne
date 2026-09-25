@@ -183,7 +183,7 @@ function DocumentListCard() {
           ))}
           {items.length === 0 && <p className="text-xs text-[#64748B]">{t("No document types yet.")}</p>}
         </div>
-        {error && <p className="text-sm text-[#DC2626]">{error}</p>}
+        {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
       </CardContent>
     </Card>
   );
@@ -341,7 +341,7 @@ export default function DataTransfer() {
                     )}
                   </div>
                 )}
-                {errors[d.key] && <p className="text-sm text-[#DC2626]">{errors[d.key]}</p>}
+                {errors[d.key] && <p className="text-sm text-[#DC2626]">{t(errors[d.key] as string)}</p>}
               </CardContent>
             </Card>
           );
