@@ -2,8 +2,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Phone, MessageSquare, Mail, ArrowLeft, MapPin,
-  Wrench, FileText, Camera, Plus, Bell, CheckCircle2, Pencil, X, Trash2,
+  Wrench, FileText, Camera, Plus, Bell, CheckCircle2, Pencil, X, Trash2, Printer,
 } from "lucide-react";
+import ReceiptDialog from "@/components/ReceiptDialog";
+import { receiptNumber } from "@/lib/api/pos";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -59,6 +61,8 @@ export default function CustomerDetail() {
   const [photos, setPhotos] = useState<CustomerAttachment[]>([]);
   const [household, setHousehold] = useState<CustomerDetailBundle["household"]>([]);
   const [previousSales, setPreviousSales] = useState<PreviousSale[]>([]);
+  // Client SMS 2026-09-25: click a previous sale -> receipt (notes, print / re-print).
+  const [openSaleId, setOpenSaleId] = useState<string | null>(null);
   const [photoDragOver, setPhotoDragOver] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -748,7 +752,12 @@ export default function CustomerDetail() {
                 <CardContent className="p-0">
                   <div className="divide-y divide-[#F1F5F9]">
                     {previousSales.map((sale) => (
-                      <div key={sale.id} className="p-4">
+                      <div
+                        key={sale.id}
+                        className="p-4 cursor-pointer hover:bg-[#F8FAFC]"
+                        onClick={() => setOpenSaleId(sale.id)}
+                        title={t("Open the receipt — add notes, print or re-print")}
+                      >
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <div className="w-10 h-10 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0">
@@ -756,10 +765,13 @@ export default function CustomerDetail() {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-[#0F172A]">{new Date(sale.created_at).toLocaleDateString()}</p>
-                              <p className="text-xs text-[#64748B]">{sale.payment_method || t("In-store sale")}</p>
+                              <p className="text-xs text-[#64748B]">{receiptNumber(sale.id)} · {sale.payment_method || t("In-store sale")}</p>
                             </div>
                           </div>
-                          <p className="font-semibold text-[#0F172A]">${sale.total}</p>
+                          <div className="flex items-center gap-3">
+                            <p className="font-semibold text-[#0F172A]">${sale.total}</p>
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-[#0891B2]"><Printer className="w-3.5 h-3.5" /> {t("Receipt")}</span>
+                          </div>
                         </div>
                         <div className="pl-12 space-y-1">
                           {sale.items.map((item) => (
@@ -868,6 +880,7 @@ export default function CustomerDetail() {
           </div>
         </DialogContent>
       </Dialog>
+      <ReceiptDialog orderId={openSaleId} onClose={() => setOpenSaleId(null)} />
     </div>
   );
 }

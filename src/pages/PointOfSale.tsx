@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { posApi, type SalesReport } from "@/lib/api/pos";
+import { posApi, receiptNumber, type SalesReport } from "@/lib/api/pos";
+import ReceiptDialog from "@/components/ReceiptDialog";
 import { customersApi } from "@/lib/api/customers";
 import { settingsApi } from "@/lib/api/settings";
 import { printReceipt, type ReceiptBusiness, type ReceiptData } from "@/lib/pos-receipt";
@@ -107,6 +108,9 @@ export default function PointOfSale() {
   const [discountType, setDiscountType] = useState<"percent" | "amount">("percent");
   const [discountOpen, setDiscountOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  // Client SMS 2026-09-25: click a transaction -> receipt (notes, print / re-print); list can show more than 8.
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [txLimit, setTxLimit] = useState(8);
   // Client video 2026-09-25: edit a cart line's price (special order / material items). Only this sale's
   // line changes -- the catalog price stays as it is.
   const [priceEdit, setPriceEdit] = useState<{ index: number; value: string } | null>(null);
@@ -182,14 +186,14 @@ export default function PointOfSale() {
     setIsLoading(true);
     const [productsData, transactionsData, customersData] = await Promise.all([
       posApi.catalog(),
-      posApi.transactions(),
+      posApi.transactions(txLimit),
       customersApi.list(),
     ]);
     setProducts(productsData);
     setTransactions(transactionsData as PosOrder[]);
     setCustomers(customersData.map((c) => ({ id: c.id, name: c.name, address: c.address })));
     setIsLoading(false);
-  }, []);
+  }, [txLimit]);
 
   const runReport = useCallback(async () => {
     setReportLoading(true);
@@ -337,7 +341,7 @@ export default function PointOfSale() {
     const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(transactions.length + 1).padStart(3, "0")}`;
     const paymentLabel = lines.length > 1 ? `Split (${lines.map((t) => t.method).join(" + ")})` : lines[0].method;
 
-    await posApi.checkout({
+    const saved = await posApi.checkout({
       customerId,
       subtotal,
       tax,
@@ -354,10 +358,11 @@ export default function PointOfSale() {
       })),
     });
 
+    const number = saved?.id ? receiptNumber(saved.id) : num;
     setCompletedSale({
-      number: num, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0),
+      number, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0),
       receipt: {
-        number: num, date: new Date(), customer: customerName,
+        number, date: new Date(), customer: customerName,
         lines: cart.map((i) => ({ name: i.name, sku: i.sku, qty: i.qty, price: i.price })),
         subtotal, discount: discountAmount, tax, total, payment: paymentLabel, note: saleNote.trim() || null,
       },
@@ -840,7 +845,12 @@ export default function PointOfSale() {
       <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
         <div className="p-4 border-b border-[#E2E8F0] flex items-center justify-between">
           <h3 className="font-semibold text-[#0F172A]">{t("Recent Transactions")}</h3>
-          <Badge className="bg-[#F8FAFC] text-[#64748B] border border-[#E2E8F0]">{t("Last 8")}</Badge>
+          <div className="flex items-center gap-2">
+            <span className="hidden sm:inline text-xs text-[#94A3B8]">{t("Click a sale to view, add notes or re-print its receipt")}</span>
+            <Button variant="outline" size="sm" className="h-7 text-xs border-[#E2E8F0]" onClick={() => setTxLimit((l) => (l === 8 ? 100 : 8))}>
+              {txLimit === 8 ? t("Show more") : t("Show last 8")}
+            </Button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -853,12 +863,16 @@ export default function PointOfSale() {
                 <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Tax")}</th>
                 <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
                 <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Payment")}</th>
+                <th className="py-3 px-4" />
               </tr>
             </thead>
             <tbody>
               {transactions.map((tx) => (
-                <tr key={tx.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                  <td className="py-3 px-4 text-[#64748B]">{new Date(tx.created_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}</td>
+                <tr key={tx.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => setOpenOrderId(tx.id)}>
+                  <td className="py-3 px-4 text-[#64748B]">
+                    {new Date(tx.created_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                    <span className="block text-[10px] text-[#94A3B8]">{receiptNumber(tx.id)}</span>
+                  </td>
                   <td className="py-3 px-4 font-medium text-[#0F172A]">
                     {tx.customers?.name ?? "Walk-in"}
                     {tx.note && <span className="block text-xs font-normal text-[#94A3B8] truncate max-w-[220px]" title={tx.note}>{tx.note}</span>}
@@ -870,10 +884,13 @@ export default function PointOfSale() {
                   <td className="py-3 px-4 text-center">
                     <Badge className={`text-[10px] px-2 py-0 ${tx.payment_method === "Cash" ? "bg-[#16A34A]/10 text-[#16A34A]" : tx.payment_method === "Card" ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#7C3AED]/10 text-[#7C3AED]"}`}>{tx.payment_method}</Badge>
                   </td>
+                  <td className="py-3 px-4 text-right">
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[#0891B2]"><Receipt className="w-3.5 h-3.5" /> {t("Receipt")}</span>
+                  </td>
                 </tr>
               ))}
               {transactions.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{t("No transactions yet")}</td></tr>
+                <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">{t("No transactions yet")}</td></tr>
               )}
             </tbody>
           </table>
@@ -1108,6 +1125,8 @@ export default function PointOfSale() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ReceiptDialog orderId={openOrderId} onClose={() => setOpenOrderId(null)} onSaved={loadPos} />
 
       {/* Receipt disclaimer (client video 2026-09-25) */}
       <Dialog open={disclaimerOpen} onOpenChange={setDisclaimerOpen}>

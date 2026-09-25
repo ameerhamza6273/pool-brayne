@@ -23,12 +23,14 @@ export default async function posRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get("/transactions", async (req) => {
+  // limit: 8 by default (the old "Recent Transactions" list); "Show more" asks for up to 200.
+  app.get<{ Querystring: { limit?: string } }>("/transactions", async (req) => {
+    const limit = Math.min(Math.max(parseInt(req.query.limit ?? "8", 10) || 8, 1), 200);
     return withTenantContext(req.userId, async (tx) => {
       const ordersRaw = await tx`
         select po.*, jsonb_build_object('name', c.name) as customers
         from pos_orders po left join customers c on c.id = po.customer_id
-        order by po.created_at desc limit 8
+        order by po.created_at desc limit ${limit}
       `;
       const orders = ordersRaw as unknown as Order[];
       const orderIds = orders.map((o) => o.id);
@@ -37,6 +39,33 @@ export default async function posRoutes(app: FastifyInstance) {
       const counts: Record<string, number> = {};
       for (const oi of items) counts[oi.order_id] = (counts[oi.order_id] ?? 0) + oi.quantity;
       return orders.map((o) => ({ ...o, item_count: counts[o.id] ?? 0 }));
+    });
+  });
+
+  // Client SMS 2026-09-25: open a past sale as a receipt (POS Recent Transactions / Customer > Previous Sales),
+  // add notes to it, print / re-print.
+  app.get<{ Params: { id: string } }>("/orders/:id", async (req, reply) => {
+    return withTenantContext(req.userId, async (tx) => {
+      const [order] = await tx`
+        select po.*, c.name as customer_name, p.name as cashier_name
+        from pos_orders po left join customers c on c.id = po.customer_id left join profiles p on p.id = po.cashier_id
+        where po.id = ${req.params.id} limit 1
+      `;
+      if (!order) return reply.code(404).send({ error: "Sale not found" });
+      const [items, payments] = await Promise.all([
+        tx`select i.*, ii.sku from pos_order_items i left join inventory_items ii on ii.id = i.item_id where i.order_id = ${order.id} order by i.id`,
+        tx`select method, amount from pos_order_payments where order_id = ${order.id}`,
+      ]);
+      return { order, items, payments };
+    });
+  });
+
+  app.patch<{ Params: { id: string }; Body: { note: string | null } }>("/orders/:id/note", async (req, reply) => {
+    const note = (req.body?.note ?? "").trim() || null;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`update pos_orders set note = ${note} where id = ${req.params.id} returning id, note`;
+      if (!row) return reply.code(404).send({ error: "Sale not found" });
+      return row;
     });
   });
 
