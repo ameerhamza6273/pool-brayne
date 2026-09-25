@@ -116,7 +116,7 @@ Last updated: 2026-09-25
 6. ~~Documents folder (2026-09-18)~~ — answered by the 2026-09-25 video: built as Data › **Document List**.
 7. *(confirm only)* Inventory edit "need a drop down" — Manufacturer now suggests from a list; is that the field you meant?
 8. ~~Documents on Invoices~~ — built 2026-09-25 (dev decided, no client question): invoice page › Documents (upload, attach from Library, rename, delete; not printed).
-9. *(internal, not a client question)* 6 duplicate POS orders from the double-click bug (9/2: 1 × $243.53; 9/24: 2 × $169.94, 2 × $9.73, 1 × $5.40 extra copies) still in the DB; each also deducted 1 unit of stock. Cleanup (delete extras + restore stock) needs the dev's explicit OK — the auto-mode safety check blocked the automatic delete.
+9. ~~Duplicate POS orders from the double-click bug~~ — removed 2026-09-25 with the dev's OK (6 extra copies deleted, 8 stock units put back; first sale of each group kept).
 
 ## Not built (deliberately, no client request yet)
 
