@@ -584,7 +584,7 @@ export default function Jobs() {
         }
         return days.filter(inDateRange).map((day): ScheduleJob => ({
           id: `task:${k.id}:${day}`, kind: "task", refId: k.id, scheduled_date: day, scheduled_time: null, tech_id: k.tech_id,
-          stage: k.status === "Done" ? "completed" : "task", type: `${t("Task")}: ${k.type}`, description: k.notes, amount: 0,
+          stage: k.status === "Done" ? "completed" : "task", type: `${t("Task")}: ${t(k.type)}`, description: k.notes, amount: 0,
           address: k.address, customers: { name: k.customers?.name ?? "" },
         }));
       }),
@@ -1158,7 +1158,7 @@ export default function Jobs() {
               )}
               {quickTask && (
                 <>
-                  <DialogHeader><DialogTitle>{t("Task")}: {quickTask.type}</DialogTitle></DialogHeader>
+                  <DialogHeader><DialogTitle>{t("Task")}: {t(quickTask.type)}</DialogTitle></DialogHeader>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Customer")}</span><span className="font-medium text-right">{quickTask.customers?.name ?? "—"}</span></div>
                     {quickTask.address && <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Address")}</span><span className="text-right">{quickTask.address}</span></div>}
@@ -1215,7 +1215,7 @@ export default function Jobs() {
                     {recurringFiltered.map((rj) => (
                       <tr key={rj.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                         <td className="py-2.5 px-3 font-medium text-[#0F172A]">{rj.customers?.name ?? "—"}</td>
-                        <td className="py-2.5 px-3 text-[#64748B]">{rj.job_type}</td>
+                        <td className="py-2.5 px-3 text-[#64748B]">{t(rj.job_type)}</td>
                         <td className="py-2.5 px-3 text-[#64748B]">{rj.profiles?.name ?? t("Unassigned")}</td>
                         <td className="py-2.5 px-3 text-[#64748B]">{(rj.frequency === "weekly" ? t("Weekly") : rj.frequency === "biweekly" ? t("Every 2 weeks") : t("Monthly"))} · {t(repeatsOn(rj))}</td>
                         <td className="py-2.5 px-3 text-[#64748B]">{rj.start_time ? rj.start_time.slice(0, 5) : "—"}</td>
@@ -1253,7 +1253,7 @@ export default function Jobs() {
                       </Badge>
                     </div>
                     <div className="space-y-1 text-sm text-[#64748B]">
-                      <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {rj.job_type} · {t(repeatsOn(rj))}</p>
+                      <p className="flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> {t(rj.job_type)} · {t(repeatsOn(rj))}</p>
                       <p className="flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> {rj.profiles?.name ?? t("Unassigned")}</p>
                       <p className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {t("Since")} {rj.start_date}{rj.end_date ? ` · ${t("ends")} ${rj.end_date}` : ` · ${t("no end date")}`}</p>
                     </div>
