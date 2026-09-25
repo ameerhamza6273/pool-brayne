@@ -16,6 +16,7 @@ import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import DynamicForm from "@/components/DynamicForm";
 import DocumentsSection, { type DocumentAttachment } from "@/components/DocumentsSection";
+import ClockCard from "@/components/ClockCard";
 import { supabase } from "@/lib/supabase";
 import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
@@ -334,6 +335,9 @@ export default function Field() {
           </div>
         </div>
       </div>
+
+      {/* Client SMS 2026-09-25: techs clock in / out and make requests from their phone (they can only open /field). */}
+      <ClockCard name={user?.name ?? ""} compact />
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading your jobs...")}</div>}
 

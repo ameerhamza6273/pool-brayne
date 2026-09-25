@@ -10,7 +10,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { invoicingApi, type InvoiceDetailBundle } from "@/lib/api/invoicing";
+import { invoicingApi, type InvoiceDetailBundle, type InvoiceAttachment } from "@/lib/api/invoicing";
+import DocumentsSection from "@/components/DocumentsSection";
+import { libraryApi, type LibraryDocument } from "@/lib/api/library";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import { useLanguage } from "@/lib/language-context";
 import { laborFirst } from "@/lib/labor";
@@ -54,6 +58,47 @@ export default function InvoiceDetail() {
   const [writeOffOpen, setWriteOffOpen] = useState(false);
   const [writeOffReason, setWriteOffReason] = useState("");
   const [writingOff, setWritingOff] = useState(false);
+  // 2026-09-25: Documents on invoices -- same section as Jobs / Estimates (upload, attach from Library,
+  // rename, delete). Staff-only: hidden on the printed / PDF invoice.
+  const { tenantId } = useAuth();
+  const [documents, setDocuments] = useState<InvoiceAttachment[]>([]);
+  const [docsUploading, setDocsUploading] = useState(false);
+  const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocument[]>([]);
+  useEffect(() => {
+    if (!id) return;
+    invoicingApi.getInvoiceDocuments(id).then(setDocuments).catch(() => setDocuments([]));
+    libraryApi.list().then(setLibraryDocuments).catch(() => { /* upload still works */ });
+  }, [id]);
+  const refreshDocuments = () => { if (id) invoicingApi.getInvoiceDocuments(id).then(setDocuments); };
+  const handleUploadDocument = async (file: File, label: string) => {
+    if (!id || !tenantId) return;
+    setDocsUploading(true);
+    try {
+      const path = `${tenantId}/invoices/${id}/document-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      await invoicingApi.addInvoiceDocument(id, { url: data.publicUrl, label, filename: file.name });
+      refreshDocuments();
+    } finally {
+      setDocsUploading(false);
+    }
+  };
+  const handleAttachLibraryDocument = async (doc: LibraryDocument) => {
+    if (!id) return;
+    await invoicingApi.addInvoiceDocument(id, { url: doc.url, label: doc.name, filename: doc.filename });
+    refreshDocuments();
+  };
+  const handleRenameDocument = async (doc: { id: string }, label: string) => {
+    if (!id) return;
+    await invoicingApi.updateInvoiceDocumentLabel(id, doc.id, label);
+    setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, label } : d)));
+  };
+  const handleDeleteDocument = async (doc: { id: string }) => {
+    if (!id) return;
+    await invoicingApi.deleteInvoiceDocument(id, doc.id);
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  };
 
   const loadInvoice = useCallback(async () => {
     if (!id) return;
@@ -352,7 +397,7 @@ export default function InvoiceDetail() {
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
                       {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
-                      {li.notes && <p className="text-[11px] text-[#94A3B8]">{li.notes}</p>}
+                      {li.notes && <p className="text-[11px] text-[#94A3B8] whitespace-pre-wrap">{li.notes}</p>}
                     </td>
                     <td className="text-right py-2 text-[#64748B]">{li.quantity}</td>
                     <td className="text-right py-2 pl-3 text-[#64748B]">${li.rate.toFixed(2)}</td>
@@ -393,6 +438,19 @@ export default function InvoiceDetail() {
           )}
         </CardContent>
       </Card>
+
+      <div className="print:hidden">
+        <DocumentsSection
+          documents={documents}
+          onUpload={handleUploadDocument}
+          uploading={docsUploading}
+          libraryDocuments={libraryDocuments}
+          onAttachExisting={handleAttachLibraryDocument}
+          onRename={handleRenameDocument}
+          onDelete={handleDeleteDocument}
+          collapseWhenEmpty
+        />
+      </div>
     </div>
   );
 }

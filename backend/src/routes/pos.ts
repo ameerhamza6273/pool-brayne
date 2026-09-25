@@ -91,6 +91,16 @@ export default async function posRoutes(app: FastifyInstance) {
       return;
     }
 
+    // Client SMS 2026-09-25: one sale was being saved 2-3 times (Complete Sale clicked again while the first
+    // request was still running). An identical order from the same cashier within the last 10 seconds is
+    // treated as that same sale -- checked BEFORE any card is charged.
+    const recent = await withTenantContext(req.userId, (tx) => tx`
+      select id from pos_orders
+      where cashier_id = ${req.userId} and total = ${total} and created_at > now() - interval '10 seconds'
+      order by created_at desc limit 1
+    `) as unknown as { id: string }[];
+    if (recent.length > 0) return { id: recent[0].id, duplicate: true };
+
     // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
     // every Card tender line is charged BEFORE the order/stock changes are committed, so a
     // decline on any card leaves nothing behind. Cash/ACH/Check stay simulated (no real bank

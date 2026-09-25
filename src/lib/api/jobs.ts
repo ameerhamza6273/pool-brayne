@@ -57,6 +57,11 @@ export const jobsApi = {
   addAttachment: (jobId: string, data: { type: "photo" | "signature" | "document"; url: string; label?: string | null; filename?: string | null }) =>
     api.post<JobAttachment>(`/api/jobs/${jobId}/attachments`, data),
 
+  updateDocumentLabel: (jobId: string, attId: string, label: string | null) =>
+    api.patch<JobAttachment>(`/api/jobs/${jobId}/attachments/${attId}`, { label }),
+
+  deleteDocument: (jobId: string, attId: string) => api.del<void>(`/api/jobs/${jobId}/attachments/${attId}`),
+
   getLineItems: (jobId: string) => api.get<JobLineItem[]>(`/api/jobs/${jobId}/line-items`),
 
   saveLineItems: (jobId: string, lineItems: JobLineItemInput[]) =>

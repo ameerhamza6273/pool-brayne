@@ -9,7 +9,8 @@ export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { cust
 export type EstimateLineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
 export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null; po_number: string | null };
 
-export type EstimateAttachment = { id: string; estimate_id: string; url: string; label: string | null; filename: string | null; type: "document" | "photo"; created_at: string };
+export type InvoiceAttachment = { id: string; invoice_id: string; url: string; label: string | null; filename: string | null; created_at: string };
+export type EstimateAttachment ={ id: string; estimate_id: string; url: string; label: string | null; filename: string | null; type: "document" | "photo"; created_at: string };
 
 export type LineItemInput = {
   description: string;
@@ -117,6 +118,19 @@ export const invoicingApi = {
 
   addEstimateAttachment: (id: string, data: { url: string; label?: string | null; filename?: string | null; type?: "document" | "photo" }) =>
     api.post<EstimateAttachment>(`/api/invoices/estimates/${id}/attachments`, data),
+
+  // 2026-09-25: Documents on invoices.
+  getInvoiceDocuments: (id: string) => api.get<InvoiceAttachment[]>(`/api/invoices/${id}/attachments`),
+  addInvoiceDocument: (id: string, data: { url: string; label?: string | null; filename?: string | null }) =>
+    api.post<InvoiceAttachment>(`/api/invoices/${id}/attachments`, data),
+  updateInvoiceDocumentLabel: (id: string, attId: string, label: string | null) =>
+    api.patch<InvoiceAttachment>(`/api/invoices/${id}/attachments/${attId}`, { label }),
+  deleteInvoiceDocument: (id: string, attId: string) => api.del<void>(`/api/invoices/${id}/attachments/${attId}`),
+
+  updateEstimateDocumentLabel: (id: string, attId: string, label: string | null) =>
+    api.patch<EstimateAttachment>(`/api/invoices/estimates/${id}/attachments/${attId}`, { label }),
+
+  deleteEstimateDocument: (id: string, attId: string) => api.del<void>(`/api/invoices/estimates/${id}/attachments/${attId}`),
 
   vendorBills: () => api.get<VendorBill[]>("/api/invoices/vendor-bills/list"),
 

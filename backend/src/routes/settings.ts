@@ -104,6 +104,9 @@ const CONFIG_LIST_DEFAULTS: Record<string, { id: string; label: string; color?: 
   ].map((label) => ({ id: slugify(label), label })),
   library_manufacturers: ["Jandy", "Solaxx", "Raypak", "Century", "Pentair", "Intermatic"].map((label) => ({ id: slugify(label), label })),
   inventory_manufacturers: [],
+  // Client video 2026-09-25: the Documents upload label was a hardcoded 4-item list, so any other
+  // document (e.g. "Curing Process") got saved as "Sand Change Form". Now an editable Document List (Data page).
+  document_types: ["Sand Change Form", "Automation Checklist", "Weekly Service Form", "Other"].map((label) => ({ id: slugify(label), label })),
 };
 
 function slugify(label: string): string {
@@ -251,6 +254,29 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`
       update tenants set payroll_week_start_day = ${payrollWeekStartDay} where id = current_tenant_id() returning *
     `);
+  });
+
+  // Client video 2026-09-25: editable return/refund disclaimer printed at the bottom of every POS receipt.
+  app.get("/receipt", async (req) => {
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = (await tx`
+        select name, invoice_business_name, phone, address, receipt_disclaimer from tenants where id = current_tenant_id() limit 1
+      `) as unknown as { name: string; invoice_business_name: string | null; phone: string | null; address: string | null; receipt_disclaimer: string | null }[];
+      return {
+        businessName: row?.invoice_business_name || row?.name || "",
+        phone: row?.phone ?? "",
+        address: row?.address ?? "",
+        disclaimer: row?.receipt_disclaimer ?? "",
+      };
+    });
+  });
+
+  app.patch<{ Body: { disclaimer: string } }>("/receipt", async (req) => {
+    const disclaimer = (req.body.disclaimer ?? "").trim();
+    return withTenantContext(req.userId, async (tx) => {
+      await tx`update tenants set receipt_disclaimer = ${disclaimer || null} where id = current_tenant_id()`;
+      return { disclaimer };
+    });
   });
 
   app.patch<{ Body: { planId: string } }>("/plan", async (req) => {

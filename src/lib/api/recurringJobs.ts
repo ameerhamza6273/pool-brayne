@@ -45,7 +45,7 @@ export const recurringJobsApi = {
   fromJob: (jobId: string, data: { frequency: "weekly" | "biweekly" | "monthly"; dayOfWeek?: number | null; dayOfMonth?: number | null; endDate?: string | null }) =>
     api.post<RecurringJob>(`/api/recurring-jobs/from-job/${jobId}`, data),
   // Give one tech's stops for a day their standard times (and their series', so the order repeats weekly).
-  routeOrder: (items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean }[]) =>
+  routeOrder: (items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean }[]) =>
     api.post<{ jobsTimed: number; seriesTimed: number; madeRecurring: number }>("/api/recurring-jobs/route-order", { items }),
   makeOneTime: (id: string) => api.post<{ ok: boolean; jobId: string | null }>(`/api/recurring-jobs/${id}/make-one-time`),
 

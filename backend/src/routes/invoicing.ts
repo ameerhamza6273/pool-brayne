@@ -19,22 +19,22 @@ type LineItemInput = {
 // sku/cost/item_type line-item detail (client's "Pool Supply Atlanta" sample PDFs, 2026-08-28).
 async function insertInvoiceLineItems(tx: postgres.TransactionSql, invoiceId: string, tenantId: string, lineItems: LineItemInput[] | undefined) {
   if (!lineItems || lineItems.length === 0) return;
-  for (const li of lineItems) {
+  for (const [sortIdx, li] of lineItems.entries()) {
     const amount = li.quantity * li.rate;
     await tx`
-      insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes)
-      values (${tenantId}, ${invoiceId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null})
+      insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
+      values (${tenantId}, ${invoiceId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null}, ${sortIdx})
     `;
   }
 }
 
 async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: string, tenantId: string, lineItems: LineItemInput[] | undefined) {
   if (!lineItems || lineItems.length === 0) return;
-  for (const li of lineItems) {
+  for (const [sortIdx, li] of lineItems.entries()) {
     const amount = li.quantity * li.rate;
     await tx`
-      insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes)
-      values (${tenantId}, ${estimateId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null})
+      insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
+      values (${tenantId}, ${estimateId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null}, ${sortIdx})
     `;
   }
 }
@@ -98,7 +98,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           from invoices i left join customers c on c.id = i.customer_id
           where i.id = ${id} limit 1
         `,
-        tx`select * from invoice_line_items where invoice_id = ${id}`,
+        tx`select * from invoice_line_items where invoice_id = ${id} order by sort_order`,
         tx`select name, phone, address, city, state, zip, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
         // Client SMS 2026-09-21: the invoice document mirrors their old system's emailed PDF --
         // Date of Request/Service, Trip Details photos and dated "Service Performed" notes come
@@ -281,7 +281,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           from estimates e left join customers c on c.id = e.customer_id
           where e.id = ${id} limit 1
         `,
-        tx`select * from estimate_line_items where estimate_id = ${id}`,
+        tx`select * from estimate_line_items where estimate_id = ${id} order by sort_order`,
         tx`select name, phone, address, city, state, zip, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
       ]);
       return { estimate: estimateRows[0] ?? null, lineItems, business: tenantRows[0] ?? null };
@@ -354,6 +354,62 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     },
   );
 
+  // 2026-09-25: Documents on invoices (same behaviour as estimate / job documents).
+  app.get<{ Params: { id: string } }>("/:id/attachments", async (req) => {
+    return withTenantContext(req.userId, (tx) => tx`
+      select * from invoice_attachments where invoice_id = ${req.params.id} order by created_at
+    `);
+  });
+
+  app.post<{ Params: { id: string }; Body: { url: string; label?: string | null; filename?: string | null } }>("/:id/attachments", async (req) => {
+    const { url, label, filename } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        insert into invoice_attachments (tenant_id, invoice_id, url, label, filename)
+        values (current_tenant_id(), ${req.params.id}, ${url}, ${label ?? null}, ${filename ?? null}) returning *
+      `;
+      return row;
+    });
+  });
+
+  app.patch<{ Params: { id: string; attId: string }; Body: { label: string | null } }>("/:id/attachments/:attId", async (req) => {
+    const { id, attId } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        update invoice_attachments set label = ${req.body.label ?? null} where id = ${attId} and invoice_id = ${id} returning *
+      `;
+      return row ?? null;
+    });
+  });
+
+  app.delete<{ Params: { id: string; attId: string } }>("/:id/attachments/:attId", async (req) => {
+    const { id, attId } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      await tx`delete from invoice_attachments where id = ${attId} and invoice_id = ${id}`;
+      return { ok: true };
+    });
+  });
+
+  // Client video 2026-09-25: Edit (rename label) / Delete on estimate documents.
+  app.patch<{ Params: { id: string; attId: string }; Body: { label: string | null } }>("/estimates/:id/attachments/:attId", async (req) => {
+    const { id, attId } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        update estimate_attachments set label = ${req.body.label ?? null}
+        where id = ${attId} and estimate_id = ${id} returning *
+      `;
+      return row ?? null;
+    });
+  });
+
+  app.delete<{ Params: { id: string; attId: string } }>("/estimates/:id/attachments/:attId", async (req) => {
+    const { id, attId } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      await tx`delete from estimate_attachments where id = ${attId} and estimate_id = ${id}`;
+      return { ok: true };
+    });
+  });
+
   app.post<{
     Body: {
       customerId: string;
@@ -388,7 +444,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       if (!estimate) throw new Error("Estimate not found");
       if (estimate.converted_invoice_id) return { invoiceId: estimate.converted_invoice_id };
 
-      const estimateLineItems = (await tx`select * from estimate_line_items where estimate_id = ${id}`) as unknown as {
+      const estimateLineItems = (await tx`select * from estimate_line_items where estimate_id = ${id} order by sort_order`) as unknown as {
         description: string;
         sku: string | null;
         item_type: string;
@@ -406,10 +462,10 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         values (${tenant.id}, ${estimate.customer_id}, ${estimate.job_id}, ${invoiceNumber}, current_date, ${estimate.amount}, 'Draft', ${estimate.down_payment}, ${estimate.job_description})
         returning *
       `;
-      for (const li of estimateLineItems) {
+      for (const [sortIdx, li] of estimateLineItems.entries()) {
         await tx`
-          insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes)
-          values (${tenant.id}, ${invoice.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes})
+          insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
+          values (${tenant.id}, ${invoice.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes}, ${sortIdx})
         `;
       }
       await tx`update estimates set status = 'Converted', converted_invoice_id = ${invoice.id} where id = ${id}`;
@@ -427,7 +483,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       if (!estimate) throw new Error("Estimate not found");
       if (estimate.converted_job_id) return { jobId: estimate.converted_job_id };
 
-      const estimateLineItems = (await tx`select * from estimate_line_items where estimate_id = ${id}`) as unknown as {
+      const estimateLineItems = (await tx`select * from estimate_line_items where estimate_id = ${id} order by sort_order`) as unknown as {
         description: string;
         sku: string | null;
         item_type: string;
@@ -445,10 +501,10 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         values (${tenant.id}, ${estimate.customer_id}, 'Estimate', 'Booked', 'booked', ${estimate.job_description}, ${customer?.address ?? null}, ${estimate.amount})
         returning *
       `;
-      for (const li of estimateLineItems) {
+      for (const [sortIdx, li] of estimateLineItems.entries()) {
         await tx`
-          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes)
-          values (${tenant.id}, ${job.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes})
+          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
+          values (${tenant.id}, ${job.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes}, ${sortIdx})
         `;
       }
       await tx`update estimates set status = 'Converted', converted_job_id = ${job.id} where id = ${id}`;

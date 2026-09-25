@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   Search, ShoppingCart, Plus, Minus, Trash2, X, CreditCard,
   Banknote, FileText, Receipt, Percent, User, Package,
   TrendingUp, DollarSign, CheckCircle2, Printer,
-  ArrowRight, RotateCcw, PackagePlus, LayoutGrid, Table2, Star,
+  ArrowRight, RotateCcw, PackagePlus, LayoutGrid, Table2, Star, Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
+import { settingsApi } from "@/lib/api/settings";
+import { printReceipt, type ReceiptBusiness, type ReceiptData } from "@/lib/pos-receipt";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
@@ -105,6 +107,33 @@ export default function PointOfSale() {
   const [discountType, setDiscountType] = useState<"percent" | "amount">("percent");
   const [discountOpen, setDiscountOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  // Client video 2026-09-25: edit a cart line's price (special order / material items). Only this sale's
+  // line changes -- the catalog price stays as it is.
+  const [priceEdit, setPriceEdit] = useState<{ index: number; value: string } | null>(null);
+  // Client SMS 2026-09-25: "see the cost of an item if we right click on the price" (inventory list or
+  // current sale). Right-click toggles the cost in place; any left click elsewhere hides it again.
+  const [costShown, setCostShown] = useState<string | null>(null);
+  useEffect(() => {
+    if (!costShown) return;
+    const hide = () => setCostShown(null);
+    window.addEventListener("click", hide);
+    return () => window.removeEventListener("click", hide);
+  }, [costShown]);
+  const costOf = (itemId: string | null) => {
+    const prod = itemId ? products.find((x) => x.id === itemId) : undefined;
+    return prod ? `${t("Cost")}: ${Number(prod.unit_cost ?? 0).toFixed(2)}` : t("No cost (custom item)");
+  };
+  const priceContext = (key: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCostShown((cur) => (cur === key ? null : key));
+  };
+  const commitPriceEdit = () => {
+    if (!priceEdit) return;
+    const price = Math.round(parseFloat(priceEdit.value) * 100) / 100;
+    if (Number.isFinite(price) && price >= 0) setCart((prev) => prev.map((c, i) => (i === priceEdit.index ? { ...c, price } : c)));
+    setPriceEdit(null);
+  };
   // Client request 2026-09-02: sell items not in stock (inventory can go negative), sell a
   // negative quantity as a return, and ring up non-stock/material items that aren't in the
   // catalog at all.
@@ -112,8 +141,27 @@ export default function PointOfSale() {
   const [customItemOpen, setCustomItemOpen] = useState(false);
   const [customItem, setCustomItem] = useState({ description: "", price: "", qty: "1" });
   const [completedSale, setCompletedSale] = useState<{
-    number: string; total: number; payment: string; items: number;
+    number: string; total: number; payment: string; items: number; receipt: ReceiptData;
   } | null>(null);
+  // Client video 2026-09-25: editable return/refund disclaimer printed at the bottom of every receipt.
+  const [receiptBusiness, setReceiptBusiness] = useState<ReceiptBusiness>({ businessName: "", phone: "", address: "", disclaimer: "" });
+  const [disclaimerOpen, setDisclaimerOpen] = useState(false);
+  const [disclaimerDraft, setDisclaimerDraft] = useState("");
+  const [disclaimerSaving, setDisclaimerSaving] = useState(false);
+  const [printBlocked, setPrintBlocked] = useState(false);
+  useEffect(() => {
+    settingsApi.receipt().then(setReceiptBusiness).catch(() => { /* receipt still prints without the header/disclaimer */ });
+  }, []);
+  const saveDisclaimer = async () => {
+    setDisclaimerSaving(true);
+    try {
+      const { disclaimer } = await settingsApi.saveReceiptDisclaimer(disclaimerDraft);
+      setReceiptBusiness((b) => ({ ...b, disclaimer }));
+      setDisclaimerOpen(false);
+    } finally {
+      setDisclaimerSaving(false);
+    }
+  };
 
   const [reportStart, setReportStart] = useState(() => {
     const d = new Date();
@@ -215,6 +263,7 @@ export default function PointOfSale() {
   };
 
   const removeItem = (index: number) => {
+    setPriceEdit(null);
     setCart((prev) => prev.filter((_, idx) => idx !== index));
   };
 
@@ -256,8 +305,28 @@ export default function PointOfSale() {
 
   const removeTender = (index: number) => setTenderLines((prev) => prev.filter((_, i) => i !== index));
 
+  // Client SMS 2026-09-25: "when closing out a sale it shows up as three closed transactions" -- each extra
+  // click on Complete Sale while the first request was still running created another order (and deducted
+  // stock again). The ref blocks re-entry synchronously; the backend also refuses an identical repeat.
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [saleError, setSaleError] = useState<string | null>(null);
   const completeSale = async () => {
-    if (!canComplete) return;
+    if (!canComplete || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSaleError(null);
+    try {
+      await runCheckout();
+    } catch (err) {
+      setSaleError(err instanceof Error ? err.message : "The sale could not be completed.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const runCheckout = async () => {
     let lines = tenderLines;
     if (Math.abs(remainingTender) > 0.01) {
       lines = [{ method: tenderMethod, amount: round2(total) }];
@@ -285,7 +354,15 @@ export default function PointOfSale() {
       })),
     });
 
-    setCompletedSale({ number: num, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0) });
+    setCompletedSale({
+      number: num, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0),
+      receipt: {
+        number: num, date: new Date(), customer: customerName,
+        lines: cart.map((i) => ({ name: i.name, sku: i.sku, qty: i.qty, price: i.price })),
+        subtotal, discount: discountAmount, tax, total, payment: paymentLabel, note: saleNote.trim() || null,
+      },
+    });
+    setPrintBlocked(false);
     setPaymentOpen(false);
     setReceiptOpen(true);
     setCart([]);
@@ -312,6 +389,15 @@ export default function PointOfSale() {
           <p className="text-sm text-[#64748B] mt-0.5">{t("Register — linked to inventory in real time")}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white"
+            title={t("Return / refund disclaimer printed at the bottom of every receipt")}
+            onClick={() => { setDisclaimerDraft(receiptBusiness.disclaimer); setDisclaimerOpen(true); }}
+          >
+            <FileText className="w-4 h-4" />
+            <span className="hidden sm:inline">{t("Receipt Disclaimer")}</span>
+          </Button>
           <Button
             variant="outline"
             className={`h-10 gap-2 border-[#E2E8F0] bg-white ${returnMode ? "bg-[#DC2626]/10 border-[#DC2626] text-[#DC2626]" : "text-[#0F172A]"}`}
@@ -494,7 +580,9 @@ export default function PointOfSale() {
                       {p.item_number != null && <p className="text-[10px] text-[#64748B] font-mono mb-0.5">#{p.item_number}</p>}
                       <p className="text-sm font-semibold text-[#0F172A] leading-snug mb-1 line-clamp-2">{p.name}</p>
                       <p className="text-[10px] text-[#64748B] font-mono">{p.sku}</p>
-                      <p className="text-base font-bold text-[#0891B2] mt-2">${(p.price ?? 0).toFixed(2)}</p>
+                      <p className="text-base font-bold text-[#0891B2] mt-2" onContextMenu={priceContext(`p:${p.id}`)} title={t("Right-click to see the cost")}>
+                        {costShown === `p:${p.id}` ? <span className="text-[#F59E0B]">{costOf(p.id)}</span> : `${(p.price ?? 0).toFixed(2)}`}
+                      </p>
                     </button>
                   );
                 })}
@@ -539,7 +627,9 @@ export default function PointOfSale() {
                               <span className={`text-xs ${p.stock <= 5 ? "text-[#F59E0B]" : "text-[#64748B]"}`}>{p.stock}</span>
                             )}
                           </td>
-                          <td className="text-right py-2 px-3 font-semibold text-[#0891B2]">${(p.price ?? 0).toFixed(2)}</td>
+                          <td className="text-right py-2 px-3 font-semibold text-[#0891B2]" onContextMenu={priceContext(`p:${p.id}`)} title={t("Right-click to see the cost")}>
+                            {costShown === `p:${p.id}` ? <span className="text-[#F59E0B] whitespace-nowrap">{costOf(p.id)}</span> : `${(p.price ?? 0).toFixed(2)}`}
+                          </td>
                         </tr>
                       );
                     })}
@@ -617,7 +707,9 @@ export default function PointOfSale() {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-[#0F172A] truncate">{item.name}{item.qty < 0 ? ` (${t("Return")})` : ""}</p>
                       <p className="text-xs text-[#64748B]">
-                        ${item.price.toFixed(2)} / {item.unit}
+                        <span onContextMenu={priceContext(`c:${index}`)} title={t("Right-click to see the cost")}>
+                          {costShown === `c:${index}` ? <span className="text-[#F59E0B] font-semibold">{costOf(item.id)}</span> : <>${item.price.toFixed(2)} / {item.unit}</>}
+                        </span>
                         {" · "}
                         <button
                           type="button"
@@ -644,7 +736,32 @@ export default function PointOfSale() {
                       </button>
                     </div>
                     <div className="w-20 text-right">
-                      <p className={`text-sm font-bold ${item.qty < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>${(item.price * item.qty).toFixed(2)}</p>
+                      {priceEdit?.index === index ? (
+                        <input
+                          autoFocus
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          aria-label={t("Unit price")}
+                          className="w-full h-7 text-sm text-right border border-[#0891B2] rounded px-1 focus:outline-none"
+                          value={priceEdit.value}
+                          onChange={(e) => setPriceEdit({ index, value: e.target.value })}
+                          onBlur={commitPriceEdit}
+                          onKeyDown={(e) => { if (e.key === "Enter") commitPriceEdit(); if (e.key === "Escape") setPriceEdit(null); }}
+                        />
+                      ) : (
+                        <>
+                          <p className={`text-sm font-bold ${item.qty < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>${(item.price * item.qty).toFixed(2)}</p>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#0891B2] hover:underline"
+                            title={t("Change the unit price for this sale")}
+                            onClick={() => setPriceEdit({ index, value: item.price ? String(item.price) : "" })}
+                          >
+                            <Pencil className="w-2.5 h-2.5" /> {t("Edit price")}
+                          </button>
+                        </>
+                      )}
                     </div>
                     <button onClick={() => removeItem(index)} className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1 rounded">
                       <X className="w-4 h-4" />
@@ -979,14 +1096,33 @@ export default function PointOfSale() {
               </div>
             )}
 
+            {saleError && <p className="text-sm text-[#DC2626]">{saleError}</p>}
             <Button
               className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2"
-              disabled={!canComplete}
+              disabled={!canComplete || submitting}
               onClick={completeSale}
             >
               <CheckCircle2 className="w-5 h-5" />
-              {t("Complete Sale")} · {money(total)}
+              {submitting ? t("Processing...") : <>{t("Complete Sale")} · {money(total)}</>}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receipt disclaimer (client video 2026-09-25) */}
+      <Dialog open={disclaimerOpen} onOpenChange={setDisclaimerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{t("Receipt Disclaimer")}</DialogTitle></DialogHeader>
+          <p className="text-sm text-[#64748B]">{t("Printed at the bottom of every POS receipt. Leave empty for none.")}</p>
+          <Textarea
+            className="min-h-[120px] text-sm"
+            placeholder={t("e.g. Chemicals cannot be returned once they leave the store. Other items may be returned within 30 days with this receipt.")}
+            value={disclaimerDraft}
+            onChange={(e) => setDisclaimerDraft(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setDisclaimerOpen(false)}>{t("Cancel")}</Button>
+            <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={disclaimerSaving} onClick={saveDisclaimer}>{disclaimerSaving ? t("Saving...") : t("Save")}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1006,8 +1142,12 @@ export default function PointOfSale() {
               <div className="flex justify-between pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">{t("Total")}</span><span className="font-bold text-[#0891B2]">{completedSale ? money(completedSale.total) : ""}</span></div>
             </div>
             <p className="text-xs text-[#64748B] mt-3">{t("Inventory levels updated automatically.")}</p>
+            {receiptBusiness.disclaimer && (
+              <p className="text-[11px] text-[#64748B] mt-2 whitespace-pre-wrap border-t border-dashed border-[#E2E8F0] pt-2">{receiptBusiness.disclaimer}</p>
+            )}
+            {printBlocked && <p className="text-xs text-[#DC2626] mt-2">{t("The browser blocked the print window — allow pop-ups for this site and try again.")}</p>}
             <div className="flex gap-2 mt-5">
-              <Button variant="outline" className="flex-1 gap-2" onClick={() => setReceiptOpen(false)}>
+              <Button variant="outline" className="flex-1 gap-2" onClick={() => { if (completedSale) setPrintBlocked(!printReceipt(completedSale.receipt, receiptBusiness)); }}>
                 <Printer className="w-4 h-4" /> {t("Print")}
               </Button>
               <Button className="flex-1 bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2" onClick={() => setReceiptOpen(false)}>

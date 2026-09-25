@@ -240,7 +240,7 @@ export default function Settings() {
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading settings...")}</div>}
 
       {!isLoading && (
-      <Tabs defaultValue={qboStatus ? "integrations" : "company"} className="w-full">
+      <Tabs defaultValue={qboStatus ? "integrations" : new URLSearchParams(window.location.search).get("tab") || "company"} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="company" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Globe className="w-4 h-4" /> {t("Company")}

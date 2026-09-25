@@ -26,7 +26,7 @@ export default async function publicRoutes(app: FastifyInstance) {
     // Deliberately excludes `cost` (internal margin) — a customer must never see it.
     const lineItems = await sql`
       select description, sku, item_type, quantity, rate, amount, notes
-      from estimate_line_items where estimate_id = ${estimate.id}
+      from estimate_line_items where estimate_id = ${estimate.id} order by sort_order
     `;
     const [business] = await sql`
       select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name

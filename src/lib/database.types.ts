@@ -592,6 +592,7 @@ export type Database = {
           quantity: number
           rate: number
           sku: string | null
+          sort_order: number
           tenant_id: string
         }
         Insert: {
@@ -605,6 +606,7 @@ export type Database = {
           quantity?: number
           rate?: number
           sku?: string | null
+          sort_order?: number
           tenant_id: string
         }
         Update: {
@@ -618,6 +620,7 @@ export type Database = {
           quantity?: number
           rate?: number
           sku?: string | null
+          sort_order?: number
           tenant_id?: string
         }
         Relationships: [
@@ -788,6 +791,7 @@ export type Database = {
           quantity: number
           rate: number
           sku: string | null
+          sort_order: number
           tenant_id: string
         }
         Insert: {
@@ -801,6 +805,7 @@ export type Database = {
           quantity?: number
           rate?: number
           sku?: string | null
+          sort_order?: number
           tenant_id: string
         }
         Update: {
@@ -814,6 +819,7 @@ export type Database = {
           quantity?: number
           rate?: number
           sku?: string | null
+          sort_order?: number
           tenant_id?: string
         }
         Relationships: []
@@ -1888,6 +1894,7 @@ export type Database = {
           name: string
           phone: string | null
           plan_id: string | null
+          receipt_disclaimer: string | null
           subscription_status: string
         }
         Insert: {
@@ -1898,6 +1905,7 @@ export type Database = {
           name: string
           phone?: string | null
           plan_id?: string | null
+          receipt_disclaimer?: string | null
           subscription_status?: string
         }
         Update: {
@@ -1908,6 +1916,7 @@ export type Database = {
           name?: string
           phone?: string | null
           plan_id?: string | null
+          receipt_disclaimer?: string | null
           subscription_status?: string
         }
         Relationships: [

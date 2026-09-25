@@ -28,5 +28,10 @@ export const settingsApi = {
 
   savePayrollWeekStart: (payrollWeekStartDay: number) => api.patch("/api/settings/payroll", { payrollWeekStartDay }),
 
+  // Client video 2026-09-25: POS receipt header + editable return/refund disclaimer.
+  receipt: () => api.get<{ businessName: string; phone: string; address: string; disclaimer: string }>("/api/settings/receipt"),
+
+  saveReceiptDisclaimer: (disclaimer: string) => api.patch<{ disclaimer: string }>("/api/settings/receipt", { disclaimer }),
+
   selectPlan: (planId: string) => api.patch("/api/settings/plan", { planId }),
 };

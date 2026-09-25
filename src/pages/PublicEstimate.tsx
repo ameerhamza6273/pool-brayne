@@ -99,7 +99,7 @@ export default function PublicEstimate() {
                   <tr key={idx} className="border-b border-[#F1F5F9]">
                     <td className="py-2 text-[#0F172A]">
                       {li.description}
-                      {li.notes && <p className="text-xs text-[#94A3B8]">{li.notes}</p>}
+                      {li.notes && <p className="text-xs text-[#94A3B8] whitespace-pre-wrap">{li.notes}</p>}
                     </td>
                     <td className="text-right py-2 text-[#64748B]">{li.quantity}</td>
                     <td className="text-right py-2 font-medium text-[#0F172A]">${li.amount.toFixed(2)}</td>

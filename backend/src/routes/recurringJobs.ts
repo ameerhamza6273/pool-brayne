@@ -178,7 +178,7 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
   // job on that date yet (projected on the calendar) just get their standard time; jobs that aren't
   // recurring can optionally be made weekly at the same time.
   app.post<{
-    Body: { items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean }[] };
+    Body: { items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean }[] };
   }>("/route-order", async (req, reply) => {
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     if (items.length > 300) return reply.code(400).send({ error: "Too many stops in one request" });
@@ -188,6 +188,13 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
       for (const it of items) {
         const time = /^\d{2}:\d{2}/.test(it.time) ? it.time.slice(0, 5) : null;
         if (!time) continue;
+        // Client SMS 2026-09-25: a "temporary" reorder only re-times this day's real jobs.
+        if (it.permanent === false) {
+          if (!it.jobId) continue;
+          const [job] = (await tx`update jobs set scheduled_time = ${time} where id = ${it.jobId} returning id`) as unknown as { id: string }[];
+          if (job) summary.jobsTimed++;
+          continue;
+        }
         if (it.jobId) {
           const [job] = (await tx`update jobs set scheduled_time = ${time} where id = ${it.jobId} returning id, recurring_job_id`) as unknown as { id: string; recurring_job_id: string | null }[];
           if (!job) continue;

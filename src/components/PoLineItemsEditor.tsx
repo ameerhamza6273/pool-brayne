@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import NumberField from "@/components/NumberField";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { useLanguage } from "@/lib/language-context";
 import type { ItemWithStock, PoLineItemInput } from "@/lib/api/inventory";
@@ -78,7 +79,7 @@ export default function PoLineItemsEditor({
               </div>
               <div>
                 <label className="text-[10px] text-[#64748B]">{t("Unit Cost")}</label>
-                <Input type="number" value={li.unitCost} onChange={(e) => update(idx, { unitCost: parseFloat(e.target.value) || 0 })} className="h-8 text-sm" />
+                <NumberField value={li.unitCost} onValueChange={(n) => update(idx, { unitCost: n })} className="h-8 text-sm" />
               </div>
             </div>
             <p className="text-right text-xs font-medium text-[#0F172A]">{t("Amount")}: ${(li.quantity * li.unitCost).toFixed(2)}</p>

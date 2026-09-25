@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Search, X, CheckCircle2, Repeat, ListOrdered } from "lucide-react";
+import { ChevronLeft, ChevronRight, Search, X, CheckCircle2, Repeat, ListOrdered, FileText, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/lib/language-context";
@@ -27,6 +27,10 @@ export interface ScheduleJob {
   // Projected occurrence of a recurring job that hasn't been created yet (shown dashed, read-only).
   virtual?: boolean;
   recurringId?: string;
+  // Client video 2026-09-25: tasks and open estimates can be shown on the schedule too (read-only chips,
+  // click = quick view). `refId` is the task / estimate id.
+  kind?: "task" | "estimate";
+  refId?: string;
 }
 
 export interface ScheduleTech {
@@ -47,6 +51,13 @@ const DEFAULT_DURATION_MIN = 60;
 
 // Client SMS 2026-09-21: "it's very busy" -- month cells show this many jobs, then "+N more" (opens that day).
 const MONTH_CHIP_CAP = 5;
+
+// Client video 2026-09-25: "make that a drag ... so I can expand it and view it as a whole instead of
+// scrolling through each one" -- the employee list, the "Other" (no start time) row and the hourly grid
+// each get a drag handle on their bottom edge. Sizes are remembered per browser; defaults = the old fixed sizes.
+type SizeKey = "panel" | "other" | "grid";
+const DEFAULT_SIZES: Record<SizeKey, number> = { panel: 720, other: 150, grid: 560 };
+const ESTIMATE_COLOR = "#6366F1";
 
 const STAGE_CHIPS = [
   { id: "lead", label: "Lead" },
@@ -113,7 +124,11 @@ function layoutDay(jobs: ScheduleJob[]): Placed[] {
 export default function ScheduleCalendar({
   jobs, technicians, onOpenJob, onReschedule, onNewJob, onUnschedule,
   allJobs, recurring, typeColors, dateFrom, dateTo, onOpenRecurring, onColorChange, onRouteOrder,
+  extras = [], onOpenExtra,
 }: {
+  // Tasks + open estimates (client video 2026-09-25), already narrowed by the page's top filters.
+  extras?: ScheduleJob[];
+  onOpenExtra?: (kind: "task" | "estimate", id: string) => void;
   jobs: ScheduleJob[];
   technicians: ScheduleTech[];
   // Every real job (unfiltered) -- used to find where each recurring series currently ends.
@@ -133,7 +148,7 @@ export default function ScheduleCalendar({
 }) {
   const { t } = useLanguage();
   // Remembered per browser so the schedule opens the way it was left (the client opens it every day).
-  const prefs = useMemo<{ view?: View; hidden?: string[]; showUnassigned?: boolean; showCompleted?: boolean }>(() => {
+  const prefs = useMemo<{ view?: View; hidden?: string[]; showUnassigned?: boolean; showCompleted?: boolean; showTasks?: boolean; showEstimates?: boolean; busyOnly?: boolean }>(() => {
     try { return JSON.parse(localStorage.getItem("schedule-prefs") ?? "{}"); } catch { return {}; }
   }, []);
   const [view, setView] = useState<View>(prefs.view ?? "week");
@@ -141,9 +156,42 @@ export default function ScheduleCalendar({
   const [hiddenTechIds, setHiddenTechIds] = useState<Set<string>>(new Set(prefs.hidden ?? []));
   const [showUnassigned, setShowUnassigned] = useState(prefs.showUnassigned ?? true);
   const [showCompleted, setShowCompleted] = useState(prefs.showCompleted ?? true);
+  // Client video 2026-09-25: 3rd filter box "Tasks" (off by default = the schedule looks as before), and
+  // open estimates sit under "Unassigned" (they have no tech) so they can be looked at from the schedule.
+  const [showTasks, setShowTasks] = useState(prefs.showTasks ?? false);
+  const [showEstimates, setShowEstimates] = useState(prefs.showEstimates ?? true);
+  // Client SMS 2026-09-25: "techs with jobs" -- only list employees who have something in the period on screen.
+  const [busyOnly, setBusyOnly] = useState(prefs.busyOnly ?? false);
   useEffect(() => {
-    try { localStorage.setItem("schedule-prefs", JSON.stringify({ view, hidden: [...hiddenTechIds], showUnassigned, showCompleted })); } catch { /* storage unavailable */ }
-  }, [view, hiddenTechIds, showUnassigned, showCompleted]);
+    try { localStorage.setItem("schedule-prefs", JSON.stringify({ view, hidden: [...hiddenTechIds], showUnassigned, showCompleted, showTasks, showEstimates, busyOnly })); } catch { /* storage unavailable */ }
+  }, [view, hiddenTechIds, showUnassigned, showCompleted, showTasks, showEstimates, busyOnly]);
+  const [sizes, setSizes] = useState<Record<SizeKey, number>>(() => {
+    try { return { ...DEFAULT_SIZES, ...JSON.parse(localStorage.getItem("schedule-sizes") ?? "{}") }; } catch { return DEFAULT_SIZES; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("schedule-sizes", JSON.stringify(sizes)); } catch { /* storage unavailable */ }
+  }, [sizes]);
+  const startResize = (e: React.PointerEvent, key: SizeKey) => {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = sizes[key];
+    const move = (ev: PointerEvent) => setSizes((prev) => ({ ...prev, [key]: Math.round(Math.min(2400, Math.max(80, startH + ev.clientY - startY))) }));
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const resizeHandle = (key: SizeKey, className = "") => (
+    <div
+      role="separator"
+      aria-orientation="horizontal"
+      title={t("Drag to make this section bigger or smaller (double-click to reset)")}
+      onPointerDown={(e) => startResize(e, key)}
+      onDoubleClick={() => setSizes((prev) => ({ ...prev, [key]: DEFAULT_SIZES[key] }))}
+      className={`h-3 cursor-row-resize touch-none select-none items-center justify-center group ${className || "flex"}`}
+    >
+      <span className="w-12 h-1 rounded-full bg-[#CBD5E1] group-hover:bg-[#0891B2]" />
+    </div>
+  );
   const [orderCol, setOrderCol] = useState<{ techId: string | null | undefined; dateKey: string; name: string } | null>(null);
   const [quick, setQuick] = useState<string | null>(null);
   const [group, setGroup] = useState<Group>("tech");
@@ -239,7 +287,8 @@ export default function ScheduleCalendar({
         customers: { name: rj.customers?.name ?? "" }, virtual: true, recurringId: rj.id,
       }));
   });
-  const scheduled = [...jobs.filter((j) => j.scheduled_date), ...ghosts];
+  const shownExtras = extras.filter((x) => x.scheduled_date && (x.kind === "task" ? showTasks : showEstimates));
+  const scheduled = [...jobs.filter((j) => j.scheduled_date), ...ghosts, ...shownExtras];
   // Everything except the quick-filter chip (chip counts are computed from this).
   const shownBase = scheduled.filter((j) => {
     if (j.tech_id ? hiddenTechIds.has(j.tech_id) : !showUnassigned) return false;
@@ -249,14 +298,17 @@ export default function ScheduleCalendar({
   const inRange = shownBase.filter((j) => rangeKeys.has(j.scheduled_date as string));
   const visible = inRange.filter((j) => {
     if (!quick) return true;
-    return quick === "unassigned" ? !j.tech_id : j.stage === quick;
+    if (quick === "unassigned") return !j.tech_id;
+    if (quick === "task" || quick === "estimate") return j.kind === quick;
+    return !j.kind && j.stage === quick;
   });
   const countByTech = new Map<string, number>();
   for (const j of scheduled) {
-    if (!j.tech_id || !rangeKeys.has(j.scheduled_date as string)) continue;
+    if (j.kind || !j.tech_id || !rangeKeys.has(j.scheduled_date as string)) continue;
     if (!showCompleted && j.stage === "completed") continue;
     countByTech.set(j.tech_id, (countByTech.get(j.tech_id) ?? 0) + 1);
   }
+  const listed = busyOnly ? people.filter((p) => (countByTech.get(p.id) ?? 0) > 0) : people;
   const jobsOn = (key: string) => visible.filter((j) => j.scheduled_date === key);
 
   const slotTime = (e: React.MouseEvent | React.DragEvent, el: HTMLElement, snap: "round" | "floor") => {
@@ -288,25 +340,31 @@ export default function ScheduleCalendar({
   };
 
   const colorFor = (j: ScheduleJob) =>
-    colorMode === "type" ? (typeColors[j.type] ?? unassignedColor) : (j.tech_id ? techDotColor(j.tech_id) : unassignedColor);
+    j.kind === "estimate" ? ESTIMATE_COLOR : colorMode === "type" ? (typeColors[j.type] ?? unassignedColor) : (j.tech_id ? techDotColor(j.tech_id) : unassignedColor);
 
   const jobChip = (j: ScheduleJob, extra?: React.CSSProperties, showTime = true) => {
     const min = timeToMin(j.scheduled_time);
     const chipColor = colorFor(j);
-    const label = `${showTime && min !== null ? `${fmtTime(min)} ` : ""}${j.customers?.name ?? t("Unassigned")}`;
+    const label = `${showTime && min !== null ? `${fmtTime(min)} ` : ""}${j.customers?.name || t("Unassigned")}`;
+    const fixed = j.virtual || !!j.kind;
     return (
       <div
         key={j.id}
-        draggable={!j.virtual}
-        onDragStart={(e) => { if (j.virtual) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.setData("text/job-id", j.id); e.dataTransfer.effectAllowed = "move"; }}
-        onClick={(e) => { e.stopPropagation(); if (j.virtual && j.recurringId) onOpenRecurring(j.recurringId); else onOpenJob(j.id); }}
-        title={j.virtual ? `${tipOf(j)}\n${t("Recurring — not created yet. Click to open the series.")}` : tipOf(j)}
-        className={`group text-[10px] leading-tight px-1.5 py-0.5 rounded overflow-hidden ${j.virtual ? "border border-dashed cursor-pointer opacity-80" : "border-l-2 cursor-grab active:cursor-grabbing"}`}
+        draggable={!fixed}
+        onDragStart={(e) => { if (fixed) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.setData("text/job-id", j.id); e.dataTransfer.effectAllowed = "move"; }}
+        onClick={(e) => { e.stopPropagation(); if (j.kind && j.refId) onOpenExtra?.(j.kind, j.refId); else if (j.virtual && j.recurringId) onOpenRecurring(j.recurringId); else onOpenJob(j.id); }}
+        title={j.virtual ? `${tipOf(j)}\n${t("Recurring — not created yet. Click to open the series.")}` : j.kind ? `${tipOf(j)}\n${t("Click for a quick view.")}` : tipOf(j)}
+        className={`group text-[10px] leading-tight px-1.5 py-0.5 rounded overflow-hidden ${j.virtual ? "border border-dashed cursor-pointer opacity-80" : j.kind ? "border border-dotted cursor-pointer" : "border-l-2 cursor-grab active:cursor-grabbing"}`}
         style={{ backgroundColor: `${chipColor}1A`, color: chipColor, borderColor: chipColor, ...extra }}
       >
         <div className="flex items-center justify-between gap-1">
-          <span className="truncate font-medium">{j.virtual && <Repeat className="w-2.5 h-2.5 inline mr-0.5 -mt-px" />}{label}</span>
-          {j.virtual ? null : j.stage === "completed" ? <CheckCircle2 className="w-3 h-3 shrink-0 text-[#16A34A]" /> : (
+          <span className="truncate font-medium">
+            {j.virtual && <Repeat className="w-2.5 h-2.5 inline mr-0.5 -mt-px" />}
+            {j.kind === "estimate" && <FileText className="w-2.5 h-2.5 inline mr-0.5 -mt-px" />}
+            {j.kind === "task" && <ClipboardList className="w-2.5 h-2.5 inline mr-0.5 -mt-px" />}
+            {label}
+          </span>
+          {j.kind ? null : j.virtual ? null : j.stage === "completed" ? <CheckCircle2 className="w-3 h-3 shrink-0 text-[#16A34A]" /> : (
             <button className="opacity-0 group-hover:opacity-100 shrink-0" title={t("Remove from schedule")} onClick={(e) => { e.stopPropagation(); onUnschedule(j.id); }}>
               <X className="w-2.5 h-2.5" />
             </button>
@@ -323,7 +381,7 @@ export default function ScheduleCalendar({
   const dayKey = toKey(anchor);
   const gridCols: GridCol[] = view === "day"
     ? [
-        ...people.filter((p) => !hiddenTechIds.has(p.id)).map((p) => ({ key: `${dayKey}:${p.id}`, dateKey: dayKey, date: anchor, techId: p.id as string | null, name: p.name })),
+        ...listed.filter((p) => !hiddenTechIds.has(p.id)).map((p) => ({ key: `${dayKey}:${p.id}`, dateKey: dayKey, date: anchor, techId: p.id as string | null, name: p.name })),
         ...(showUnassigned ? [{ key: `${dayKey}:none`, dateKey: dayKey, date: anchor, techId: null as string | null, name: t("Unassigned") }] : []),
       ]
     : columns.map((d) => ({ key: toKey(d), dateKey: toKey(d), date: d, techId: undefined, name: "" }));
@@ -331,7 +389,7 @@ export default function ScheduleCalendar({
     jobsOn(c.dateKey).filter((j) => c.techId === undefined || (c.techId === null ? !j.tech_id : j.tech_id === c.techId));
 
   const orderRows = orderCol
-    ? jobsInCol({ key: "", dateKey: orderCol.dateKey, date: fromKey(orderCol.dateKey), techId: orderCol.techId, name: orderCol.name }).map((j) => ({
+    ? jobsInCol({ key: "", dateKey: orderCol.dateKey, date: fromKey(orderCol.dateKey), techId: orderCol.techId, name: orderCol.name }).filter((j) => !j.kind).map((j) => ({
         key: j.id,
         jobId: j.virtual ? null : j.id,
         recurringId: j.virtual ? (j.recurringId ?? null) : (j.recurring_job_id ?? null),
@@ -348,7 +406,7 @@ export default function ScheduleCalendar({
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[290px_minmax(0,1fr)] gap-4 items-start">
       {/* Employee panel */}
-      <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-3 space-y-3 lg:max-h-[720px] flex flex-col">
+      <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-3 space-y-3 lg:max-h-[var(--panel-h)] flex flex-col" style={{ "--panel-h": `${sizes.panel}px` } as React.CSSProperties}>
         <div className="relative shrink-0">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
           <Input value={peopleSearch} onChange={(e) => setPeopleSearch(e.target.value)} placeholder={t("Search Professional")} className="pl-8 h-9 text-sm" />
@@ -356,6 +414,9 @@ export default function ScheduleCalendar({
         <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 text-xs text-[#0F172A] shrink-0">
           <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={allShown} onChange={toggleAll} /> {t("Select All")}</label>
           <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={showCompleted} onChange={(e) => setShowCompleted(e.target.checked)} /> {t("Show Completed Jobs")}</label>
+          <label className="flex items-center gap-1.5 cursor-pointer" title={t("Show tasks (Estimates › Tasks) on their dates")}><input type="checkbox" checked={showTasks} onChange={(e) => setShowTasks(e.target.checked)} /> {t("Tasks")}</label>
+          <label className="flex items-center gap-1.5 cursor-pointer" title={t("Show open estimates under Unassigned on their date")}><input type="checkbox" checked={showEstimates} onChange={(e) => setShowEstimates(e.target.checked)} /> {t("Estimates")}</label>
+          <label className="flex items-center gap-1.5 cursor-pointer col-span-2" title={t("Only list employees who have a job in the dates on screen")}><input type="checkbox" checked={busyOnly} onChange={(e) => setBusyOnly(e.target.checked)} /> {t("Techs with jobs")}</label>
         </div>
         <div className="grid grid-cols-3 border border-[#E2E8F0] rounded-md overflow-hidden text-[10px] font-semibold shrink-0">
           {([["team", "TEAM"], ["tech", "TECH"], ["contractors", "CONTRACTORS"]] as [Group, string][]).map(([g, label]) => (
@@ -363,7 +424,7 @@ export default function ScheduleCalendar({
           ))}
         </div>
         <div className="overflow-y-auto -mx-1 px-1 space-y-1 min-h-0 max-h-[420px] lg:max-h-none">
-          {people.map((p) => {
+          {listed.map((p) => {
             const on = !hiddenTechIds.has(p.id);
             const color = draftColors[p.id] ?? techDotColor(p.id);
             return (
@@ -392,7 +453,7 @@ export default function ScheduleCalendar({
               </div>
             );
           })}
-          {people.length === 0 && <p className="text-xs text-[#64748B] py-3 text-center">{t("No one matches.")}</p>}
+          {listed.length === 0 && <p className="text-xs text-[#64748B] py-3 text-center">{t("No one matches.")}</p>}
           <button onClick={() => setShowUnassigned((v) => !v)} className={`w-full flex items-center gap-2.5 p-2 rounded-lg text-left border ${showUnassigned ? "bg-white border-[#E2E8F0]" : "bg-[#F8FAFC] border-transparent opacity-60"}`}>
             <span className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: unassignedColor }}>?</span>
             <span className="flex-1 text-sm font-semibold text-[#64748B]">{t("Unassigned")}</span>
@@ -401,6 +462,7 @@ export default function ScheduleCalendar({
             </span>
           </button>
         </div>
+        {resizeHandle("panel", "hidden lg:flex shrink-0 -mb-1")}
       </div>
 
       {/* Calendar */}
@@ -489,7 +551,7 @@ export default function ScheduleCalendar({
               <div className="grid border-b border-[#E2E8F0]" style={{ gridTemplateColumns: `52px repeat(${gridCols.length}, minmax(0, 1fr))` }}>
                 <div />
                 {gridCols.map((c) => {
-                  const colJobs = jobsInCol(c);
+                  const colJobs = jobsInCol(c).filter((j) => !j.kind);
                   if (view === "day") {
                     const total = colJobs.reduce((sum, j) => sum + Number(j.amount ?? 0), 0);
                     return (
@@ -526,15 +588,17 @@ export default function ScheduleCalendar({
                       onDragLeave={() => setDragOverKey((cur) => (cur === `other-${c.key}` ? null : cur))}
                       onDrop={(e) => handleDrop(e, c.dateKey, undefined, c.techId)}
                       onClick={() => onNewJob(c.dateKey, undefined, c.techId)}
-                      className={`border-l border-[#E2E8F0] p-1 min-h-[34px] max-h-[150px] overflow-y-auto space-y-1 cursor-pointer ${dragOverKey === `other-${c.key}` ? "bg-[#0891B2]/10" : ""}`}
+                      className={`border-l border-[#E2E8F0] p-1 min-h-[34px] overflow-y-auto space-y-1 cursor-pointer ${dragOverKey === `other-${c.key}` ? "bg-[#0891B2]/10" : ""}`}
+                      style={{ maxHeight: sizes.other }}
                     >
                       {untimed.map((j) => jobChip(j, undefined, false))}
                     </div>
                   );
                 })}
               </div>
+              {resizeHandle("other", "flex border-b border-[#E2E8F0]")}
               {/* Hourly grid */}
-              <div className="max-h-[560px] overflow-y-auto">
+              <div className="overflow-y-auto" style={{ maxHeight: sizes.grid }}>
                 <div className="grid" style={{ gridTemplateColumns: `52px repeat(${gridCols.length}, minmax(0, 1fr))` }}>
                   <div>
                     {hours.map((h) => (
@@ -568,6 +632,7 @@ export default function ScheduleCalendar({
                   })}
                 </div>
               </div>
+              {resizeHandle("grid", "flex border-t border-[#E2E8F0]")}
             </div>
             )}
           </div>
@@ -575,7 +640,12 @@ export default function ScheduleCalendar({
 
         {/* Quick filters — counts are for what's on screen */}
         <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-[#E2E8F0]">
-          {[{ id: "unassigned", label: "Unassigned Jobs", count: inRange.filter((j) => !j.tech_id).length }, ...STAGE_CHIPS.map((s) => ({ id: s.id, label: s.label, count: inRange.filter((j) => j.stage === s.id).length }))].map((c) => (
+          {[
+            { id: "unassigned", label: "Unassigned Jobs", count: inRange.filter((j) => !j.tech_id && !j.kind).length },
+            ...STAGE_CHIPS.map((s) => ({ id: s.id, label: s.label, count: inRange.filter((j) => !j.kind && j.stage === s.id).length })),
+            ...(showEstimates ? [{ id: "estimate", label: "Estimates", count: inRange.filter((j) => j.kind === "estimate").length }] : []),
+            ...(showTasks ? [{ id: "task", label: "Tasks", count: inRange.filter((j) => j.kind === "task").length }] : []),
+          ].map((c) => (
             <button
               key={c.id}
               onClick={() => setQuick((cur) => (cur === c.id ? null : c.id))}

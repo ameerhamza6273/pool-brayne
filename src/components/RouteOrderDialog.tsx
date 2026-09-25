@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,9 @@ export interface RouteRow {
   repeats: boolean;
 }
 
-export interface RouteOrderItem { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean }
+// permanent = false (client SMS 2026-09-25, "ask us if this change is temporary or permanent"): only this day's
+// real jobs get the new times; repeating series keep their standard time. Omitted = permanent (old behaviour).
+export interface RouteOrderItem { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean }
 export interface RouteOrderSummary { jobsTimed: number; seriesTimed: number; madeRecurring: number }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -48,6 +50,9 @@ export default function RouteOrderDialog({
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState<RouteOrderSummary | null>(null);
   const [error, setError] = useState("");
+  const [scope, setScope] = useState<"permanent" | "temporary">("permanent");
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   // Start from the order the stops already run in (by time, then name), earliest existing time as the start.
   // Keyed on the set of stops (not the array identity) so a parent re-render doesn't wipe the user's ordering.
@@ -66,6 +71,7 @@ export default function RouteOrderDialog({
     setWeekly(new Set());
     setDone(null);
     setError("");
+    setScope("permanent");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rowsKey]);
 
@@ -79,6 +85,19 @@ export default function RouteOrderDialog({
     [next[i], next[j]] = [next[j], next[i]];
     return next;
   });
+  // Client SMS 2026-09-25: drag a stop up / down to change the order.
+  const dropAt = (to: number) => {
+    if (dragIndex === null || dragIndex === to) return;
+    setOrder((prev) => {
+      const next = [...prev];
+      const [row] = next.splice(dragIndex, 1);
+      next.splice(to, 0, row);
+      return next;
+    });
+  };
+  const anyRepeats = order.some((r) => r.repeats);
+  const temporary = anyRepeats && scope === "temporary";
+
   const toggleWeekly = (key: string) => setWeekly((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -89,7 +108,7 @@ export default function RouteOrderDialog({
     setSaving(true);
     setError("");
     try {
-      setDone(await onApply(order.map((r, i) => ({ jobId: r.jobId, recurringId: r.recurringId, time: timeFor(i), repeatWeekly: weekly.has(r.key) }))));
+      setDone(await onApply(order.map((r, i) => ({ jobId: r.jobId, recurringId: r.recurringId, time: timeFor(i), repeatWeekly: !temporary && weekly.has(r.key), permanent: !temporary }))));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't save the route order");
     }
@@ -108,15 +127,38 @@ export default function RouteOrderDialog({
           <div><Label>{t("Minutes per stop")}</Label><Input type="number" min={5} step={5} className="mt-1" value={minutes} onChange={(e) => setMinutes(e.target.value)} /></div>
         </div>
 
+        {anyRepeats && (
+          <div className="rounded-lg border border-[#F59E0B]/40 bg-[#F59E0B]/5 p-3 space-y-1.5 text-sm">
+            <p className="font-medium text-[#0F172A]">{t("Some of these stops repeat every week. Is this change temporary or permanent?")}</p>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" className="mt-1" checked={scope === "permanent"} onChange={() => setScope("permanent")} />
+              <span><b>{t("Permanent")}</b> — {t("every week keeps this order and these times.")}</span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" className="mt-1" checked={scope === "temporary"} onChange={() => setScope("temporary")} />
+              <span><b>{t("Temporary")}</b> — {t("only this day changes; next week goes back to the usual order. (Stops shown dashed, not created yet, are left as they are.)")}</span>
+            </label>
+          </div>
+        )}
+
         <div className="border border-[#E2E8F0] rounded-lg divide-y divide-[#F1F5F9] max-h-[42vh] overflow-y-auto">
           {order.map((r, i) => (
-            <div key={r.key} className="flex items-center gap-2 px-3 py-2">
+            <div
+              key={r.key}
+              draggable
+              onDragStart={(e) => { setDragIndex(i); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.key); }}
+              onDragOver={(e) => { e.preventDefault(); setOverIndex(i); }}
+              onDrop={(e) => { e.preventDefault(); dropAt(i); setDragIndex(null); setOverIndex(null); }}
+              onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+              className={`flex items-center gap-2 px-3 py-2 cursor-grab active:cursor-grabbing ${dragIndex === i ? "opacity-50" : ""} ${overIndex === i && dragIndex !== null && dragIndex !== i ? "bg-[#0891B2]/10" : ""}`}
+            >
+              <GripVertical className="w-4 h-4 text-[#CBD5E1] shrink-0" />
               <span className="w-6 h-6 rounded-full bg-[#0891B2]/10 text-[#0891B2] text-xs font-bold flex items-center justify-center shrink-0">{i + 1}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-[#0F172A] truncate">{r.label}</p>
                 <p className="text-[11px] text-[#64748B] truncate">{r.sub}{r.repeats ? ` · ${t("repeats")}` : ""}</p>
               </div>
-              {!r.repeats && r.jobId && (
+              {!temporary && !r.repeats && r.jobId && (
                 <label className="flex items-center gap-1 text-[11px] text-[#64748B] cursor-pointer shrink-0" title={t("Make this job repeat every week at this time")}>
                   <input type="checkbox" checked={weekly.has(r.key)} onChange={() => toggleWeekly(r.key)} /> {t("Repeat weekly")}
                 </label>

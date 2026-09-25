@@ -195,6 +195,18 @@ export default function JobDetail() {
     jobsApi.getAttachments(id).then((docs) => setDocuments(docs.filter((a) => a.type === "document")));
   };
 
+  // Client video 2026-09-25: Edit / Delete on documents.
+  const handleRenameDocument = async (doc: { id: string }, label: string) => {
+    if (!id) return;
+    await jobsApi.updateDocumentLabel(id, doc.id, label);
+    setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, label } : d)));
+  };
+  const handleDeleteDocument = async (doc: { id: string }) => {
+    if (!id) return;
+    await jobsApi.deleteDocument(id, doc.id);
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  };
+
   const loadJob = () => {
     if (!id) return;
     setIsLoading(true);
@@ -1149,7 +1161,7 @@ export default function JobDetail() {
                         <Wrench className="w-4 h-4 text-[#0891B2]" />
                         <div>
                           <p className="text-sm font-medium text-[#0F172A]">{li.description}</p>
-                          {li.notes && <p className="text-xs text-[#94A3B8] italic">{li.notes}</p>}
+                          {li.notes && <p className="text-xs text-[#94A3B8] italic whitespace-pre-wrap">{li.notes}</p>}
                           <p className="text-xs text-[#64748B]">{li.sku ? `${li.sku} · ` : ""}{li.quantity} × ${li.rate.toFixed(2)}{li.item_type === "labor" ? ` · ${t("Labor")}` : ""}</p>
                         </div>
                       </div>
@@ -1203,6 +1215,9 @@ export default function JobDetail() {
             uploading={docsUploading}
             libraryDocuments={libraryDocuments}
             onAttachExisting={handleAttachLibraryDocument}
+            onRename={handleRenameDocument}
+            onDelete={handleDeleteDocument}
+            collapseWhenEmpty
           />
 
           {/* Client PDF 2026-09-18: "put the forms under documents" -- Service Forms now render

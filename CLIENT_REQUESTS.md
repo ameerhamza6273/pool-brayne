@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-09-23
+Last updated: 2026-09-25
 
 ---
 
@@ -36,6 +36,12 @@ Last updated: 2026-09-23
 | Schedule is too busy to look at every day | ✅ | Month view shows 5 jobs per day + "+N more" (opens that day); **only** button next to each employee = look at one person in one click; the schedule reopens the way you left it (view + employees) |
 | Pipeline / Dispatch board drag-and-drop | ✅ | Jobs & Dispatch |
 | Maps active / Schedule active (was "not active") | ✅ | Map and Schedule tabs are live and interactive |
+| *(2026-09-25)* **Tasks** filter box on the schedule (3rd box) | ✅ | Schedule › left panel › "Tasks" (off by default); tasks show on their dates, click = quick view |
+| *(2026-09-25)* New estimates linked to **Unassigned** + quick view | ✅ | Schedule › open estimates sit in Unassigned on their date ("Estimates" box, on by default); click one = popup with lines + "Open Estimate"; the top Search finds them |
+| *(2026-09-25)* Drag to make schedule sections bigger ("Other" row, hourly grid, employee list) | ✅ | Grab the grey bar under each section and drag down; double-click resets |
+| *(2026-09-25)* "Techs with jobs" check box | ✅ | Schedule › left panel › "Techs with jobs" = only people with something in the dates on screen |
+| *(2026-09-25)* Drag jobs up/down to change a tech's stop order; ask temporary or permanent for recurring | ✅ | Schedule › day view › list icon in the tech's column (Route order): drag rows; if any stop repeats you pick **Permanent** or **Temporary (this day only)** |
+| *(2026-09-25)* Technician filter defaults to whoever signs in; date range defaults to today + Today/Week/Month buttons | ✅ | Jobs & Dispatch top row (Pipeline). Schedule/Dispatch keep showing everyone until the filter is changed by hand |
 
 ## 2. Point of Sale, Estimates, Invoices
 
@@ -53,6 +59,15 @@ Last updated: 2026-09-23
 | Company logo on invoices | 🟡 | Needs the logo file from the client |
 | Pop-ups (New Estimate, New Task, Purchase Order) at 90% of the screen | ✅ | Those dialogs |
 | Printing: no browser date/page-number header/footer; no menus on the printout | ✅ | Inventory labels (Avery + Zebra) now print as clean PDFs; PO / invoice / estimate print |
+| *(2026-09-25)* POS: edit the price of an item in the current sale | ✅ | POS › cart line › "Edit price" under the line total (this sale only, catalog price unchanged) |
+| *(2026-09-25)* POS: see the cost by right-clicking a price | ✅ | Right-click any price in the product list or the current sale; click anywhere to hide |
+| *(2026-09-25)* POS: editable return/refund disclaimer on every printed receipt | ✅ | POS › "Receipt Disclaimer" button (top); receipt › Print now prints a real receipt with it at the bottom |
+| *(2026-09-25)* POS: one sale showed up as 3 closed transactions | ✅ fixed | Double-clicking Complete Sale saved it again; now blocked (button shows Processing…, server refuses an identical repeat) |
+| *(2026-09-25)* Remove the default "0" in price boxes | ✅ | Estimate / Invoice / Job line items + PO unit cost start empty |
+| *(2026-09-25)* Estimate line items: Category + Manufacturer dropdowns like POS | ✅ | Each line item, above Description (narrows "Pick from inventory") |
+| *(2026-09-25)* Drag line items up/down | ✅ | Grip on the left of each line (estimate, invoice, job); the order is saved |
+| *(2026-09-25)* Notes under each line item (explain / serial #) | ✅ | Notes box under each line's description; prints under the item |
+| *(2026-09-25)* No empty Documents section on estimates / jobs | ✅ | With no documents it's just an "Add document" button |
 
 ## 3. Inventory, Library, Data
 
@@ -64,6 +79,8 @@ Last updated: 2026-09-23
 | **Delete a SKU** with a "this is permanent" confirmation | ✅ | Inventory › Catalog › red trash icon next to the pencil. SKUs already used on a job or written off can't be deleted (the popup says why) so history is kept |
 | Customer CSV: front gate code, house gate code, padlock code, access notes | ✅ | Data › Import / Export › Customer List (template + export include them; same fields as the customer page's Gate Codes card) |
 | **CSV import & export** for Customers, Inventory, Vendors, Inventory Categories, Inventory Manufacturers, Library Categories, Library Manufacturers | ✅ | Data › **Import / Export** |
+| *(2026-09-25)* **Document List** under Data (upload labels were stuck on "Sand Change Form") | ✅ | Data › Import / Export › **Document List** card (add / rename / delete). Uploads default to "Use file name" |
+| *(2026-09-25)* Edit / Delete buttons on documents | ✅ | Documents on a Job, an Estimate and an **Invoice** (pencil = rename, trash = remove) |
 | Reminders: show address under the customer's name | ✅ | Reports › Reminders, and every customer picker |
 | Reminders: add your own labels to the dropdown (Filter cleaning, Salt cell cleaning, Sand change, Anode replacement, …) | ✅ | Reminder label dropdown › "+ Add new label…" ; manage in Settings › Job Settings › Reminder Types |
 | Dropdown lists no longer hang outside pop-ups (max 150px, scrollbar) | ✅ | Every dialog in the app |
@@ -72,9 +89,20 @@ Last updated: 2026-09-23
 
 | Request | Status | Where to find it |
 |---|---|---|
+| *(2026-09-25)* Clock in / out from the phone + make requests | ✅ | Technician Field › top card |
 | Order: job description → existing photos → parts/materials → documents → library → before/after photos → forms → job notes → internal notes/photos | ✅ | Technician Field › open a job |
 
 ---
+
+## 5. Timesheets
+
+| Request | Status | Where to find it |
+|---|---|---|
+| *(2026-09-25)* Add employees | ✅ | Timesheets lists everyone on the team; "Add Employee" opens Settings › Team |
+| *(2026-09-25)* Edit times, add missed time, notes | ✅ | Timesheets › click an employee row (or +) › edit / delete / Add time, each with notes |
+| *(2026-09-25)* Clock in / clock out that really saves | ✅ | Timesheets top card (and the tech Field view); saved immediately, survives refresh |
+| *(2026-09-25)* Make requests; approve / deny requests | ✅ | "Make a Request" (time off, sick day, time correction); Timesheets › Requests › Approve / Deny with a reply |
+| Browse other weeks | ✅ | Arrows next to "Week of" |
 
 ## Still needed from the client (send once, together)
 
@@ -83,8 +111,10 @@ Last updated: 2026-09-23
 3. **POS returns:** refund back to the customer's card, or cash/check only?
 4. One SMS line was cut off: *"Allow us the option to click on an option to click…"* — what was the rest?
 5. **Inventory (2026-09-18 list):** *"Remove the original in inventory list (default list we started with)"* — which list? A leftover demo category, or the old imported product list?
-6. **Documents (2026-09-18 list):** *"Need a Document folder to put from 'Document List'"* — folders inside Library, or a Documents section on each Job/Estimate?
+6. ~~Documents folder (2026-09-18)~~ — answered by the 2026-09-25 video: built as Data › **Document List**.
 7. *(confirm only)* Inventory edit "need a drop down" — Manufacturer now suggests from a list; is that the field you meant?
+8. ~~Documents on Invoices~~ — built 2026-09-25 (dev decided, no client question): invoice page › Documents (upload, attach from Library, rename, delete; not printed).
+9. *(internal, not a client question)* 6 duplicate POS orders from the double-click bug (9/2: 1 × $243.53; 9/24: 2 × $169.94, 2 × $9.73, 1 × $5.40 extra copies) still in the DB; each also deducted 1 unit of stock. Cleanup (delete extras + restore stock) needs the dev's explicit OK — the auto-mode safety check blocked the automatic delete.
 
 ## Not built (deliberately, no client request yet)
 

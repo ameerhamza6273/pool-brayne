@@ -24,12 +24,15 @@ import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
 import { geocodeAddress, geocodeApproximate } from "@/lib/geocode";
 import { fetchRoadRoute } from "@/lib/routing";
 import { useLanguage } from "@/lib/language-context";
+import { useAuth } from "@/lib/auth-context";
 import { customerOption } from "@/lib/customer-options";
 import { techDotColor, techStyle, unassignedColor, registerTechColors } from "@/lib/tech-colors";
 import { matchesQuery } from "@/lib/search";
 import { repeatsOn } from "@/lib/recurring";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
-import ScheduleCalendar from "@/components/ScheduleCalendar";
+import ScheduleCalendar, { type ScheduleJob } from "@/components/ScheduleCalendar";
+import { invoicingApi, type Estimate, type EstimateLineItem } from "@/lib/api/invoicing";
+import { tasksApi, type FreeformTask } from "@/lib/api/tasks";
 import type { Database } from "@/lib/database.types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -97,11 +100,26 @@ export default function Jobs() {
     if (tab === "pipeline" || tab === "dispatch" || tab === "schedule" || tab === "map") setActiveTab(tab);
   }, [searchParams]);
   const [search, setSearch] = useState("");
-  const [techFilter, setTechFilter] = useState("all");
+  const [techFilter, setTechFilterState] = useState("all");
+  // Client SMS 2026-09-25: Technician defaults to whoever signs in, and the date range to today (with quick
+  // Today / Week / Month buttons). These automatic defaults are only used where they make sense -- the
+  // Schedule keeps its own employee panel + calendar navigation, the Dispatch board still shows every tech's
+  // column, and the Map has its own date -- until someone changes the filter by hand, which then applies everywhere
+  // like before. The default "today" range never hides unscheduled jobs (leads have no date yet).
+  const { profileId } = useAuth();
+  const [techTouched, setTechTouched] = useState(false);
+  const [dateTouched, setDateTouched] = useState(false);
+  const setTechFilter = (v: string) => { setTechTouched(true); setTechFilterState(v); };
   const [typeFilter, setTypeFilter] = useState("all");
   const [newJobOpen, setNewJobOpen] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [technicians, setTechnicians] = useState<Profile[]>([]);
+  // Client video 2026-09-25: tasks + open estimates on the Schedule (loaded the first time the tab opens).
+  const [scheduleTasks, setScheduleTasks] = useState<FreeformTask[]>([]);
+  const [scheduleEstimates, setScheduleEstimates] = useState<Estimate[]>([]);
+  const extrasLoadedRef = useRef(false);
+  const [quickView, setQuickView] = useState<{ kind: "task" | "estimate"; id: string } | null>(null);
+  const [quickLines, setQuickLines] = useState<EstimateLineItem[] | null>(null);
   // Client PDF 2026-09-05: "+New Recurring" next to "+New Job" -- real recurring-job schedule
   // replacing the old read-only, never-linked-to-real-jobs recurring_routes display.
   const [recurringJobs, setRecurringJobs] = useState<RecurringJob[]>([]);
@@ -116,8 +134,18 @@ export default function Jobs() {
   // (customer, technician, day of the week, job type); Search row gets a date range.
   const [recSearch, setRecSearch] = useState("");
   const [recView, setRecView] = useViewMode("recurring-jobs");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const [dateFrom, setDateFromState] = useState(() => localKey(new Date()));
+  const [dateTo, setDateToState] = useState(() => localKey(new Date()));
+  const setDateFrom = (v: string) => { setDateTouched(true); setDateFromState(v); };
+  const setDateTo = (v: string) => { setDateTouched(true); setDateToState(v); };
+  const setQuickRange = (range: "today" | "week" | "month") => {
+    const now = new Date();
+    const from = range === "today" ? now : range === "week" ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = range === "today" ? now : range === "week" ? new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6) : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setDateFrom(localKey(from));
+    setDateTo(localKey(to));
+  };
   const [oneTimeTarget, setOneTimeTarget] = useState<RecurringJob | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", selectedFormIds: [] as string[] });
@@ -157,6 +185,11 @@ export default function Jobs() {
     inventoryApi.summary().then((data) => setInventoryItems(data.items));
     formTemplatesApi.list().then((data) => setFormTemplates(data ?? []));
   }, [loadJobs]);
+
+  useEffect(() => {
+    if (techTouched || !profileId) return;
+    if (technicians.some((p) => p.id === profileId)) setTechFilterState(profileId);
+  }, [technicians, profileId, techTouched]);
 
   const toggleNewJobForm = (templateId: string) => {
     setNewJob((p) => ({
@@ -341,22 +374,39 @@ export default function Jobs() {
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
   };
 
+  useEffect(() => {
+    if (activeTab !== "schedule" || extrasLoadedRef.current) return;
+    extrasLoadedRef.current = true;
+    tasksApi.list().then((d) => setScheduleTasks(d ?? [])).catch(() => { /* schedule still works without tasks */ });
+    invoicingApi.estimates().then((d) => setScheduleEstimates(d ?? [])).catch(() => { /* ...or estimates */ });
+  }, [activeTab]);
+
+  useEffect(() => {
+    setQuickLines(null);
+    if (quickView?.kind !== "estimate") return;
+    invoicingApi.estimateDetail(quickView.id).then((d) => setQuickLines(d.lineItems ?? [])).catch(() => setQuickLines([]));
+  }, [quickView]);
+
   // Client SMS 2026-09-21: the Search / Technician / Job Type row above the tabs narrows every tab.
+  const effTech = !techTouched && (activeTab === "schedule" || activeTab === "dispatch") ? "all" : techFilter;
+  const useDates = dateTouched || activeTab === "pipeline" || activeTab === "dispatch";
+  const effFrom = useDates ? dateFrom : "";
+  const effTo = useDates ? dateTo : "";
   const passesTopFilters = (j: Job) =>
     ((j.customers?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (j.address ?? "").toLowerCase().includes(search.toLowerCase()) ||
       j.type.toLowerCase().includes(search.toLowerCase())) &&
-    (techFilter === "all" || (techFilter === "unassigned" ? !j.tech_id : j.tech_id === techFilter)) &&
+    (effTech === "all" || (effTech === "unassigned" ? !j.tech_id : j.tech_id === effTech)) &&
     (typeFilter === "all" || j.type === typeFilter) &&
-    (!dateFrom || (!!j.scheduled_date && j.scheduled_date >= dateFrom)) &&
-    (!dateTo || (!!j.scheduled_date && j.scheduled_date <= dateTo));
+    (!effFrom || (j.scheduled_date ? j.scheduled_date >= effFrom : !dateTouched)) &&
+    (!effTo || (j.scheduled_date ? j.scheduled_date <= effTo : !dateTouched));
 
   // The same Search / Technician / Job Type filters applied to a recurring series (used for its projected dates).
   const passesRecurringFilters = (rj: RecurringJob) =>
     ((rj.customers?.name ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (rj.address ?? "").toLowerCase().includes(search.toLowerCase()) ||
       rj.job_type.toLowerCase().includes(search.toLowerCase())) &&
-    (techFilter === "all" || (techFilter === "unassigned" ? !rj.tech_id : rj.tech_id === techFilter)) &&
+    (effTech === "all" || (effTech === "unassigned" ? !rj.tech_id : rj.tech_id === effTech)) &&
     (typeFilter === "all" || rj.job_type === typeFilter);
   const recurringFiltered = recurringJobs.filter((rj) => matchesQuery(recSearch, [rj.customers?.name, rj.profiles?.name, repeatsOn(rj), rj.job_type, rj.frequency]));
   const typeColors = Object.fromEntries(configLists.job_types.map((jt) => [jt.label, jt.color ?? unassignedColor]));
@@ -497,6 +547,44 @@ export default function Jobs() {
   // Client SMS 2026-09-21: tech + job-type dropdowns to the right of "Search jobs".
   const jobTypeFilterOptions = Array.from(new Set([...configLists.job_types.map((jt) => jt.label), ...jobs.map((j) => j.type)])).filter(Boolean);
   const filteredJobs = jobs.filter(passesTopFilters);
+
+  // Tasks + open estimates for the Schedule, narrowed by the same top Search / Technician / date filters
+  // (a Job Type filter hides them -- they aren't jobs).
+  const inDateRange = (d: string) => (!effFrom || d >= effFrom) && (!effTo || d <= effTo);
+  const scheduleExtras: ScheduleJob[] = typeFilter !== "all" ? [] : [
+    ...scheduleEstimates
+      .filter((e) => e.status !== "Converted" && e.status !== "Declined" && !e.converted_job_id && !e.converted_invoice_id)
+      .filter(() => effTech === "all" || effTech === "unassigned")
+      .filter((e) => matchesQuery(search, [e.customers?.name, e.number, e.job_description, e.customers?.address]))
+      .filter((e) => inDateRange(e.issue_date))
+      .map((e): ScheduleJob => ({
+        id: `est:${e.id}`, kind: "estimate", refId: e.id, scheduled_date: e.issue_date, scheduled_time: null, tech_id: null,
+        stage: "estimate", type: `${t("Estimate")} ${e.number}`, description: e.job_description, amount: Number(e.amount ?? 0),
+        address: e.customers?.address ?? null, customers: { name: e.customers?.name ?? "" },
+      })),
+    ...scheduleTasks
+      .filter((k) => k.start_date || k.end_date)
+      .filter((k) => effTech === "all" || (effTech === "unassigned" ? !k.tech_id : k.tech_id === effTech))
+      .filter((k) => matchesQuery(search, [k.customers?.name, k.type, k.notes, k.address, k.profiles?.name]))
+      .flatMap((k) => {
+        // A task with a date range shows on every day of it (capped so a typo'd end date can't flood the calendar).
+        const start = (k.start_date ?? k.end_date) as string;
+        const end = k.end_date && k.end_date >= start ? k.end_date : start;
+        const days: string[] = [];
+        for (let d = new Date(start + "T00:00:00Z"); days.length < 62; d.setUTCDate(d.getUTCDate() + 1)) {
+          const key = d.toISOString().slice(0, 10);
+          if (key > end) break;
+          days.push(key);
+        }
+        return days.filter(inDateRange).map((day): ScheduleJob => ({
+          id: `task:${k.id}:${day}`, kind: "task", refId: k.id, scheduled_date: day, scheduled_time: null, tech_id: k.tech_id,
+          stage: k.status === "Done" ? "completed" : "task", type: `${t("Task")}: ${k.type}`, description: k.notes, amount: 0,
+          address: k.address, customers: { name: k.customers?.name ?? "" },
+        }));
+      }),
+  ];
+  const quickEstimate = quickView?.kind === "estimate" ? scheduleEstimates.find((e) => e.id === quickView.id) ?? null : null;
+  const quickTask = quickView?.kind === "task" ? scheduleTasks.find((k) => k.id === quickView.id) ?? null : null;
 
   const jobsByStage = (stage: string) => filteredJobs.filter((j) => j.stage === stage);
 
@@ -820,6 +908,11 @@ export default function Jobs() {
           <Input type="date" aria-label={t("From")} title={t("From")} className="h-10 w-full sm:w-40 bg-white border-[#E2E8F0]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <span className="text-xs text-[#64748B]">{t("to")}</span>
           <Input type="date" aria-label={t("To")} title={t("To")} className="h-10 w-full sm:w-40 bg-white border-[#E2E8F0]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          {(["today", "week", "month"] as const).map((r) => (
+            <Button key={r} variant="outline" className="h-10 px-2.5 text-xs border-[#E2E8F0] bg-white" onClick={() => setQuickRange(r)}>
+              {r === "today" ? t("Today") : r === "week" ? t("Week") : t("Month")}
+            </Button>
+          ))}
           {(dateFrom || dateTo) && <Button variant="ghost" className="h-10 px-2 text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }}>{t("Clear")}</Button>}
         </div>
       </div>
@@ -991,12 +1084,74 @@ export default function Jobs() {
             allJobs={jobs}
             recurring={recurringJobs.filter(passesRecurringFilters)}
             typeColors={typeColors}
-            dateFrom={dateFrom}
-            dateTo={dateTo}
+            dateFrom={effFrom}
+            dateTo={effTo}
             onOpenRecurring={(id) => { const rj = recurringJobs.find((r) => r.id === id); if (rj) openEditRecurring(rj); }}
             onColorChange={handleColorChange}
             onRouteOrder={handleRouteOrder}
+            extras={scheduleExtras}
+            onOpenExtra={(kind, id) => setQuickView({ kind, id })}
           />
+
+          {/* Client video 2026-09-25: look at an estimate / task right from the schedule without opening a new page. */}
+          <Dialog open={quickView !== null} onOpenChange={(o) => { if (!o) setQuickView(null); }}>
+            <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+              {quickEstimate && (
+                <>
+                  <DialogHeader><DialogTitle>{t("Estimate")} {quickEstimate.number}</DialogTitle></DialogHeader>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Customer")}</span><span className="font-medium text-right">{quickEstimate.customers?.name ?? "—"}</span></div>
+                    {quickEstimate.customers?.address && <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Address")}</span><span className="text-right">{quickEstimate.customers.address}</span></div>}
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Status")}</span><Badge variant="outline">{t(quickEstimate.status)}</Badge></div>
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Date")}</span><span>{quickEstimate.issue_date}{quickEstimate.expiry_date ? ` → ${quickEstimate.expiry_date}` : ""}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Amount")}</span><span className="font-semibold text-[#0891B2]">${Number(quickEstimate.amount ?? 0).toFixed(2)}</span></div>
+                    {quickEstimate.job_description && <p className="rounded-lg bg-[#F8FAFC] p-2.5 whitespace-pre-wrap">{quickEstimate.job_description}</p>}
+                    <div className="border-t border-[#E2E8F0] pt-2">
+                      {quickLines === null ? <p className="text-xs text-[#64748B]">{t("Loading...")}</p> : quickLines.length === 0 ? <p className="text-xs text-[#64748B]">{t("No line items.")}</p> : (
+                        <table className="w-full text-xs">
+                          <tbody>
+                            {quickLines.map((li) => (
+                              <tr key={li.id} className="border-b border-[#F1F5F9] last:border-0">
+                                <td className="py-1 pr-2">{li.description}</td>
+                                <td className="py-1 text-right text-[#64748B] whitespace-nowrap">{li.quantity} × ${Number(li.rate).toFixed(2)}</td>
+                                <td className="py-1 pl-2 text-right font-medium whitespace-nowrap">${Number(li.amount).toFixed(2)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={() => setQuickView(null)}>{t("Close")}</Button>
+                    <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => navigate(`/invoicing/estimates/${quickEstimate.id}`)}>{t("Open Estimate")}</Button>
+                  </div>
+                </>
+              )}
+              {quickTask && (
+                <>
+                  <DialogHeader><DialogTitle>{t("Task")}: {quickTask.type}</DialogTitle></DialogHeader>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Customer")}</span><span className="font-medium text-right">{quickTask.customers?.name ?? "—"}</span></div>
+                    {quickTask.address && <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Address")}</span><span className="text-right">{quickTask.address}</span></div>}
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Assigned to")}</span><span>{quickTask.profiles?.name ?? t("Unassigned")}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Status")}</span><Badge variant="outline">{t(quickTask.status)}</Badge></div>
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Dates")}</span><span>{quickTask.start_date ?? "—"}{quickTask.end_date ? ` → ${quickTask.end_date}` : ""}</span></div>
+                    {quickTask.notes && <p className="rounded-lg bg-[#F8FAFC] p-2.5 whitespace-pre-wrap">{quickTask.notes}</p>}
+                    {(quickTask.photos ?? []).length > 0 && (
+                      <div className="grid grid-cols-4 gap-2">
+                        {quickTask.photos.map((url, i) => <a key={i} href={url} target="_blank" rel="noreferrer"><img src={url} alt="" className="w-full aspect-square object-cover rounded" /></a>)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={() => setQuickView(null)}>{t("Close")}</Button>
+                    <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => navigate("/invoicing?tab=tasks")}>{t("Open Tasks")}</Button>
+                  </div>
+                </>
+              )}
+            </DialogContent>
+          </Dialog>
 
           {/* Recurring Jobs -- client PDF 2026-09-05: real schedule, not the old read-only
               "Recurring Routes" (never linked to actual jobs). Each generates a real job

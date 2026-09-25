@@ -77,6 +77,18 @@ export default function EstimateDetail() {
     invoicingApi.getEstimateAttachments(id).then((all) => setDocuments(all.filter((a) => a.type !== "photo")));
   };
 
+  // Client video 2026-09-25: Edit / Delete on documents.
+  const handleRenameDocument = async (doc: { id: string }, label: string) => {
+    if (!id) return;
+    await invoicingApi.updateEstimateDocumentLabel(id, doc.id, label);
+    setDocuments((prev) => prev.map((d) => (d.id === doc.id ? { ...d, label } : d)));
+  };
+  const handleDeleteDocument = async (doc: { id: string }) => {
+    if (!id) return;
+    await invoicingApi.deleteEstimateDocument(id, doc.id);
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  };
+
   const loadEstimate = useCallback(async () => {
     if (!id) return;
     setIsLoading(true);
@@ -433,7 +445,7 @@ export default function EstimateDetail() {
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
                       {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
-                      {li.notes && <p className="text-xs text-[#94A3B8]">{li.notes}</p>}
+                      {li.notes && <p className="text-xs text-[#94A3B8] whitespace-pre-wrap">{li.notes}</p>}
                     </td>
                     <td className="text-right py-3 text-[#64748B]">{li.quantity}</td>
                     <td className="text-right py-3 text-[#64748B]">${li.rate.toFixed(2)}</td>
@@ -506,6 +518,9 @@ export default function EstimateDetail() {
         uploading={docsUploading}
         libraryDocuments={libraryDocuments}
         onAttachExisting={handleAttachLibraryDocument}
+        onRename={handleRenameDocument}
+        onDelete={handleDeleteDocument}
+            collapseWhenEmpty
       />
     </div>
   );

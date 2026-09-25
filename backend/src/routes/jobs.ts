@@ -107,11 +107,11 @@ export default async function jobsRoutes(app: FastifyInstance) {
         returning *
       `;
       if (lineItems && lineItems.length > 0) {
-        for (const li of lineItems) {
+        for (const [sortIdx, li] of lineItems.entries()) {
           const lineAmount = li.quantity * li.rate;
           await tx`
-            insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes)
-            values (${tenant.id}, ${row.id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount}, ${li.notes ?? null})
+            insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
+            values (${tenant.id}, ${row.id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount}, ${li.notes ?? null}, ${sortIdx})
           `;
         }
       }
@@ -236,7 +236,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
   // only had a flat `amount`, no itemized breakdown like Estimates/Invoices already have.
   app.get<{ Params: { id: string } }>("/:id/line-items", async (req) => {
     const { id } = req.params;
-    return withTenantContext(req.userId, (tx) => tx`select * from job_line_items where job_id = ${id}`);
+    return withTenantContext(req.userId, (tx) => tx`select * from job_line_items where job_id = ${id} order by sort_order`);
   });
 
   type LineItemInput = { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number; notes?: string | null };
@@ -250,12 +250,12 @@ export default async function jobsRoutes(app: FastifyInstance) {
       const [tenant] = await tx`select current_tenant_id() as id`;
       await tx`delete from job_line_items where job_id = ${id}`;
       let amount = 0;
-      for (const li of lineItems) {
+      for (const [sortIdx, li] of lineItems.entries()) {
         const lineAmount = li.quantity * li.rate;
         amount += lineAmount;
         await tx`
-          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes)
-          values (${tenant.id}, ${id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount}, ${li.notes ?? null})
+          insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
+          values (${tenant.id}, ${id}, ${li.description}, ${li.sku}, ${li.itemType}, ${li.quantity}, ${li.cost}, ${li.rate}, ${lineAmount}, ${li.notes ?? null}, ${sortIdx})
         `;
       }
       const [row] = await tx`update jobs set amount = ${amount} where id = ${id} returning *`;
@@ -273,7 +273,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
       if (!job) throw new Error("Job not found");
       if (job.converted_to_estimate_id) return { estimateId: job.converted_to_estimate_id };
 
-      const jobLineItems = (await tx`select * from job_line_items where job_id = ${id}`) as unknown as {
+      const jobLineItems = (await tx`select * from job_line_items where job_id = ${id} order by sort_order`) as unknown as {
         description: string;
         sku: string | null;
         item_type: string;
@@ -291,10 +291,10 @@ export default async function jobsRoutes(app: FastifyInstance) {
         values (${tenant.id}, ${job.customer_id}, ${job.id}, ${estimateNumber}, ${job.amount}, 'Draft', ${job.description})
         returning *
       `;
-      for (const li of jobLineItems) {
+      for (const [sortIdx, li] of jobLineItems.entries()) {
         await tx`
-          insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes)
-          values (${tenant.id}, ${estimate.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes})
+          insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
+          values (${tenant.id}, ${estimate.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes}, ${sortIdx})
         `;
       }
       await tx`update jobs set converted_to_estimate_id = ${estimate.id} where id = ${id}`;
@@ -367,6 +367,27 @@ export default async function jobsRoutes(app: FastifyInstance) {
         returning *
       `;
       return row;
+    });
+  });
+
+  // Client video 2026-09-25: documents need Edit (rename the label) and Delete. Only document rows --
+  // photos/signatures are untouched by these routes.
+  app.patch<{ Params: { id: string; attId: string }; Body: { label: string | null } }>("/:id/attachments/:attId", async (req) => {
+    const { id, attId } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        update job_attachments set label = ${req.body.label ?? null}
+        where id = ${attId} and job_id = ${id} and type = 'document' returning *
+      `;
+      return row ?? null;
+    });
+  });
+
+  app.delete<{ Params: { id: string; attId: string } }>("/:id/attachments/:attId", async (req) => {
+    const { id, attId } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      await tx`delete from job_attachments where id = ${attId} and job_id = ${id} and type = 'document'`;
+      return { ok: true };
     });
   });
 }

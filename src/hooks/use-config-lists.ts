@@ -25,6 +25,7 @@ const FALLBACK: ConfigLists = {
   library_categories: asItems(staticLibraryCategories),
   library_manufacturers: asItems(staticLibraryManufacturers),
   inventory_manufacturers: [],
+  document_types: asItems(["Sand Change Form", "Automation Checklist", "Weekly Service Form", "Other"]),
 };
 
 export function useConfigLists() {

@@ -1,8 +1,10 @@
 import { useRef, useState } from "react";
-import { Download, Upload, FileSpreadsheet, Users, Package, Boxes, Layers, Factory, BookOpen, CheckCircle2, AlertCircle } from "lucide-react";
+import { Download, Upload, FileSpreadsheet, Users, Package, Boxes, Layers, Factory, BookOpen, CheckCircle2, AlertCircle, FileText, Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { useConfigLists } from "@/hooks/use-config-lists";
 import { customersApi } from "@/lib/api/customers";
 import { inventoryApi } from "@/lib/api/inventory";
 import { configListsApi } from "@/lib/api/configLists";
@@ -128,6 +130,65 @@ const datasets: Dataset[] = [
   },
 ];
 
+// Client video 2026-09-25: "Need a Document List / Folder for PDFs under Data" -- the document types offered
+// when uploading a document on a Job / Estimate / Field job (was a fixed 4-item list, so a "Curing Process"
+// upload was saved as "Sand Change Form"). Renaming a type here doesn't change documents already uploaded.
+function DocumentListCard() {
+  const { t } = useLanguage();
+  const { lists, addItem, updateItem, removeItem } = useConfigLists();
+  const [newLabel, setNewLabel] = useState("");
+  const [editing, setEditing] = useState<{ id: string; label: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const items = lists.document_types;
+
+  const run = async (fn: () => Promise<void>) => {
+    setError(null);
+    try { await fn(); } catch (err) { setError(err instanceof Error ? err.message : "Save failed"); }
+  };
+  const add = () => {
+    const label = newLabel.trim();
+    if (!label) return;
+    if (items.some((i) => i.label.toLowerCase() === label.toLowerCase())) { setError(t("That document type is already on the list.")); return; }
+    run(async () => { await addItem("document_types", label); setNewLabel(""); });
+  };
+
+  return (
+    <Card className="border-[#E2E8F0] shadow-sm">
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0"><FileText className="w-5 h-5 text-[#0891B2]" /></div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-[#0F172A]">{t("Document List")}</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">{t("The document types you can pick when uploading a document on a Job or Estimate. Add your own (e.g. Curing Process); \"Use file name\" is always available too.")}</p>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Input className="h-9" placeholder={t("New document type...")} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
+          <Button className="h-9 gap-1.5 bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={!newLabel.trim()} onClick={add}><Plus className="w-4 h-4" /> {t("Add")}</Button>
+        </div>
+        <div className="max-h-[260px] overflow-y-auto space-y-1">
+          {items.map((i) => editing?.id === i.id ? (
+            <div key={i.id} className="flex items-center gap-1.5">
+              <Input autoFocus className="h-8 text-sm" value={editing.label} onChange={(e) => setEditing({ id: i.id, label: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter" && editing.label.trim()) run(async () => { await updateItem("document_types", i.id, { label: editing.label.trim() }); setEditing(null); }); if (e.key === "Escape") setEditing(null); }} />
+              <button className="p-1.5 rounded text-[#16A34A] hover:bg-[#16A34A]/10" title={t("Save")} disabled={!editing.label.trim()} onClick={() => run(async () => { await updateItem("document_types", i.id, { label: editing.label.trim() }); setEditing(null); })}><Check className="w-4 h-4" /></button>
+              <button className="p-1.5 rounded text-[#64748B] hover:bg-[#F1F5F9]" title={t("Cancel")} onClick={() => setEditing(null)}><X className="w-4 h-4" /></button>
+            </div>
+          ) : (
+            <div key={i.id} className="flex items-center gap-2 rounded-md border border-[#F1F5F9] px-3 py-1.5 text-sm">
+              <span className="flex-1 truncate text-[#0F172A]">{i.label}</span>
+              <button className="p-1 rounded text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => setEditing({ id: i.id, label: i.label })}><Pencil className="w-3.5 h-3.5" /></button>
+              <button className="p-1 rounded text-[#DC2626] hover:bg-[#DC2626]/10" title={t("Delete")} onClick={() => run(() => removeItem("document_types", i.id))}><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+          {items.length === 0 && <p className="text-xs text-[#64748B]">{t("No document types yet.")}</p>}
+        </div>
+        {error && <p className="text-sm text-[#DC2626]">{error}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
 type Pending = { fileName: string; rows: Record<string, string>[]; problem: string | null };
 const CHUNK = 300;
 
@@ -214,6 +275,7 @@ export default function DataTransfer() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <DocumentListCard />
         {datasets.map((d) => {
           const Icon = d.icon;
           const p = pending[d.key];
