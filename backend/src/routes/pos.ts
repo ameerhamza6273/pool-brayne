@@ -24,6 +24,33 @@ export default async function posRoutes(app: FastifyInstance) {
   });
 
   // limit: 8 by default (the old "Recent Transactions" list); "Show more" asks for up to 200.
+  // POS header cards. They used to be summed from the Recent Transactions list (only the last 8 sales), so
+  // "Week Sales" was really "last 8 sales" and changed when "Show more" was clicked. "Today" / "this week"
+  // are counted in the browser's time zone (UTC would roll "today" over at ~8 pm in Atlanta).
+  app.get<{ Querystring: { tz?: string } }>("/stats", async (req) => {
+    const tz = /^[A-Za-z_]+(\/[A-Za-z_+-]+){0,2}$/.test(req.query.tz ?? "") ? req.query.tz! : "America/New_York";
+    return withTenantContext(req.userId, async (tx) => {
+      const [valid] = await tx`select exists(select 1 from pg_timezone_names where name = ${tz}) as ok`;
+      const zone = valid?.ok ? tz : "America/New_York";
+      const [row] = await tx`
+        select
+          coalesce(sum(total) filter (where (created_at at time zone ${zone})::date = (now() at time zone ${zone})::date), 0)::float8 as today_sales,
+          count(*) filter (where (created_at at time zone ${zone})::date = (now() at time zone ${zone})::date)::int as today_count,
+          coalesce(sum(total), 0)::float8 as week_sales,
+          count(*)::int as week_count
+        from pos_orders
+        where (created_at at time zone ${zone})::date > (now() at time zone ${zone})::date - 7
+      ` as unknown as { today_sales: number; today_count: number; week_sales: number; week_count: number }[];
+      return {
+        todaySales: row.today_sales,
+        todayCount: row.today_count,
+        weekSales: row.week_sales,
+        weekCount: row.week_count,
+        avgTicket: row.week_count > 0 ? row.week_sales / row.week_count : 0,
+      };
+    });
+  });
+
   app.get<{ Querystring: { limit?: string } }>("/transactions", async (req) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit ?? "8", 10) || 8, 1), 200);
     return withTenantContext(req.userId, async (tx) => {
@@ -121,77 +148,96 @@ export default async function posRoutes(app: FastifyInstance) {
     }
 
     // Client SMS 2026-09-25: one sale was being saved 2-3 times (Complete Sale clicked again while the first
-    // request was still running). An identical order from the same cashier within the last 10 seconds is
-    // treated as that same sale -- checked BEFORE any card is charged.
-    const recent = await withTenantContext(req.userId, (tx) => tx`
-      select id from pos_orders
-      where cashier_id = ${req.userId} and total = ${total} and created_at > now() - interval '10 seconds'
-      order by created_at desc limit 1
-    `) as unknown as { id: string }[];
-    if (recent.length > 0) return { id: recent[0].id, duplicate: true };
-
-    // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
-    // every Card tender line is charged BEFORE the order/stock changes are committed, so a
-    // decline on any card leaves nothing behind. Cash/ACH/Check stay simulated (no real bank
-    // processor wired up for those). Client request 2026-09-03: "use more than one payment type
-    // or multiple credit cards" -- each tender line gets its own charge/transaction id.
-    const chargedPayments: { method: string; amount: number; providerTransactionId: string | null }[] = [];
-    for (const p of payments) {
-      if (p.method === "Card") {
-        if (!p.opaqueData) {
-          reply.code(400).send({ error: "Card payment requires tokenized card data" });
-          return;
-        }
-        const result = await chargeOpaqueData(p.amount, p.opaqueData);
-        if (!result.success) {
-          reply.code(400).send({ error: result.error });
-          return;
-        }
-        chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: result.transactionId });
-      } else {
-        chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: null });
-      }
+    // request was still running). An identical order from the same cashier that is still being saved, or was
+    // saved in the last 10 seconds, is treated as that same sale -- checked BEFORE any card is charged.
+    // The in-process map covers near-simultaneous requests (the DB check can't see an uncommitted insert).
+    const dupKey = JSON.stringify([req.userId, total, items.map((i) => [i.id, i.name, i.qty, i.price])]);
+    const pending = inFlightCheckouts.get(dupKey);
+    if (pending) {
+      const first = await pending.catch(() => null);
+      if (first) return { id: first, duplicate: true };
     }
+    let settle: (id: string | null) => void = () => {};
+    const mine = new Promise<string | null>((resolve) => { settle = resolve; });
+    inFlightCheckouts.set(dupKey, mine);
+    let savedId: string | null = null;
+    try {
+      const recent = await withTenantContext(req.userId, (tx) => tx`
+        select id from pos_orders
+        where cashier_id = ${req.userId} and total = ${total} and created_at > now() - interval '10 seconds'
+        order by created_at desc limit 1
+      `) as unknown as { id: string }[];
+      if (recent.length > 0) return { id: recent[0].id, duplicate: true };
 
-    const summaryMethod = chargedPayments.length > 1 ? "Split" : chargedPayments[0].method;
-    const summaryTransactionId = chargedPayments.length === 1 ? chargedPayments[0].providerTransactionId : null;
-
-    return withTenantContext(req.userId, async (tx) => {
-      const [tenant] = await tx`select current_tenant_id() as id`;
-      const [order] = await tx`
-        insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id, note)
-        values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId}, ${note || null})
-        returning id
-      `;
-
-      for (const p of chargedPayments) {
-        await tx`
-          insert into pos_order_payments (tenant_id, order_id, method, amount, provider_transaction_id)
-          values (${tenant.id}, ${order.id}, ${p.method}, ${p.amount}, ${p.providerTransactionId})
-        `;
-      }
-
-      for (const item of items) {
-        await tx`
-          insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount, serial_number)
-          values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty}, ${item.serialNumber ?? null})
-        `;
-        // Non-stock/custom items (id null) and services never touch inventory. Client request
-        // 2026-09-02: stock is allowed to go negative (out-of-stock sales, returns as negative
-        // qty) rather than clamping at 0 like the old behavior.
-        if (item.isService || !item.id) continue;
-        const itemId = item.id;
-        const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
-        if (!store) continue;
-        const [stockRow] = await tx`select id, quantity from inventory_stock where item_id = ${itemId} and location_id = ${store.id} limit 1` as unknown as { id: string; quantity: number }[];
-        if (stockRow) {
-          await tx`update inventory_stock set quantity = ${stockRow.quantity - item.qty} where id = ${stockRow.id}`;
+      // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
+      // every Card tender line is charged BEFORE the order/stock changes are committed, so a
+      // decline on any card leaves nothing behind. Cash/ACH/Check stay simulated (no real bank
+      // processor wired up for those). Client request 2026-09-03: "use more than one payment type
+      // or multiple credit cards" -- each tender line gets its own charge/transaction id.
+      const chargedPayments: { method: string; amount: number; providerTransactionId: string | null }[] = [];
+      for (const p of payments) {
+        if (p.method === "Card") {
+          if (!p.opaqueData) {
+            reply.code(400).send({ error: "Card payment requires tokenized card data" });
+            return;
+          }
+          const result = await chargeOpaqueData(p.amount, p.opaqueData);
+          if (!result.success) {
+            reply.code(400).send({ error: result.error });
+            return;
+          }
+          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: result.transactionId });
         } else {
-          await tx`insert into inventory_stock (tenant_id, item_id, location_id, quantity) values (${tenant.id}, ${itemId}, ${store.id}, ${-item.qty})`;
+          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: null });
         }
       }
 
-      return { id: order.id };
-    });
+      const summaryMethod = chargedPayments.length > 1 ? "Split" : chargedPayments[0].method;
+      const summaryTransactionId = chargedPayments.length === 1 ? chargedPayments[0].providerTransactionId : null;
+
+      return await withTenantContext(req.userId, async (tx) => {
+        const [tenant] = await tx`select current_tenant_id() as id`;
+        const [order] = await tx`
+          insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id, note)
+          values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId}, ${note || null})
+          returning id
+        `;
+
+        for (const p of chargedPayments) {
+          await tx`
+            insert into pos_order_payments (tenant_id, order_id, method, amount, provider_transaction_id)
+            values (${tenant.id}, ${order.id}, ${p.method}, ${p.amount}, ${p.providerTransactionId})
+          `;
+        }
+
+        for (const item of items) {
+          await tx`
+            insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount, serial_number)
+            values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty}, ${item.serialNumber ?? null})
+          `;
+          // Non-stock/custom items (id null) and services never touch inventory. Client request
+          // 2026-09-02: stock is allowed to go negative (out-of-stock sales, returns as negative
+          // qty) rather than clamping at 0 like the old behavior.
+          if (item.isService || !item.id) continue;
+          const itemId = item.id;
+          const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
+          if (!store) continue;
+          const [stockRow] = await tx`select id, quantity from inventory_stock where item_id = ${itemId} and location_id = ${store.id} limit 1` as unknown as { id: string; quantity: number }[];
+          if (stockRow) {
+            await tx`update inventory_stock set quantity = ${stockRow.quantity - item.qty} where id = ${stockRow.id}`;
+          } else {
+            await tx`insert into inventory_stock (tenant_id, item_id, location_id, quantity) values (${tenant.id}, ${itemId}, ${store.id}, ${-item.qty})`;
+          }
+        }
+
+        savedId = order.id as string;
+        return { id: order.id };
+      });
+    } finally {
+      settle(savedId);
+      if (inFlightCheckouts.get(dupKey) === mine) inFlightCheckouts.delete(dupKey);
+    }
   });
 }
+
+const inFlightCheckouts = new Map<string, Promise<string | null>>();

@@ -182,17 +182,19 @@ export default function PointOfSale() {
   const categories = ["All", ...Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort()];
   const manufacturers = ["All", ...Array.from(new Set(products.map((p) => p.manufacturer).filter((m): m is string => Boolean(m)))).sort()];
 
+  // Catalog + customers load once; the sales list and header cards refresh on their own (after a sale,
+  // "Show more", or a receipt note) instead of reloading the whole register each time.
   const loadPos = useCallback(async () => {
-    setIsLoading(true);
-    const [productsData, transactionsData, customersData] = await Promise.all([
-      posApi.catalog(),
-      posApi.transactions(txLimit),
-      customersApi.list(),
-    ]);
+    const [productsData, customersData] = await Promise.all([posApi.catalog(), customersApi.list()]);
     setProducts(productsData);
-    setTransactions(transactionsData as PosOrder[]);
     setCustomers(customersData.map((c) => ({ id: c.id, name: c.name, address: c.address })));
     setIsLoading(false);
+  }, []);
+  const [stats, setStats] = useState<{ todaySales: number; todayCount: number; weekSales: number; avgTicket: number } | null>(null);
+  const loadSales = useCallback(async () => {
+    const [transactionsData, statsData] = await Promise.all([posApi.transactions(txLimit), posApi.stats().catch(() => null)]);
+    setTransactions(transactionsData as PosOrder[]);
+    if (statsData) setStats(statsData);
   }, [txLimit]);
 
   const runReport = useCallback(async () => {
@@ -205,6 +207,9 @@ export default function PointOfSale() {
   useEffect(() => {
     loadPos();
   }, [loadPos]);
+  useEffect(() => {
+    loadSales();
+  }, [loadSales]);
 
   useEffect(() => {
     runReport();
@@ -377,13 +382,10 @@ export default function PointOfSale() {
     setTenderLines([]);
     setTenderAmount("");
     setSaleNote("");
-    loadPos();
+    posApi.catalog().then(setProducts); // stock changed
+    loadSales();
   };
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todaySales = transactions.filter((t) => t.created_at.slice(0, 10) === today).reduce((s, t) => s + t.total, 0);
-  const weekSales = transactions.reduce((s, t) => s + t.total, 0);
-  const avgTicket = transactions.length > 0 ? transactions.reduce((s, t) => s + t.total, 0) / transactions.length : 0;
 
   return (
     <div className="space-y-4">
@@ -440,10 +442,10 @@ export default function PointOfSale() {
       {/* KPI strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Today's Sales", value: `$${todaySales.toFixed(2)}`, icon: DollarSign, color: "#0891B2" },
-          { label: "Week Sales", value: `$${weekSales.toFixed(2)}`, icon: TrendingUp, color: "#16A34A" },
-          { label: "Avg Ticket", value: `$${avgTicket.toFixed(2)}`, icon: Receipt, color: "#F59E0B" },
-          { label: "Transactions", value: transactions.length.toString(), icon: ShoppingCart, color: "#7C3AED" },
+          { label: "Today's Sales", value: stats ? `$${stats.todaySales.toFixed(2)}` : "…", icon: DollarSign, color: "#0891B2" },
+          { label: "Last 7 Days", value: stats ? `$${stats.weekSales.toFixed(2)}` : "…", icon: TrendingUp, color: "#16A34A" },
+          { label: "Avg Ticket (7 days)", value: stats ? `$${stats.avgTicket.toFixed(2)}` : "…", icon: Receipt, color: "#F59E0B" },
+          { label: "Sales Today", value: stats ? stats.todayCount.toString() : "…", icon: ShoppingCart, color: "#7C3AED" },
         ].map((k) => {
           const Icon = k.icon;
           return (
@@ -1126,7 +1128,7 @@ export default function PointOfSale() {
         </DialogContent>
       </Dialog>
 
-      <ReceiptDialog orderId={openOrderId} onClose={() => setOpenOrderId(null)} onSaved={loadPos} />
+      <ReceiptDialog orderId={openOrderId} onClose={() => setOpenOrderId(null)} onSaved={loadSales} />
 
       {/* Receipt disclaimer (client video 2026-09-25) */}
       <Dialog open={disclaimerOpen} onOpenChange={setDisclaimerOpen}>

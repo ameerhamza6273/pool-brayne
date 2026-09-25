@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { CheckCircle2, Users, Briefcase, ChevronLeft, ChevronRight, Plus, Pencil, Trash2, UserPlus, CalendarPlus, X, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,8 @@ function weekStartOf(date: Date, startDay: number) {
   const d = new Date(date);
   const diff = (d.getDay() - startDay + 7) % 7;
   d.setDate(d.getDate() - diff);
-  return d.toISOString().slice(0, 10);
+  // Local date, not toISOString() -- UTC would already be "tomorrow" in Atlanta after ~8 pm.
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -55,13 +56,18 @@ export default function Timesheets() {
   const { t, lang } = useLanguage();
   // Dates follow the chosen language (they used to always print in English).
   const locale = lang === "es" ? "es-US" : "en-US";
+  // Request dates are date-only keys ("2026-09-25") -- shown like the rest of the page, in the chosen language.
+  const dayLabel = (k: string) => fromKey(k).toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
+  const requestDates = (rq: TimeRequest) => `${dayLabel(rq.start_date)}${rq.end_date && rq.end_date !== rq.start_date ? ` → ${dayLabel(rq.end_date)}` : ""}`;
   const navigate = useNavigate();
   const isOffice = role !== "technician" && role !== "contractor";
   const [isLoading, setIsLoading] = useState(true);
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [jobCosting, setJobCosting] = useState<JobCosting[]>([]);
   const [employeeCount, setEmployeeCount] = useState(0);
-  const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
+  // null until Settings answers, so the page doesn't first show (and load) a Mon-Sun week and then jump to
+  // the tenant's payroll week (Wed-Tue for this client).
+  const [payrollWeekStartDay, setPayrollWeekStartDay] = useState<number | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [staff, setStaff] = useState<Profile[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
@@ -79,12 +85,12 @@ export default function Timesheets() {
   const weekStart = useMemo(() => {
     const base = new Date();
     base.setDate(base.getDate() + weekOffset * 7);
-    return weekStartOf(base, payrollWeekStartDay);
+    return weekStartOf(base, payrollWeekStartDay ?? 1);
   }, [weekOffset, payrollWeekStartDay]);
   const weekDates = useMemo(() => Array.from({ length: 7 }, (_, i) => { const d = fromKey(weekStart); d.setDate(d.getDate() + i); return d; }), [weekStart]);
 
   useEffect(() => {
-    settingsApi.all().then((data) => setPayrollWeekStartDay(data.payrollWeekStartDay));
+    settingsApi.all().then((data) => setPayrollWeekStartDay(data.payrollWeekStartDay)).catch(() => setPayrollWeekStartDay(1));
     profilesApi.list().then((data) => setStaff(data ?? [])).catch(() => { /* table falls back to people with hours */ });
   }, []);
   useEffect(() => {
@@ -92,8 +98,13 @@ export default function Timesheets() {
     return () => clearInterval(id);
   }, []);
 
+  // The "Loading" placeholder only shows when switching weeks -- a refresh after Approve / Save / Clock in keeps
+  // the table on screen (it used to blank out and jump the page back to the top after every click).
+  const shownWeek = useRef<string | null>(null);
+  const latestWeek = useRef(weekStart);
+  latestWeek.current = weekStart;
   const loadTimesheets = useCallback(async () => {
-    setIsLoading(true);
+    if (shownWeek.current !== weekStart) setIsLoading(true);
     const from = fromKey(weekStart);
     const to = new Date(from); to.setDate(to.getDate() + 7);
     const [data, ents, reqs] = await Promise.all([
@@ -101,6 +112,8 @@ export default function Timesheets() {
       timesheetsApi.entries(from.toISOString(), to.toISOString()).catch(() => [] as TimeEntry[]),
       timesheetsApi.requests().catch(() => [] as TimeRequest[]),
     ]);
+    if (latestWeek.current !== weekStart) return; // user already moved to another week
+    shownWeek.current = weekStart;
     setTimesheets(data.timesheets);
     setJobCosting(data.jobCosting);
     setEmployeeCount(data.employeeCount);
@@ -110,8 +123,8 @@ export default function Timesheets() {
   }, [weekStart]);
 
   useEffect(() => {
-    loadTimesheets();
-  }, [loadTimesheets]);
+    if (payrollWeekStartDay !== null) loadTimesheets();
+  }, [loadTimesheets, payrollWeekStartDay]);
 
   // One row per staff member (client: "need to be able to add employees" -- everyone on the team is listed,
   // new people are added under Settings > Team). Each day = hours from the old weekly row + clock entries.
@@ -195,6 +208,7 @@ export default function Timesheets() {
     setSaving(false);
   };
   const deleteEntry = async (e: TimeEntry) => {
+    setEntries((prev) => prev.filter((x) => x.id !== e.id)); // disappears at once, the reload confirms it
     await timesheetsApi.deleteEntry(e.id);
     loadTimesheets();
   };
@@ -221,7 +235,7 @@ export default function Timesheets() {
           <h1 className="text-2xl font-bold text-[#0F172A]">{t("Timesheets")}</h1>
           <div className="flex items-center gap-1.5 mt-1">
             <Button variant="outline" size="icon" className="h-7 w-7 border-[#E2E8F0]" onClick={() => setWeekOffset((w) => w - 1)} title={t("Previous week")}><ChevronLeft className="w-4 h-4" /></Button>
-            <span className="text-sm text-[#64748B]">{t("Week of")} {weekLabel}</span>
+            <span className="text-sm text-[#64748B]">{t("Week of")} {payrollWeekStartDay !== null ? weekLabel : "…"}</span>
             <Button variant="outline" size="icon" className="h-7 w-7 border-[#E2E8F0]" onClick={() => setWeekOffset((w) => w + 1)} title={t("Next week")}><ChevronRight className="w-4 h-4" /></Button>
             {weekOffset !== 0 && <Button variant="ghost" className="h-7 px-2 text-xs" onClick={() => setWeekOffset(0)}>{t("This week")}</Button>}
           </div>
@@ -348,7 +362,7 @@ export default function Timesheets() {
                   <tr key={rq.id} className="border-b border-[#F1F5F9] last:border-0 align-top">
                     <td className="py-2 px-4 font-medium text-[#0F172A]">{rq.employee_name ?? "—"}</td>
                     <td className="py-2 px-4">{t(rq.request_type)}</td>
-                    <td className="py-2 px-4 whitespace-nowrap">{rq.start_date}{rq.end_date && rq.end_date !== rq.start_date ? ` → ${rq.end_date}` : ""}</td>
+                    <td className="py-2 px-4 whitespace-nowrap">{requestDates(rq)}</td>
                     <td className="py-2 px-4 text-right">{rq.hours != null ? Number(rq.hours) : "—"}</td>
                     <td className="py-2 px-4 text-[#64748B] max-w-[280px]">
                       <p className="whitespace-pre-wrap">{rq.notes ?? ""}</p>
@@ -538,7 +552,7 @@ export default function Timesheets() {
           {decision && (
             <div className="space-y-3">
               <p className="text-sm text-[#0F172A]">
-                <b>{decision.request.employee_name}</b> · {t(decision.request.request_type)} · {decision.request.start_date}{decision.request.end_date && decision.request.end_date !== decision.request.start_date ? ` → ${decision.request.end_date}` : ""}
+                <b>{decision.request.employee_name}</b> · {t(decision.request.request_type)} · {requestDates(decision.request)}
               </p>
               {decision.request.notes && <p className="text-sm text-[#64748B] whitespace-pre-wrap">{decision.request.notes}</p>}
               <div><Label>{t("Reply (optional)")}</Label><Textarea className="mt-1 min-h-[60px]" value={decision.note} onChange={(e) => setDecision({ ...decision, note: e.target.value })} /></div>

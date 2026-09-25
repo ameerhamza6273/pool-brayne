@@ -498,7 +498,7 @@ export default function JobDetail() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.id.slice(0, 8).toUpperCase()}</h1>
-            <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type, configLists.job_types)}>{job.type}</Badge>
+            <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type, configLists.job_types)}>{t(job.type)}</Badge>
             <Badge className={`${statusBadge(job.status, configLists.job_statuses)} text-[10px] px-1.5 py-0`}>{job.status}</Badge>
           </div>
         </div>
@@ -1187,7 +1187,7 @@ export default function JobDetail() {
                     <div className="flex items-center gap-3">
                       <Wrench className="w-4 h-4 text-[#0891B2]" />
                       <div>
-                        <p className="text-sm font-medium text-[#0F172A]">{job.type}</p>
+                        <p className="text-sm font-medium text-[#0F172A]">{t(job.type)}</p>
                       </div>
                     </div>
                     <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>

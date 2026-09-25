@@ -20,14 +20,21 @@ export default async function timesheetsRoutes(app: FastifyInstance) {
     });
   });
 
-  app.patch<{ Params: { id: string } }>("/:id/approve", async (req) => {
+  // Same office-only rule as /approve-employee (technicians can't approve their own hours).
+  app.patch<{ Params: { id: string } }>("/:id/approve", async (req, reply) => {
     const { id } = req.params;
-    return withTenantContext(req.userId, (tx) => tx`update timesheets set status = 'Approved' where id = ${id} returning *`);
+    return withTenantContext(req.userId, async (tx) => {
+      if (!(await isOffice(tx, req.userId))) return reply.code(403).send({ error: "Only the office can approve timesheets" });
+      return tx`update timesheets set status = 'Approved' where id = ${id} returning *`;
+    });
   });
 
-  app.post<{ Body: { weekStart: string } }>("/approve-week", async (req) => {
+  app.post<{ Body: { weekStart: string } }>("/approve-week", async (req, reply) => {
     const { weekStart } = req.body;
-    return withTenantContext(req.userId, (tx) => tx`update timesheets set status = 'Approved' where week_start = ${weekStart} returning *`);
+    return withTenantContext(req.userId, async (tx) => {
+      if (!(await isOffice(tx, req.userId))) return reply.code(403).send({ error: "Only the office can approve timesheets" });
+      return tx`update timesheets set status = 'Approved' where week_start = ${weekStart} returning *`;
+    });
   });
 
   app.post<{ Body: { weekStart: string; elapsedSeconds: number } }>("/clock-out", async (req) => {

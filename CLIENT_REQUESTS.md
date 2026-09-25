@@ -63,6 +63,7 @@ Last updated: 2026-09-25
 | *(2026-09-25)* POS: see the cost by right-clicking a price | ✅ | Right-click any price in the product list or the current sale; click anywhere to hide |
 | *(2026-09-25)* POS: editable return/refund disclaimer on every printed receipt | ✅ | POS › "Receipt Disclaimer" button (top); receipt › Print now prints a real receipt with it at the bottom |
 | *(2026-09-25, SMS)* POS: print transactions; click a recent transaction → receipt → add notes → print / re-print | ✅ | POS › Recent Transactions › click any sale ("Show more" for older ones) |
+| *(2026-09-25, QA)* POS top cards showed totals of only the last 8 sales | ✅ fixed | POS top: Today's Sales, Last 7 Days, Avg Ticket (7 days), Sales Today — real totals |
 | *(2026-09-25, SMS)* Same from the customer page | ✅ | Customer › Previous Sales › click a sale |
 | *(2026-09-25)* POS: one sale showed up as 3 closed transactions | ✅ fixed | Double-clicking Complete Sale saved it again; now blocked (button shows Processing…, server refuses an identical repeat) |
 | *(2026-09-25)* Remove the default "0" in price boxes | ✅ | Estimate / Invoice / Job line items + PO unit cost start empty |

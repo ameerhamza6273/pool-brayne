@@ -21,6 +21,7 @@ export type SalesReport = {
 export const posApi = {
   catalog: () => api.get<(InventoryItem & { stock: number })[]>("/api/pos/catalog"),
 
+  stats: () => api.get<{ todaySales: number; todayCount: number; weekSales: number; weekCount: number; avgTicket: number }>(`/api/pos/stats?tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`),
   transactions: (limit?: number) => api.get<PosOrder[]>(`/api/pos/transactions${limit ? `?limit=${limit}` : ""}`),
 
   order: (id: string) => api.get<PosOrderDetail>(`/api/pos/orders/${id}`),

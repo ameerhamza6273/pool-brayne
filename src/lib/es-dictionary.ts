@@ -618,4 +618,10 @@ export const esDictionary: Record<string, string> = {
   "Time Off": "Tiempo libre", "Sick Day": "Día de enfermedad", "Time Correction": "Corrección de horario",
   "Denied": "Rechazado", "Contractor": "Contratista",
   "Cash": "Efectivo", "Paid by": "Pagado con", "Thank you!": "¡Gracias!", "ACH": "ACH", "Split": "Dividido",
+  // Inventory tabs + PO payment terms (2026-09-25 QA: auto-translate gave "Catalogar", "Cancelaciones", "neto 30").
+  "Catalog": "Catálogo", "Variance": "Variación", "Variance %": "% de variación", "Write-Offs": "Bajas",
+  "Due on Receipt": "Pago al recibir", "Net 15": "Neto 15", "Net 30": "Neto 30", "Net 60": "Neto 60",
+  // POS header cards (2026-09-25 QA: "Transactions" auto-translated to "Actas", "Avg Ticket" to "Boleto promedio").
+  "Last 7 Days": "Últimos 7 días", "Avg Ticket (7 days)": "Ticket promedio (7 días)", "Sales Today": "Ventas hoy",
+  "Transactions": "Transacciones", "Avg Ticket": "Ticket promedio",
 };

@@ -360,27 +360,10 @@ vendor, different payment processor).
     text `<Input>`**, no dropdown — a very plausible reading of (c) if the client means that field
     specifically.
 
-11. **LIVE QA STATUS for the 2026-09-25 work (session ended mid-QA — resume here BEFORE telling the client anything).**
-    Dev's rule: test everything live first, collect ALL issues, fix in ONE batch, push ONCE, re-verify. Client must not find a single mistake.
-    **Verified live OK:** POS (edit price, right-click cost, disclaimer + printed receipt, past-sale receipt notes/re-print, browser
-    double-click guard), Customer > Previous Sales receipt, Estimate form (empty price, category filter, drag, notes; order persistence via API),
-    Documents on Estimate/Invoice/**Job** (upload, Use-file-name default, rename, delete, **Attach from Library**), Data > Document List,
-    Schedule (Tasks/Estimates/Techs-with-jobs boxes, quick views, resize bars, route-order drag + Temporary UI), **route-order Apply backend
-    (Temporary re-times only the job; Permanent also sets the series time)**, Jobs defaults + Month button + hint, Timesheets (clock in/reload/out,
-    edit time, request + approve/reply), Spanish across all these screens.
-    **OPEN ISSUES found, not fixed yet (fix together):**
-    (1) Server-side duplicate-sale guard FAILS under a near-simultaneous 2nd request (2 checkouts 0.4s apart both saved) — the 10s DB check runs
-    before the 1st insert commits. Fix idea: in-process in-flight map keyed cashier+total+items (+keep DB check); browser guard already blocks normal clicks.
-    (2) JobDetail shows job type "Repair" untranslated in the Items/value line — wrap in t().
-    (3) PERFORMANCE: on JobDetail, opening the line-item editor ("Agregar artículos") and adding a line FREEZES the tab 30s+ (renderer
-    unresponsive); first click on "Add document" there also froze. Estimate dialog does not freeze. Suspect: LineItemsEditor per-line
-    category/manufacturer Sets + SearchableSelect options over ~2,600 inventory items recomputed every render on a heavy page — memoize
-    (useMemo per itemType) / check SearchableSelect rendering all options. MUST fix before client sees it.
-    **NOT tested yet:** Job/Invoice line-item drag+save via UI (blocked by #3), PO unit cost empty box, Timesheets Deny / per-employee Approve /
-    Approve Week / week arrows / "Only people with hours" / delete entry from popup, Field-page Clock In click, tech-role login (needs a test tech
-    account — dev OK'd creating one in Settings > Team and deleting it after), real printer dialog, POS "Show more", Jobs "Show all technicians"
-    link, map pin popup in Spanish.
-    All QA test data from this session was deleted (0 leftovers).
+11. **2026-09-25 QA — done except what needs a human:** tech-role login (needs a test tech account; Claude may not create
+    accounts), the real printer dialog, and a map-pin popup check in Spanish. The old "JobDetail freezes" note was an artifact of scripted
+    testing (`requestAnimationFrame` never fires in a background tab) — **don't await rAF in browser-automation scripts**.
+    Timesheets and POS "Today" now use local time (never `toISOString()` for a local day). Timesheets job-costing table isn't week-filtered (pre-existing, not touched).
 
 ## Session Changelog
 
@@ -656,3 +639,9 @@ history was condensed into the structural sections above on 2026-09-10.)*
 - **2026-09-25 (pushed a12b64f, Vercel+Railway live)**; then client SMS: POS/customer past-sale receipts — `ReceiptDialog` (GET `/api/pos/orders/:id`, PATCH `/orders/:id/note`), click-to-open in POS Recent Transactions (+Show more, `?limit=`) and Customer › Previous Sales, notes save + print/re-print; receipt number = `receiptNumber(order.id)` everywhere.
   Same day: pushed 66c54d7. With the dev's OK removed the 6 duplicate POS orders from the double-click bug (backup JSON kept in that session's scratchpad; stock +1 restored per duplicated line). Gotcha: an unknown route on the Railway backend also returns 401 (auth runs before routing) -- a 401 does NOT prove a new route is deployed; confirm from the app or the Railway dashboard.
   Same day, full live QA (prod, test data created + removed): every feature above verified working. Fixed from QA in batches: Spanish mistranslations (weekday abbrevs, OT, Clock In, Clear, Lead, Amount, jobs, TECH, Estimate) + new hand-checked `src/lib/es-dictionary.ts` covering every t() string on today's screens (dict in language-context overrides it), dates/receipt labels/payment names/job types follow the language, Field view wider on desktop + stacked clock card, Jobs filter row regrouped + "Showing X · Today — Show all technicians" hint. Gotcha: t() strings missing from the dictionaries render English first (async Google fetch) -- always add Spanish to es-dictionary.ts with the feature. Customer page first load still ~15s (Open item #9).
+- **2026-09-25 (final QA pass, not pushed yet)** — Fixed: simultaneous POS checkouts saved twice (in-process in-flight guard; 3 parallel → 1 order);
+  job type untranslated on JobDetail; Timesheets showed Mon–Sun then jumped to the Wed–Tue payroll week, week key used UTC, table blanked + scrolled
+  to top after every Approve/Save, entry delete had no instant feedback, request dates raw ISO; `/approve` + `/approve-week` now office-only;
+  POS header cards were summed from the 8 loaded recent sales (new `GET /api/pos/stats`, browser time zone) and "Show more" reloaded the whole
+  register; Spanish for Inventory tabs/PO terms/POS cards. Verified live on local dev against prod data (line-item drag+save, PO empty cost, all
+  Timesheets actions, Field clock in/out, POS Show more); all test data removed.
