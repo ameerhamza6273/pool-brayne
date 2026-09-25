@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { Cross2Icon } from '@radix-ui/react-icons';
 
 import { cn } from '@/lib/utils';
+import { useLanguage } from '@/lib/language-context';
 
 const Dialog = DialogPrimitive.Root;
 
@@ -36,6 +37,7 @@ const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => {
+  const { t } = useLanguage();
   const [boundary, setBoundary] = React.useState<HTMLElement | null>(null);
   return (
   <DialogPortal>
@@ -59,7 +61,7 @@ const DialogContent = React.forwardRef<
       <DialogBoundaryContext.Provider value={boundary}>{children}</DialogBoundaryContext.Provider>
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
         <Cross2Icon className="h-4 w-4" />
-        <span className="sr-only">Close</span>
+        <span className="sr-only">{t("Close")}</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </DialogPortal>

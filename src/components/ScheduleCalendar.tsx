@@ -396,7 +396,7 @@ export default function ScheduleCalendar({
         jobId: j.virtual ? null : j.id,
         recurringId: j.virtual ? (j.recurringId ?? null) : (j.recurring_job_id ?? null),
         label: j.customers?.name ?? "—",
-        sub: j.type,
+        sub: t(j.type),
         time: j.scheduled_time,
         repeats: !!(j.virtual || j.recurring_job_id),
       }))
