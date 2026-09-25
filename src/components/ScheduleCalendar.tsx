@@ -334,7 +334,7 @@ export default function ScheduleCalendar({
     const where = j.address ?? j.customers?.address ?? null;
     return [
       j.customers?.name ?? t("Unassigned"),
-      `${j.type}${min !== null ? ` · ${fmtTime(min)}` : ""}`,
+      `${j.kind ? j.type : t(j.type)}${min !== null ? ` · ${fmtTime(min)}` : ""}`,
       who ? `${t("Who")}: ${who}` : null,
       where ? `${t("Where")}: ${where}` : null,
       j.description ? `${t("Description")}: ${j.description}` : null,
@@ -372,7 +372,7 @@ export default function ScheduleCalendar({
             </button>
           )}
         </div>
-        <div className="truncate opacity-80">{j.type}</div>
+        <div className="truncate opacity-80">{j.kind ? j.type : t(j.type)}</div>
       </div>
     );
   };
@@ -489,8 +489,8 @@ export default function ScheduleCalendar({
               {m === "employee" ? t("Employee") : t("Job type")}
             </button>
           ))}
-          {colorMode === "type" && Array.from(new Set(visible.map((j) => j.type))).slice(0, 8).map((ty) => (
-            <span key={ty} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: typeColors[ty] ?? unassignedColor }} />{ty}</span>
+          {colorMode === "type" && Array.from(new Set(visible.filter((j) => !j.kind).map((j) => j.type))).slice(0, 8).map((ty) => (
+            <span key={ty} className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: typeColors[ty] ?? unassignedColor }} />{t(ty)}</span>
           ))}
         </div>
         <p className="text-xs text-[#94A3B8] mb-3">

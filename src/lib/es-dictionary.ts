@@ -519,6 +519,7 @@ export const esDictionary: Record<string, string> = {
   "Unit Price": "Precio unitario",
   "Unit price": "Precio unitario",
   "Unknown": "Desconocido",
+  "Approximate location": "Ubicación aproximada", "Estimate / Quote": "Presupuesto / Cotización", "Install": "Instalación", "In Store Repair": "Reparación en tienda", "Pool Open / Close": "Apertura / cierre de piscina", "Inspection": "Inspección", "Consultation": "Consulta", "Equipment Service": "Servicio de equipo", "Renovation / Remodel": "Renovación / remodelación", "Renovation": "Renovación",
   "Up to": "Hasta",
   "Upload": "Subir",
   "Upload job documents": "Subir documentos del trabajo",

@@ -510,7 +510,7 @@ export default function Jobs() {
         const time = job.scheduled_time ? job.scheduled_time.slice(0, 5) : "";
         L.marker([c.lat, c.lng], { icon: stopIcon(techId ? String(num) : "", color, c.approx), zIndexOffset: 100 + num })
           .bindPopup(
-            `<strong>${techId ? `${num}. ` : ""}${time ? `${time} &middot; ` : ""}${escapeHtml(job.customers?.name ?? "Unknown")}</strong><br/>${escapeHtml(job.type)}<br/>Tech: ${escapeHtml(job.profiles?.name ?? "Unassigned")}${job.address || job.customers?.address ? `<br/>${escapeHtml((job.address || job.customers?.address) as string)}` : ""}${c.approx ? "<br/><em>Approximate location</em>" : ""}`,
+            `<strong>${techId ? `${num}. ` : ""}${time ? `${time} &middot; ` : ""}${escapeHtml(job.customers?.name ?? t("Unknown"))}</strong><br/>${escapeHtml(t(job.type))}<br/>${escapeHtml(t("Tech"))}: ${escapeHtml(job.profiles?.name ?? t("Unassigned"))}${job.address || job.customers?.address ? `<br/>${escapeHtml((job.address || job.customers?.address) as string)}` : ""}${c.approx ? `<br/><em>${escapeHtml(t("Approximate location"))}</em>` : ""}`,
           )
           .addTo(layer);
       });
@@ -905,7 +905,7 @@ export default function Jobs() {
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="h-10 w-full sm:w-48 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Job Type")} /></SelectTrigger>
+          <SelectTrigger className="h-10 w-full sm:w-56 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Job Type")} /></SelectTrigger>
           <SelectContent className="max-h-72">
             <SelectItem value="all">{t("All Job Types")}</SelectItem>
             {jobTypeFilterOptions.map((jt) => <SelectItem key={jt} value={jt}>{jt}</SelectItem>)}
@@ -977,7 +977,7 @@ export default function Jobs() {
                         onClick={() => navigate(`/jobs/${job.id}`)}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <Badge className="text-[10px] px-1.5 py-0" style={techStyle(job.tech_id)}>{job.type}</Badge>
+                          <Badge className="text-[10px] px-1.5 py-0" style={techStyle(job.tech_id)}>{t(job.type)}</Badge>
                           <div className="flex items-center gap-1.5">
                             {job.en_route_at && !job.arrived_at && !job.completed_at && (
                               <Navigation className="w-3.5 h-3.5 text-[#F59E0B]" aria-label={t("En route")} />
@@ -1023,7 +1023,7 @@ export default function Jobs() {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type, configLists.job_types)}>{job.type}</Badge>
+                      <Badge className="text-[10px] px-1.5 py-0" style={typeStyle(job.type, configLists.job_types)}>{t(job.type)}</Badge>
                       <span className="text-xs text-[#64748B]">{job.scheduled_date} {job.scheduled_time}</span>
                     </div>
                     <p className="font-medium text-sm text-[#0F172A] mt-0.5">{job.customers?.name}</p>
