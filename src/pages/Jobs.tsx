@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Calendar, LayoutDashboard, Truck, User, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon, Navigation,
-  Pencil, Trash2, Pause, Play,
+  Pencil, Trash2, Pause, Play, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -139,6 +139,12 @@ export default function Jobs() {
   const [dateTo, setDateToState] = useState(() => localKey(new Date()));
   const setDateFrom = (v: string) => { setDateTouched(true); setDateFromState(v); };
   const setDateTo = (v: string) => { setDateTouched(true); setDateToState(v); };
+  const quickRangeActive = (["today", "week", "month"] as const).find((r) => {
+    const now = new Date();
+    const from = r === "today" ? now : r === "week" ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = r === "today" ? now : r === "week" ? new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6) : new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return dateFrom === localKey(from) && dateTo === localKey(to);
+  }) ?? null;
   const setQuickRange = (range: "today" | "week" | "month") => {
     const now = new Date();
     const from = range === "today" ? now : range === "week" ? new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay()) : new Date(now.getFullYear(), now.getMonth(), 1);
@@ -878,8 +884,10 @@ export default function Jobs() {
       </div>
 
       {/* Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-        <div className="relative w-full sm:max-w-md sm:flex-1">
+      {/* Live QA 2026-09-25: one tidy row that wraps cleanly instead of squeezing -- date range and the
+          Today / Week / Month presets are a single grouped control, the active preset highlighted. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[220px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
           <Input
             placeholder={t("Search jobs...")}
@@ -889,7 +897,7 @@ export default function Jobs() {
           />
         </div>
         <Select value={techFilter} onValueChange={setTechFilter}>
-          <SelectTrigger className="h-10 w-full sm:w-48 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Technician")} /></SelectTrigger>
+          <SelectTrigger className="h-10 w-full sm:w-44 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Technician")} /></SelectTrigger>
           <SelectContent className="max-h-72">
             <SelectItem value="all">{t("All Technicians")}</SelectItem>
             <SelectItem value="unassigned">{t("Unassigned")}</SelectItem>
@@ -897,23 +905,32 @@ export default function Jobs() {
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="h-10 w-full sm:w-52 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Job Type")} /></SelectTrigger>
+          <SelectTrigger className="h-10 w-full sm:w-48 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Job Type")} /></SelectTrigger>
           <SelectContent className="max-h-72">
             <SelectItem value="all">{t("All Job Types")}</SelectItem>
             {jobTypeFilterOptions.map((jt) => <SelectItem key={jt} value={jt}>{jt}</SelectItem>)}
           </SelectContent>
         </Select>
         {/* Client SMS 2026-09-21: date range to the right of "Search jobs". */}
-        <div className="flex items-center gap-1.5">
-          <Input type="date" aria-label={t("From")} title={t("From")} className="h-10 w-full sm:w-40 bg-white border-[#E2E8F0]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <span className="text-xs text-[#64748B]">{t("to")}</span>
-          <Input type="date" aria-label={t("To")} title={t("To")} className="h-10 w-full sm:w-40 bg-white border-[#E2E8F0]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          {(["today", "week", "month"] as const).map((r) => (
-            <Button key={r} variant="outline" className="h-10 px-2.5 text-xs border-[#E2E8F0] bg-white" onClick={() => setQuickRange(r)}>
-              {r === "today" ? t("Today") : r === "week" ? t("Week") : t("Month")}
-            </Button>
-          ))}
-          {(dateFrom || dateTo) && <Button variant="ghost" className="h-10 px-2 text-xs" onClick={() => { setDateFrom(""); setDateTo(""); }}>{t("Clear")}</Button>}
+        <div className="flex items-center h-10 w-full sm:w-auto rounded-md border border-[#E2E8F0] bg-white overflow-hidden">
+          <input type="date" aria-label={t("From")} title={t("From")} className="h-full px-2 text-sm bg-transparent outline-none min-w-0 flex-1 sm:flex-none sm:w-[132px]" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <span className="text-xs text-[#94A3B8] px-0.5">–</span>
+          <input type="date" aria-label={t("To")} title={t("To")} className="h-full px-2 text-sm bg-transparent outline-none min-w-0 flex-1 sm:flex-none sm:w-[132px]" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          {(dateFrom || dateTo) && (
+            <button className="h-full px-2 text-[#94A3B8] hover:text-[#DC2626]" title={t("Clear dates")} onClick={() => { setDateFrom(""); setDateTo(""); }}>
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex h-10 rounded-md border border-[#E2E8F0] bg-white overflow-hidden text-xs font-medium">
+          {(["today", "week", "month"] as const).map((r) => {
+            const active = quickRangeActive === r;
+            return (
+              <button key={r} onClick={() => setQuickRange(r)} className={`px-3 border-l first:border-l-0 border-[#E2E8F0] ${active ? "bg-[#0891B2] text-white" : "text-[#0F172A] hover:bg-[#F8FAFC]"}`}>
+                {r === "today" ? t("Today") : r === "week" ? t("Week") : t("Month")}
+              </button>
+            );
+          })}
         </div>
       </div>
       {/* The automatic "my jobs, today" default can leave the board empty (e.g. the owner has no jobs today) --

@@ -78,6 +78,7 @@ const dict: Record<string, string> = {
   "Edit price": "Editar precio", "Receipt Disclaimer": "Aviso en el recibo",
   "Techs with jobs": "Técnicos con trabajos", "Make a Request": "Hacer una solicitud",
   "Weekly Hours": "Horas semanales", "Action": "Acción", "Approve": "Aprobar", "Deny": "Rechazar",
+  "Showing": "Mostrando", "Show all technicians": "Ver todos los técnicos", "Clear dates": "Borrar fechas",
   "Add document": "Agregar documento", "Use file name": "Usar nombre de archivo", "Document List": "Lista de documentos",
 };
 
