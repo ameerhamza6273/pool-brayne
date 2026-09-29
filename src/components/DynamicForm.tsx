@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Circle, Upload, X } from "lucide-react";
+import { CheckCircle2, Circle, ChevronDown, ChevronRight, Upload, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,10 @@ export default function DynamicForm({
   const [saved, setSaved] = useState(false);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<Set<string>>(new Set());
+  // Client video 2026-09-29: "Equipment inspection checklist... should be collapsed. So when
+  // looking at the notes, it does not consume the whole screen on the phone." Starts collapsed —
+  // the header still shows the completion count so a partially-filled form isn't invisible.
+  const [expanded, setExpanded] = useState(false);
 
   const setValue = (id: string, v: unknown) => {
     setValues((p) => ({ ...p, [id]: v }));
@@ -64,6 +68,7 @@ export default function DynamicForm({
     const missing = new Set(template.fields.filter((f) => f.required && isFieldEmpty(f)).map((f) => f.id));
     if (missing.size > 0) {
       setMissingFields(missing);
+      setExpanded(true);
       return;
     }
     setSaving(true);
@@ -82,10 +87,22 @@ export default function DynamicForm({
 
   return (
     <Card className="border-[#E2E8F0] shadow-sm">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold text-[#0F172A]">{t(template.name)}</CardTitle>
-        {template.description && <p className="text-xs text-[#64748B]">{t(template.description)}</p>}
-      </CardHeader>
+      <button type="button" className="w-full text-left" onClick={() => setExpanded((e) => !e)}>
+        <CardHeader className="pb-3 flex-row items-center justify-between gap-2 space-y-0">
+          <div className="min-w-0">
+            <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-1.5">
+              {t(template.name)}
+              {saved && <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />}
+            </CardTitle>
+            {template.description && <p className="text-xs text-[#64748B]">{t(template.description)}</p>}
+            {checkboxFields.length > 0 && (
+              <p className="text-xs text-[#64748B] mt-0.5">{completedCount} {t("of")} {checkboxFields.length} {t("items completed")}</p>
+            )}
+          </div>
+          {expanded ? <ChevronDown className="w-4 h-4 text-[#64748B] shrink-0" /> : <ChevronRight className="w-4 h-4 text-[#64748B] shrink-0" />}
+        </CardHeader>
+      </button>
+      {expanded && (
       <CardContent className="pt-0 space-y-4">
         {checkboxFields.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -173,13 +190,10 @@ export default function DynamicForm({
         {missingFields.size > 0 && (
           <p className="text-xs text-[#DC2626]">{t("Please fill in every mandatory field before saving.")}</p>
         )}
-        <div className="flex items-center justify-between pt-2">
-          {checkboxFields.length > 0 && (
-            <p className="text-xs text-[#64748B]">{completedCount} {t("of")} {checkboxFields.length} {t("items completed")}</p>
-          )}
+        <div className="flex items-center justify-end pt-2">
           <Button
             size="sm"
-            className={`gap-2 ml-auto text-white ${saved ? "bg-[#16A34A] hover:bg-[#15803D]" : "bg-[#0891B2] hover:bg-[#0E7490]"}`}
+            className={`gap-2 text-white ${saved ? "bg-[#16A34A] hover:bg-[#15803D]" : "bg-[#0891B2] hover:bg-[#0E7490]"}`}
             onClick={handleSave}
             disabled={saving}
           >
@@ -187,6 +201,7 @@ export default function DynamicForm({
           </Button>
         </div>
       </CardContent>
+      )}
     </Card>
   );
 }

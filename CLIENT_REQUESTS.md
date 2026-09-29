@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-09-25
+Last updated: 2026-09-29
 
 ---
 
@@ -94,6 +94,12 @@ Last updated: 2026-09-25
 |---|---|---|
 | *(2026-09-25)* Clock in / out from the phone + make requests | ✅ | Technician Field › top card |
 | Order: job description → existing photos → parts/materials → documents → library → before/after photos → forms → job notes → internal notes/photos | ✅ | Technician Field › open a job |
+| *(2026-09-29, video)* Before/after photo upload "not clickable" | ✅ | This was the desktop Job page's decorative Before/After Photos tab (placeholder icons, no upload wired up) — now a real upload, same as Technician Field's |
+| *(2026-09-29, video)* "Upload or attach receipts" button not clickable | ✅ | Job page › Receipts tab — real upload now (reuses the Documents mechanism, kept separate) |
+| *(2026-09-29, video)* Documents button not active | ✅ | Job page › Documents tab — now the same real Documents section used elsewhere on the page |
+| *(2026-09-29, video)* Equipment Inspection Checklist / One-off Job Checklist should be collapsed so notes aren't pushed off-screen | ✅ | Every form card (Technician Field + Job page) now starts collapsed, showing just the name and "X of Y completed"; tap to open |
+| *(2026-09-29, video)* Job Notes typed on a job "did not save" | ✅ fixed | Technician Field › Job Notes now has its own "Save Note to Customer Record" button (previously only saved if you completed the job in the same sitting — typing notes and coming back later lost them) |
+| *(2026-09-29, video)* Checked off a submitted checklist, but couldn't open/preview it again — notes "not visible" | ✅ fixed | Job page and Technician Field › **Submitted Forms** — click any entry to see exactly what was checked and the notes that were written, read-only |
 
 ---
 

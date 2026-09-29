@@ -15,6 +15,7 @@ import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import DynamicForm from "@/components/DynamicForm";
+import FormSubmissionView from "@/components/FormSubmissionView";
 import DocumentsSection, { type DocumentAttachment } from "@/components/DocumentsSection";
 import ClockCard from "@/components/ClockCard";
 import { supabase } from "@/lib/supabase";
@@ -55,6 +56,8 @@ export default function Field() {
   const photoLabelRef = useRef<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [notesSaved, setNotesSaved] = useState(false);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [partsUsed, setPartsUsed] = useState<Record<string, number>>({});
@@ -64,6 +67,7 @@ export default function Field() {
   // documents -- techs only ever work from this page, not the desktop JobDetail.
   const [jobLineItems, setJobLineItems] = useState<JobLineItem[]>([]);
   const [jobForms, setJobForms] = useState<JobForm[]>([]);
+  const [viewingForm, setViewingForm] = useState<JobForm | null>(null);
   const [allTemplates, setAllTemplates] = useState<FormTemplate[]>([]);
   const [jobDocuments, setJobDocuments] = useState<DocumentAttachment[]>([]);
   const [docsUploading, setDocsUploading] = useState(false);
@@ -139,6 +143,25 @@ export default function Field() {
   const pickPhoto = (label: "before" | "after" | "internal") => {
     photoLabelRef.current = label;
     fileInputRef.current?.click();
+  };
+
+  // Client video 2026-09-29: "When I typed the notes here last time, it did not save." -- this
+  // textarea only ever flushed to the customer record when the job was marked Complete in the
+  // same sitting; typing notes, then switching jobs or closing the tab before completing, lost
+  // them silently. Explicit save now (same "Save Note to Customer Record" pattern JobDetail's
+  // desktop notes already use); Complete Job below still flushes leftover unsaved text as a
+  // safety net, but clearing `notes` here after a save avoids posting it twice.
+  const saveJobNotes = async () => {
+    if (!currentJob || !notes.trim()) return;
+    setSavingNotes(true);
+    try {
+      await customersApi.addNote(currentJob.customer_id, { text: notes.trim(), author: user?.name ?? "Technician" });
+      setNotes("");
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 2500);
+    } finally {
+      setSavingNotes(false);
+    }
   };
 
   // Internal notes reuse jobs.tech_notes (the "tech-only notes" already shown on JobDetail).
@@ -617,15 +640,56 @@ export default function Field() {
               </div>
             )}
 
+            {/* Submitted Forms — client video 2026-09-29: "I checked all these off... but this is
+                not clickable, nor can I open and preview each form." Techs can now re-open what
+                was already submitted for this job (read-only) instead of only seeing a blank form. */}
+            {jobForms.length > 0 && (
+              <div>
+                <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Submitted Forms")}</p>
+                <div className="rounded-lg border border-[#E2E8F0] divide-y divide-[#F1F5F9]">
+                  {jobForms.map((f) => (
+                    <button
+                      key={f.id}
+                      onClick={() => setViewingForm(f)}
+                      className="w-full text-left flex items-center justify-between px-3 py-2 hover:bg-[#F8FAFC]"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[#0891B2] truncate">{t(f.template_name ?? f.type)}</p>
+                        <p className="text-xs text-[#64748B]">{new Date(f.submitted_at).toLocaleString()}</p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-[#64748B] shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <FormSubmissionView
+              template={viewingForm ? allTemplates.find((tpl) => tpl.id === viewingForm.template_id) ?? null : null}
+              form={viewingForm}
+              open={viewingForm !== null}
+              onOpenChange={(open) => { if (!open) setViewingForm(null); }}
+            />
+
             {/* Notes */}
             <div>
               <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Job Notes")}</p>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={t("Add notes about this job... (saved to customer record on completion)")}
+                placeholder={t("Add notes about this job...")}
                 className="w-full h-20 p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[#0891B2]"
               />
+              {notes.trim() && (
+                <Button
+                  size="sm"
+                  className={`mt-2 gap-1.5 text-white ${notesSaved ? "bg-[#16A34A] hover:bg-[#15803D]" : "bg-[#0891B2] hover:bg-[#0E7490]"}`}
+                  disabled={savingNotes}
+                  onClick={saveJobNotes}
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  {notesSaved ? t("Saved!") : savingNotes ? t("Saving...") : t("Save Note to Customer Record")}
+                </Button>
+              )}
             </div>
 
             {/* Internal notes / photos — staff only (notes reuse jobs.tech_notes; photos are labelled

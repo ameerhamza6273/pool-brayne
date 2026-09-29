@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, MapPin, Clock, User, Wrench, FileText, Camera,
   Plus, CheckCircle2, Circle, Send, Signature, Truck, DollarSign,
   Phone, MessageSquare, Mail, UserX, AlertCircle, Lock, ExternalLink,
-  Barcode, Receipt, Info, Upload, Languages, RotateCw, Copy, Ban,
+  Barcode, Receipt, Info, Languages, RotateCw, Copy, Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import { useTranslator } from "@/hooks/use-translator";
 import { useLanguage } from "@/lib/language-context";
 import { Loader2, RefreshCw, Pencil } from "lucide-react";
 import DynamicForm from "@/components/DynamicForm";
+import FormSubmissionView from "@/components/FormSubmissionView";
 import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
 import { recurringJobsApi } from "@/lib/api/recurringJobs";
 import { jobsApi, type JobPartUsed, type JobLineItem, type JobAttachment, type JobCrewMember, type JobForm } from "@/lib/api/jobs";
@@ -152,6 +153,15 @@ export default function JobDetail() {
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [documents, setDocuments] = useState<JobAttachment[]>([]);
   const [docsUploading, setDocsUploading] = useState(false);
+  // Client video 2026-09-29: "checked all these off... shows under submitted forms, but this is
+  // not clickable, nor can I open and preview each form." -- view (not re-edit) a past submission.
+  const [viewingForm, setViewingForm] = useState<JobForm | null>(null);
+  // Client video 2026-09-29: the "Before / After Photos" tab was static placeholder images with
+  // no upload wired up -- reuses the same job-attachments (type "photo", label "before"/"after")
+  // Field.tsx already writes, so photos a tech takes on their phone show up here too.
+  const [photos, setPhotos] = useState<JobAttachment[]>([]);
+  const photoLabelRef = useRef<"before" | "after" | null>(null);
+  const photoFileInputRef = useRef<HTMLInputElement>(null);
   // Pre-existing bug fixed 2026-09-08: this was declared after the `if (isLoading)`/`if (!job)`
   // early returns below, which only runs the hook on some renders and not others -- a real Rules
   // of Hooks violation ("Rendered more hooks than during the previous render", a real crash,
@@ -217,7 +227,10 @@ export default function JobDetail() {
     invoicingApi.byJob(id).then((data) => setInvoiceId(data?.id ?? null));
     jobsApi.getParts(id).then(setPartsUsed);
     jobsApi.getLineItems(id).then(setJobLineItems);
-    jobsApi.getAttachments(id).then((data) => setDocuments(data.filter((a) => a.type === "document")));
+    jobsApi.getAttachments(id).then((data) => {
+      setDocuments(data.filter((a) => a.type === "document"));
+      setPhotos(data.filter((a) => a.type === "photo" && (a.label === "before" || a.label === "after")));
+    });
     jobsApi.getCrew(id).then(setCrew);
     jobsApi.getForms(id).then(setPastForms);
   };
@@ -274,6 +287,28 @@ export default function JobDetail() {
     } finally {
       setDocsUploading(false);
     }
+  };
+
+  // Client video 2026-09-29: "Before and after pictures are not clickable... would like to
+  // upload a photograph" -- this tab had hardcoded placeholder icons, no real upload. Same
+  // upload mechanism as Field.tsx's tech-facing Before/After photos, so either view stays in sync.
+  const pickPhoto = (label: "before" | "after") => {
+    photoLabelRef.current = label;
+    photoFileInputRef.current?.click();
+  };
+
+  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!id || !tenantId || !e.target.files) return;
+    const label = photoLabelRef.current;
+    for (const file of Array.from(e.target.files)) {
+      const path = `${tenantId}/${id}/photo-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+      if (error) throw error;
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      const attachment = await jobsApi.addAttachment(id, { type: "photo", url: data.publicUrl, label });
+      setPhotos((prev) => [...prev, attachment]);
+    }
+    e.target.value = "";
   };
 
   useEffect(loadJob, [id]);
@@ -924,24 +959,19 @@ export default function JobDetail() {
                 </TabsContent>
 
                 {/* Documents */}
-                <TabsContent value="documents" className="mt-4 space-y-3">
-                  <div className="border-2 border-dashed border-[#E2E8F0] rounded-lg p-6 text-center">
-                    <Upload className="w-8 h-8 text-[#64748B] mx-auto mb-2" />
-                    <p className="text-sm font-medium text-[#0F172A]">{t("Upload job documents")}</p>
-                    <p className="text-xs text-[#64748B] mt-1">{t("PDFs, contracts, permits, work orders")}</p>
-                    <Button variant="outline" size="sm" className="mt-3 gap-2">
-                      <Plus className="w-4 h-4" /> {t("Add Document")}
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {["Work Order - signed.pdf", "Permit - City of Austin.pdf"].map((doc) => (
-                      <div key={doc} className="flex items-center gap-3 p-2 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                        <FileText className="w-4 h-4 text-[#0891B2] shrink-0" />
-                        <span className="text-sm text-[#0F172A] flex-1 truncate">{doc}</span>
-                        <button className="text-xs text-[#0891B2] font-medium hover:underline">{t("View")}</button>
-                      </div>
-                    ))}
-                  </div>
+                {/* Client video 2026-09-29: "This document button is not active" -- this tab used
+                    to be a static hardcoded mockup with no handlers; it's now the exact same real
+                    Documents section rendered lower on this page (same state, same uploads). */}
+                <TabsContent value="documents" className="mt-4">
+                  <DocumentsSection
+                    documents={documents}
+                    onUpload={handleUploadDocument}
+                    uploading={docsUploading}
+                    libraryDocuments={libraryDocuments}
+                    onAttachExisting={handleAttachLibraryDocument}
+                    onRename={handleRenameDocument}
+                    onDelete={handleDeleteDocument}
+                  />
                 </TabsContent>
 
                 {/* Customer Not Available */}
@@ -1028,34 +1058,38 @@ export default function JobDetail() {
                   </Button>
                 </TabsContent>
 
-                {/* Before / After Photos */}
+                {/* Before / After Photos — client video 2026-09-29: "before and after pictures
+                    are not clickable, so we cannot upload photographs here" -- this tab was
+                    hardcoded placeholder icons only. Now real job_attachments uploads, same
+                    mechanism (and same data) as Field.tsx's tech-facing Before/After photos. */}
                 <TabsContent value="before_after" className="mt-4 space-y-4">
-                  <div>
-                    <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Before")}</p>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {[1, 2].map((i) => (
-                        <div key={i} className="aspect-square rounded-lg bg-[#F1F5F9] flex items-center justify-center">
+                  <input
+                    ref={photoFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={handlePhotoSelect}
+                  />
+                  {(["before", "after"] as const).map((kind) => (
+                    <div key={kind}>
+                      <p className="text-sm font-medium text-[#0F172A] mb-2">{kind === "before" ? t("Before") : t("After")}</p>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                        {photos.filter((p) => p.label === kind).map((photo) => (
+                          <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10 block">
+                            <img src={photo.url} alt={kind} className="w-full h-full object-cover" />
+                          </a>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => pickPhoto(kind)}
+                          className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center cursor-pointer hover:bg-[#E2E8F0]"
+                        >
                           <Camera className="w-5 h-5 text-[#64748B]" />
-                        </div>
-                      ))}
-                      <div className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center cursor-pointer hover:bg-[#E2E8F0]">
-                        <Plus className="w-5 h-5 text-[#64748B]" />
+                        </button>
                       </div>
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-[#0F172A] mb-2">{t("After")}</p>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="aspect-square rounded-lg bg-[#F1F5F9] flex items-center justify-center">
-                          <Camera className="w-5 h-5 text-[#64748B]" />
-                        </div>
-                      ))}
-                      <div className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center cursor-pointer hover:bg-[#E2E8F0]">
-                        <Plus className="w-5 h-5 text-[#64748B]" />
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </TabsContent>
 
                 {/* Model & Serial */}
@@ -1081,28 +1115,18 @@ export default function JobDetail() {
                   </Button>
                 </TabsContent>
 
-                {/* Receipts */}
-                <TabsContent value="receipts" className="mt-4 space-y-3">
-                  <div className="border-2 border-dashed border-[#E2E8F0] rounded-lg p-6 text-center">
-                    <Receipt className="w-8 h-8 text-[#64748B] mx-auto mb-2" />
-                    <p className="text-sm font-medium text-[#0F172A]">{t("Upload or attach receipts")}</p>
-                    <p className="text-xs text-[#64748B] mt-1">{t("Parts purchased, fuel, materials for this job")}</p>
-                    <Button variant="outline" size="sm" className="mt-3 gap-2">
-                      <Plus className="w-4 h-4" /> {t("Add Receipt")}
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {[
-                      { name: "Pump seal kit — PoolMart", amount: 32.99 },
-                      { name: "Pipe fittings — Home Depot", amount: 14.47 },
-                    ].map((r) => (
-                      <div key={r.name} className="flex items-center gap-3 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                        <Receipt className="w-4 h-4 text-[#0891B2] shrink-0" />
-                        <span className="text-sm text-[#0F172A] flex-1">{r.name}</span>
-                        <span className="text-sm font-semibold text-[#0F172A]">${r.amount}</span>
-                      </div>
-                    ))}
-                  </div>
+                {/* Receipts — client video 2026-09-29: "Upload or attach receipts... this button
+                    here is not clickable." Reuses the same document-attachment mechanism as
+                    Documents (job_attachments, type "document"), tagged with the "Receipt" label
+                    so it lists separately here instead of a new table/upload path. */}
+                <TabsContent value="receipts" className="mt-4">
+                  <DocumentsSection
+                    title="Receipts"
+                    documents={documents.filter((d) => d.label === "Receipt")}
+                    onUpload={(file) => handleUploadDocument(file, "Receipt")}
+                    uploading={docsUploading}
+                    onDelete={handleDeleteDocument}
+                  />
                 </TabsContent>
 
                 {/* Extra Job Info */}
@@ -1278,12 +1302,12 @@ export default function JobDetail() {
               <CardContent className="pt-0 space-y-2">
                 {pastForms.map((f) => (
                   <div key={f.id} className="flex items-center justify-between p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <div>
-                      <p className="text-sm font-medium text-[#0F172A]">{t(f.template_name ?? f.type)}</p>
+                    <button className="text-left flex-1 min-w-0" onClick={() => setViewingForm(f)}>
+                      <p className="text-sm font-medium text-[#0891B2] hover:underline">{t(f.template_name ?? f.type)}</p>
                       <p className="text-xs text-[#64748B]">{new Date(f.submitted_at).toLocaleString()} · {f.submitted_by_name ?? t("Unknown")}</p>
-                    </div>
+                    </button>
                     <button
-                      className="text-xs text-[#0891B2] hover:underline shrink-0"
+                      className="text-xs text-[#0891B2] hover:underline shrink-0 ml-2"
                       onClick={() => navigator.clipboard.writeText(`${window.location.origin}/form/${f.public_token}`)}
                     >
                       {t("Copy Customer Link")}
@@ -1293,6 +1317,13 @@ export default function JobDetail() {
               </CardContent>
             </Card>
           )}
+
+          <FormSubmissionView
+            template={viewingForm ? allTemplates.find((tpl) => tpl.id === viewingForm.template_id) ?? null : null}
+            form={viewingForm}
+            open={viewingForm !== null}
+            onOpenChange={(open) => { if (!open) setViewingForm(null); }}
+          />
 
           {/* Parts Used (auto-deducted from store inventory on job completion) */}
           {partsUsed.length > 0 && (

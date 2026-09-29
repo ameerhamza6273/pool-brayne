@@ -624,4 +624,10 @@ export const esDictionary: Record<string, string> = {
   // POS header cards (2026-09-25 QA: "Transactions" auto-translated to "Actas", "Avg Ticket" to "Boleto promedio").
   "Last 7 Days": "Últimos 7 días", "Avg Ticket (7 days)": "Ticket promedio (7 días)", "Sales Today": "Ventas hoy",
   "Transactions": "Transacciones", "Avg Ticket": "Ticket promedio",
+  // Client video 2026-09-29: form-notes-not-saving fix + read-only form submission preview + real
+  // Documents/Receipts/Before-After tabs on JobDetail.
+  "Add notes about this job...": "Agregue notas sobre este trabajo...",
+  "Notes": "Notas",
+  "The original form was deleted — showing raw submitted answers.": "El formulario original fue eliminado — mostrando las respuestas enviadas.",
+  "Receipts": "Recibos",
 };

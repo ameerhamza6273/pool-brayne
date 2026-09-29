@@ -36,6 +36,7 @@ export default function DocumentsSection({
   onRename,
   onDelete,
   collapseWhenEmpty,
+  title,
 }: {
   documents: DocumentAttachment[];
   onUpload: (file: File, label: string) => Promise<void>;
@@ -47,6 +48,10 @@ export default function DocumentsSection({
   // Client SMS 2026-09-25: "if a document is not selected do not show the document section" (estimate + job):
   // with no documents the card shrinks to one "Add document" button that opens it.
   collapseWhenEmpty?: boolean;
+  // Client video 2026-09-29: the JobDetail Receipts tab reuses this component (same upload/list
+  // mechanism, filtered to label "Receipt") -- without this the card header always said
+  // "Documents" even while showing receipts, confusing given both tabs sat right next to each other.
+  title?: string;
 }) {
   const { t } = useLanguage();
   const { lists } = useConfigLists();
@@ -115,7 +120,7 @@ export default function DocumentsSection({
     <Card className="border-[#E2E8F0] shadow-sm">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
-          <FileText className="w-4 h-4 text-[#0891B2]" /> {t("Documents")}
+          <FileText className="w-4 h-4 text-[#0891B2]" /> {t(title ?? "Documents")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
