@@ -43,8 +43,8 @@ export default async function dashboardRoutes(app: FastifyInstance) {
         const lineItems = lineItemsByInvoice.filter((li) => li.invoice_id === i.id);
         const materials = lineItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
         const labor = lineItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-        const total = lineItems.length > 0 ? materials * 1.0825 + labor : i.amount * 1.0825;
-        return { ...i, total };
+        const rawTotal = lineItems.length > 0 ? materials * 1.0825 + labor : i.amount * 1.0825;
+        return { ...i, total: Math.round(rawTotal * 100) / 100 };
       });
 
       const inventoryAlerts = items

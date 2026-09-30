@@ -47,10 +47,12 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
 // invoice with labor line items would be OVERCHARGED on card payment. Fixed to match the one true
 // formula every other total in the app already uses.
 function taxedTotal(lineItems: { amount: number; item_type?: string | null }[], fallbackAmount: number): number {
-  if (lineItems.length === 0) return fallbackAmount * 1.0825;
+  if (lineItems.length === 0) return Math.round(fallbackAmount * 1.0825 * 100) / 100;
   const materials = lineItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const labor = lineItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-  return materials * 1.0825 + labor;
+  // Floating-point multiplication (e.g. 8.25% tax) can land a cent or two off a clean decimal --
+  // round to the cent so every surface that displays this shows the same, correctly-formatted number.
+  return Math.round((materials * 1.0825 + labor) * 100) / 100;
 }
 
 async function computeInvoiceTotal(tx: postgres.TransactionSql, invoiceId: string) {

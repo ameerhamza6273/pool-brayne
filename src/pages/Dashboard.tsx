@@ -31,6 +31,10 @@ const seasonalLabels: Record<string, string> = {
   Sep: "Wind-down", Oct: "Closing season", Nov: "Off-season", Dec: "Off-season",
 };
 
+// QA sweep 2026-09-30 follow-up: invoice `total` (materials * 1.0825 + labor) is a floating-point
+// result -- plain toLocaleString() can show up to 3 fraction digits (e.g. "$4,216.315" instead of
+// "$4,216.32"). Use this wherever an invoice total (not a plain job/POS revenue figure) is shown.
+const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const monthKey = (d: Date) => d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 const monthOf = (dateStr: string) => dateStr.slice(0, 7);
 
@@ -141,7 +145,7 @@ export default function Dashboard() {
   const kpis = [
     { label: `${t("Revenue")} (${t(range)})`, value: `$${revenueThisPeriod.toLocaleString()}`, change: pctChange(revenueThisPeriod, revenueLastPeriod), icon: DollarSign, up: revenueThisPeriod >= revenueLastPeriod, path: "/invoicing" },
     { label: t("Jobs Completed"), value: jobsThisPeriod.toString(), change: pctChange(jobsThisPeriod, jobsLastPeriod), icon: ClipboardCheck, up: jobsThisPeriod >= jobsLastPeriod, path: "/jobs" },
-    { label: t("Outstanding Invoices"), value: `$${outstandingTotal.toLocaleString()}`, sub: `${outstandingInvoices.length} ${t("invoices")}`, change: 0, icon: FileText, up: false, path: "/invoicing" },
+    { label: t("Outstanding Invoices"), value: `$${money(outstandingTotal)}`, sub: `${outstandingInvoices.length} ${t("invoices")}`, change: 0, icon: FileText, up: false, path: "/invoicing" },
     { label: t("New Customers"), value: newCustomersThisPeriod.toString(), change: pctChange(newCustomersThisPeriod, newCustomersLastPeriod), icon: UserPlus, up: newCustomersThisPeriod >= newCustomersLastPeriod, path: "/customers" },
   ];
 
@@ -374,7 +378,7 @@ export default function Dashboard() {
                 <div className="flex-1">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-[#0F172A]">{ar.bucket}</span>
-                    <span className="text-sm font-semibold text-[#0F172A]">${ar.amount.toLocaleString()}</span>
+                    <span className="text-sm font-semibold text-[#0F172A]">${money(ar.amount)}</span>
                   </div>
                   <div className="w-full h-2 bg-[#F1F5F9] rounded-full overflow-hidden">
                     <div
@@ -394,7 +398,7 @@ export default function Dashboard() {
           </div>
           <div className="mt-4 pt-3 border-t border-[#E2E8F0] flex items-center justify-between">
             <span className="text-sm font-medium text-[#0F172A]">{t("Total Outstanding")}</span>
-            <span className="text-lg font-bold text-[#0F172A]">${outstandingTotal.toLocaleString()}</span>
+            <span className="text-lg font-bold text-[#0F172A]">${money(outstandingTotal)}</span>
           </div>
         </div>
       </div>

@@ -50,6 +50,11 @@ const paymentMethods: Record<string, { icon: typeof CreditCard; label: string }>
 };
 
 const daysBetween = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
+// QA sweep 2026-09-30 follow-up: `total` (materials * 1.0825 + labor) is a floating-point result --
+// plain toLocaleString() shows up to 3 fraction digits by default, so a value like 4216.3149999998
+// rendered as "$4,216.315" instead of "$4,216.32". Every money amount in this file should go
+// through this instead of calling toLocaleString() directly.
+const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function Invoicing() {
   const { t } = useLanguage();
@@ -747,7 +752,7 @@ export default function Invoicing() {
               {agedReceivables.map((ar) => (
                 <div key={ar.bucket} className="text-center p-3 rounded-lg bg-[#F8FAFC]">
                   <p className="text-xs text-[#64748B]">{ar.bucket}</p>
-                  <p className="text-lg font-bold text-[#0F172A]">${ar.amount.toLocaleString()}</p>
+                  <p className="text-lg font-bold text-[#0F172A]">${money(ar.amount)}</p>
                   <p className="text-xs text-[#64748B]">{ar.count} {t("invoices")}</p>
                 </div>
               ))}
@@ -759,9 +764,9 @@ export default function Invoicing() {
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Total Outstanding", value: `$${totalOutstanding.toLocaleString()}`, icon: FileText, color: "text-[#F59E0B]", bg: "bg-[#F59E0B]/10" },
-          { label: "Paid This Month", value: `$${paidThisMonth.toLocaleString()}`, icon: CheckCircle2, color: "text-[#16A34A]", bg: "bg-[#16A34A]/10" },
-          { label: "Overdue", value: `$${overdue.toLocaleString()}`, icon: AlertTriangle, color: "text-[#DC2626]", bg: "bg-[#DC2626]/10" },
+          { label: "Total Outstanding", value: `$${money(totalOutstanding)}`, icon: FileText, color: "text-[#F59E0B]", bg: "bg-[#F59E0B]/10" },
+          { label: "Paid This Month", value: `$${money(paidThisMonth)}`, icon: CheckCircle2, color: "text-[#16A34A]", bg: "bg-[#16A34A]/10" },
+          { label: "Overdue", value: `$${money(overdue)}`, icon: AlertTriangle, color: "text-[#DC2626]", bg: "bg-[#DC2626]/10" },
           { label: "Avg Days to Pay", value: `${avgDays.toFixed(0)} days`, icon: Clock, color: "text-[#0891B2]", bg: "bg-[#0891B2]/10" },
         ].map((kpi) => {
           const Icon = kpi.icon;
@@ -833,7 +838,7 @@ export default function Invoicing() {
                       <td className="py-3 px-4 text-[#64748B] max-w-[220px] truncate">{inv.job_description || "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.issue_date}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.due_date}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${(inv.total ?? inv.amount).toLocaleString()}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${money(inv.total ?? inv.amount)}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[inv.status]} text-[10px] px-1.5 py-0`}>{t(inv.status)}</Badge>
                       </td>
@@ -877,7 +882,7 @@ export default function Invoicing() {
                       <td className="py-3 px-4 text-[#64748B]">{est.customers?.name ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{est.issue_date}</td>
                       <td className="py-3 px-4 text-[#64748B]">{est.expiry_date ?? "—"}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${(est.total ?? est.amount).toLocaleString()}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${money(est.total ?? est.amount)}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[est.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{t(est.status)}</Badge>
                       </td>

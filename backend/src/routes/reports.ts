@@ -62,7 +62,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
   app.get("/invoices-due", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
       select c.id as customer_id, c.name as customer_name,
-        sum(coalesce(li.taxed_total, i.amount * 1.0825)) as total_due,
+        round(sum(coalesce(li.taxed_total, i.amount * 1.0825))::numeric, 2) as total_due,
         count(distinct i.id) as invoice_count
       from invoices i
       join customers c on c.id = i.customer_id
