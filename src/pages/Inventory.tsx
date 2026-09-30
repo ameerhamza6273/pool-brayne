@@ -143,7 +143,10 @@ export default function Inventory() {
     subcategory: "", subSubcategory: "", subSubSubcategory: "",
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
-  const [newPo, setNewPo] = useState({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-001`, locationId: "", paymentTerms: "Net 30" });
+  // QA sweep 2026-09-30: this used to be a client-guessed, user-editable "PO Number" field
+  // (`purchaseOrders.length + 2`, drifts from reality) that produced real duplicate PO numbers --
+  // the backend now assigns the real number atomically, so there's nothing to track/edit here.
+  const [newPo, setNewPo] = useState({ supplierId: "", locationId: "", paymentTerms: "Net 30" });
   const [poError, setPoError] = useState("");
   const [newPoLocations, setNewPoLocations] = useState<SupplierLocation[]>([]);
   const [newPoLineItems, setNewPoLineItems] = useState<PoLineItemInput[]>([]);
@@ -300,19 +303,14 @@ export default function Inventory() {
       setPoError("Pick a supplier first.");
       return;
     }
-    if (!newPo.number.trim()) {
-      setPoError("PO number can't be blank.");
-      return;
-    }
     setPoError("");
     await inventoryApi.createPurchaseOrder({
       supplierId: newPo.supplierId,
-      number: newPo.number,
       locationId: newPo.locationId || null,
       lineItems: newPoLineItems.filter((li) => li.description.trim()),
       paymentTerms: newPo.paymentTerms,
     });
-    setNewPo({ supplierId: "", number: `PO-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${String(purchaseOrders.length + 2).padStart(3, "0")}`, locationId: "", paymentTerms: "Net 30" });
+    setNewPo({ supplierId: "", locationId: "", paymentTerms: "Net 30" });
     setNewPoLocations([]);
     setNewPoLineItems([]);
     setPoOpen(false);
@@ -952,7 +950,8 @@ export default function Inventory() {
               </DialogTrigger>
               <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div><Label>{t("PO Number")}</Label><Input className="mt-1" placeholder="PO-2026-001" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} /></div>
+                  {/* QA sweep 2026-09-30: PO Number is now assigned by the server, not typed here
+                      (a user-editable guess caused real duplicate PO numbers). */}
                   <div><Label>{t("Vendor")}</Label>
                     <div className="mt-1">
                       <SearchableSelect

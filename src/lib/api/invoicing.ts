@@ -5,7 +5,9 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { 
 export type InvoiceLineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
-export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
+// `total` (materials taxed at 8.25%, labor untaxed, added by the backend list endpoint) matches
+// what EstimateDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
+export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null; total?: number };
 export type EstimateLineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
 export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null; po_number: string | null };
 

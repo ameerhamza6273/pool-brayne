@@ -3,7 +3,7 @@ import { api } from "@/lib/apiClient";
 export const dashboardApi = {
   all: () =>
     api.get<{
-      invoices: { amount: number; status: string; issue_date: string }[];
+      invoices: { amount: number; total: number; status: string; issue_date: string }[];
       jobs: {
         type: string; amount: number; status: string; scheduled_date: string | null; scheduled_time: string | null;
         tech_id: string | null; arrived_at: string | null; completed_at: string | null;

@@ -125,7 +125,14 @@ export default function Campaigns() {
         </TabsList>
 
         {/* Automations */}
-        <TabsContent value="automations" className="mt-4">
+        <TabsContent value="automations" className="mt-4 space-y-4">
+          {/* QA sweep 2026-09-30: this tab's rows were 100% demo seed data (no UI anywhere creates
+              an automation) shown as "Active" over SMS/Email, which aren't connected (see
+              Integrations status in CLAUDE.md) -- nothing here actually sends. Make that explicit
+              instead of letting it look like real automation is running. */}
+          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl p-4 text-sm text-[#92400E]">
+            {t("SMS and Email aren't connected yet (Twilio / SendGrid), so automations can't actually send. Set those up in Settings before turning one on.")}
+          </div>
           {viewMode === "table" && (
             <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
               <div className="overflow-x-auto">
@@ -301,9 +308,13 @@ export default function Campaigns() {
 
         {/* SMS Inbox */}
         <TabsContent value="sms" className="mt-4">
-          <div className="bg-[#0891B2] rounded-t-xl p-3 text-white flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" />
-            <span className="text-sm font-medium">{t("Customers reply inside Clear Pool CRM — not to a technician's personal phone.")}</span>
+          {/* QA sweep 2026-09-30: this banner claimed real two-way SMS ("Customers reply inside
+              Clear Pool CRM"), and the reply box below only ever wrote a local row -- no Twilio
+              connection exists, so nothing was ever actually sent to a customer. A tech relying on
+              this to think they'd replied would be wrong. Made that explicit instead. */}
+          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-t-xl p-3 text-sm text-[#92400E] flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 shrink-0" />
+            <span className="font-medium">{t("SMS isn't connected yet (needs a Twilio account) — nothing typed here is actually sent to the customer's phone.")}</span>
           </div>
           <div className="bg-white rounded-b-xl border border-[#E2E8F0] border-t-0 shadow-sm grid grid-cols-1 lg:grid-cols-3 h-[500px]">
             {/* Conversation List */}
@@ -390,8 +401,16 @@ export default function Campaigns() {
         </TabsContent>
 
         {/* Reviews */}
-        <TabsContent value="reviews" className="mt-4">
+        <TabsContent value="reviews" className="mt-4 space-y-4">
+          {/* QA sweep 2026-09-30: every row here was demo seed data (no review platform is
+              connected, no UI anywhere creates a review) -- one even referenced "PoolBrayne", the
+              internal dev codename, not the client's brand. Nothing currently pulls real Google/
+              Facebook reviews in, so say so instead of showing fabricated ones. */}
+          <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl p-4 text-sm text-[#92400E]">
+            {t("No review platform is connected yet — this list is empty until Google/Facebook reviews are wired up.")}
+          </div>
           <div className="space-y-3">
+            {reviews.length === 0 && <p className="text-center text-sm text-[#64748B] py-8">{t("No reviews yet.")}</p>}
             {reviews.map((r) => (
               <Card key={r.id} className="border-[#E2E8F0] shadow-sm">
                 <CardContent className="p-5">
@@ -427,6 +446,9 @@ export default function Campaigns() {
         <TabsContent value="performance" className="mt-4 space-y-4">
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-5">
             <h3 className="font-semibold text-[#0F172A] mb-4">{t("Campaign Performance")}</h3>
+            {performanceChartData.length === 0 ? (
+              <p className="text-center text-sm text-[#64748B] py-8">{t("No sent campaigns yet — this fills in once a Seasonal campaign is actually sent.")}</p>
+            ) : (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={performanceChartData}>
@@ -440,6 +462,7 @@ export default function Campaigns() {
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            )}
           </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
@@ -465,6 +488,7 @@ export default function Campaigns() {
                       <td className="text-right py-3 px-4 font-semibold text-[#16A34A]">${(c.revenue ?? 0).toLocaleString()}</td>
                     </tr>
                   ))}
+                  {performanceCampaigns.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-[#64748B]">{t("No sent campaigns yet.")}</td></tr>}
                 </tbody>
               </table>
             </div>

@@ -88,7 +88,7 @@ export default function Dashboard() {
   const [rangeOpen, setRangeOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const [invoices, setInvoices] = useState<{ amount: number; status: string; issue_date: string }[]>([]);
+  const [invoices, setInvoices] = useState<{ amount: number; total?: number; status: string; issue_date: string }[]>([]);
   const [jobs, setJobs] = useState<{
     type: string; amount: number; status: string; scheduled_date: string | null; scheduled_time: string | null;
     tech_id: string | null; arrived_at: string | null; completed_at: string | null;
@@ -130,7 +130,10 @@ export default function Dashboard() {
   const jobsLastPeriod = jobs.filter((j) => j.status === "Completed" && inRange(j.scheduled_date, prevStart, prevEnd)).length;
 
   const outstandingInvoices = invoices.filter((i) => i.status !== "Paid");
-  const outstandingTotal = outstandingInvoices.reduce((s, i) => s + i.amount, 0);
+  // QA sweep 2026-09-30: `amount` is the stored pre-tax figure, never matching what's really owed
+  // (materials-only tax, see backend invoicing.ts `taxedTotal`) -- `total` does. Revenue figures
+  // below intentionally keep using pre-tax `amount` (sales tax collected isn't revenue).
+  const outstandingTotal = outstandingInvoices.reduce((s, i) => s + (i.total ?? i.amount), 0);
 
   const newCustomersThisPeriod = customers.filter((c) => inRange(c.customer_since, curStart, curEnd)).length;
   const newCustomersLastPeriod = customers.filter((c) => inRange(c.customer_since, prevStart, prevEnd)).length;
@@ -177,7 +180,7 @@ export default function Dashboard() {
       const daysPastDue = Math.round((today.getTime() - new Date(i.issue_date).getTime()) / 86400000);
       return daysPastDue > b.min - 1 && daysPastDue <= b.max;
     });
-    return { bucket: b.bucket, amount: matching.reduce((s, i) => s + i.amount, 0), count: matching.length };
+    return { bucket: b.bucket, amount: matching.reduce((s, i) => s + (i.total ?? i.amount), 0), count: matching.length };
   });
   const maxBucket = Math.max(...agedReceivables.map((a) => a.amount), 1);
 

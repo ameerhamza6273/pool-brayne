@@ -39,14 +39,25 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
   }
 }
 
+// QA sweep 2026-09-30 found the invoice/estimate "Amount" shown in every list view (Invoicing,
+// Dashboard, Reports) never matched the real Total on the invoice document/charge -- because it's
+// the stored pre-tax `amount`, while the document (InvoiceDetail.tsx/EstimateDetail.tsx) taxes only
+// materials, not labor (`materialsSubtotal * 0.0825`, see Architecture > Labor vs materials). This
+// function had ALSO drifted from that rule -- it taxed the whole subtotal including labor, so any
+// invoice with labor line items would be OVERCHARGED on card payment. Fixed to match the one true
+// formula every other total in the app already uses.
+function taxedTotal(lineItems: { amount: number; item_type?: string | null }[], fallbackAmount: number): number {
+  if (lineItems.length === 0) return fallbackAmount * 1.0825;
+  const materials = lineItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
+  const labor = lineItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
+  return materials * 1.0825 + labor;
+}
+
 async function computeInvoiceTotal(tx: postgres.TransactionSql, invoiceId: string) {
   const [invoiceRow] = await tx`select * from invoices where id = ${invoiceId} limit 1`;
   const invoice = invoiceRow as unknown as { id: string; customer_id: string; amount: number };
-  const lineItems = (await tx`select amount from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number }[];
-  const subtotal = lineItems.length > 0
-    ? lineItems.reduce((sum, li) => sum + li.amount, 0)
-    : invoice.amount;
-  return { invoice, total: subtotal * 1.0825 };
+  const lineItems = (await tx`select amount, item_type from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number; item_type: string | null }[];
+  return { invoice, total: taxedTotal(lineItems, invoice.amount) };
 }
 
 // Records a payment already collected — for Card, `providerTransactionId` is the real
@@ -74,12 +85,18 @@ async function recordPayment(
 
 export default async function invoicingRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
-    return withTenantContext(req.userId, (tx) => tx`
-      select i.*, jsonb_build_object('name', c.name) as customers
-      from invoices i
-      left join customers c on c.id = i.customer_id
-      order by i.issue_date desc
-    `);
+    return withTenantContext(req.userId, async (tx) => {
+      const invoices = (await tx`
+        select i.*, jsonb_build_object('name', c.name) as customers
+        from invoices i
+        left join customers c on c.id = i.customer_id
+        order by i.issue_date desc
+      `) as unknown as { id: string; amount: number }[];
+      const lineItemRows = (await tx`
+        select invoice_id, amount, item_type from invoice_line_items where invoice_id = any(${invoices.map((i) => i.id)})
+      `) as unknown as { invoice_id: string; amount: number; item_type: string | null }[];
+      return invoices.map((i) => ({ ...i, total: taxedTotal(lineItemRows.filter((li) => li.invoice_id === i.id), i.amount) }));
+    });
   });
 
   app.get<{ Querystring: { job_id?: string } }>("/by-job", async (req) => {
@@ -265,11 +282,17 @@ export default async function invoicingRoutes(app: FastifyInstance) {
 
   // Client request 2026-08-27 (real estimates, not just a job-type label): create/list/convert.
   app.get("/estimates/list", async (req) => {
-    return withTenantContext(req.userId, (tx) => tx`
-      select e.*, jsonb_build_object('name', c.name) as customers
-      from estimates e left join customers c on c.id = e.customer_id
-      order by e.issue_date desc
-    `);
+    return withTenantContext(req.userId, async (tx) => {
+      const estimates = (await tx`
+        select e.*, jsonb_build_object('name', c.name) as customers
+        from estimates e left join customers c on c.id = e.customer_id
+        order by e.issue_date desc
+      `) as unknown as { id: string; amount: number }[];
+      const lineItemRows = (await tx`
+        select estimate_id, amount, item_type from estimate_line_items where estimate_id = any(${estimates.map((e) => e.id)})
+      `) as unknown as { estimate_id: string; amount: number; item_type: string | null }[];
+      return estimates.map((e) => ({ ...e, total: taxedTotal(lineItemRows.filter((li) => li.estimate_id === e.id), e.amount) }));
+    });
   });
 
   app.get<{ Params: { id: string } }>("/estimates/:id", async (req, reply) => {

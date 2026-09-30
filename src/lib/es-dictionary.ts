@@ -643,4 +643,14 @@ export const esDictionary: Record<string, string> = {
   "Columns": "Columnas",
   "Actions": "Acciones",
   "errors": "errores",
+  "SMS and Email aren't connected yet (Twilio / SendGrid), so automations can't actually send. Set those up in Settings before turning one on.":
+    "SMS y Email aún no están conectados (Twilio / SendGrid), así que las automatizaciones no pueden enviarse de verdad. Configúralos en Ajustes antes de activar una.",
+  "SMS isn't connected yet (needs a Twilio account) — nothing typed here is actually sent to the customer's phone.":
+    "El SMS aún no está conectado (necesita una cuenta de Twilio) — nada de lo escrito aquí se envía realmente al teléfono del cliente.",
+  "No review platform is connected yet — this list is empty until Google/Facebook reviews are wired up.":
+    "Todavía no hay una plataforma de reseñas conectada — esta lista estará vacía hasta que se conecten las reseñas de Google/Facebook.",
+  "No reviews yet.": "Aún no hay reseñas.",
+  "No sent campaigns yet — this fills in once a Seasonal campaign is actually sent.":
+    "Aún no hay campañas enviadas — esto se llenará cuando se envíe realmente una campaña de temporada.",
+  "No sent campaigns yet.": "Aún no hay campañas enviadas.",
 };

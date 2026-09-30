@@ -342,17 +342,39 @@ export default async function inventoryRoutes(app: FastifyInstance) {
 
   type PoLineItemInput = { description: string; sku: string | null; quantity: number; unitCost: number };
 
-  app.post<{ Body: { supplierId: string; number: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string } }>("/purchase-orders", async (req) => {
-    const { supplierId, number, locationId, lineItems, paymentTerms } = req.body;
+  // QA sweep 2026-09-30: the PO number used to be guessed client-side from the locally-loaded
+  // list's length (Inventory.tsx) -- it drifts from reality (deletions, concurrent staff, a
+  // filtered view) and produced two unrelated real POs both named "PO-20260914-001". The client
+  // can still suggest one (kept for the same-day case where it's already correct), but the server
+  // is the source of truth: it re-derives the next free suffix for that date from the actual table,
+  // and retries once on the (now-enforced, see migration 20260930110000) unique-constraint conflict.
+  app.post<{ Body: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string } }>("/purchase-orders", async (req) => {
+    const { supplierId, locationId, lineItems, paymentTerms } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const itemCount = lineItems?.length ?? 0;
       const total = (lineItems ?? []).reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
-      const [row] = await tx`
-        insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total, payment_terms)
-        values (${tenant.id}, ${number}, ${supplierId}, 'Pending', ${locationId ?? null}, ${itemCount}, ${total}, ${paymentTerms || "Net 30"})
-        returning *
-      `;
+      const datePrefix = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      let row: Record<string, unknown> & { id: string } | undefined;
+      for (let attempt = 0; attempt < 5 && !row; attempt++) {
+        const existing = (await tx`
+          select number from purchase_orders where tenant_id = ${tenant.id} and number like ${`PO-${datePrefix}-%`}
+        `) as unknown as { number: string }[];
+        const used = new Set(existing.map((r) => parseInt(r.number.slice(-3), 10)).filter((n) => !isNaN(n)));
+        let next = 1;
+        while (used.has(next)) next++;
+        const number = `PO-${datePrefix}-${String(next).padStart(3, "0")}`;
+        try {
+          [row] = (await tx`
+            insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total, payment_terms)
+            values (${tenant.id}, ${number}, ${supplierId}, 'Pending', ${locationId ?? null}, ${itemCount}, ${total}, ${paymentTerms || "Net 30"})
+            returning *
+          `) as unknown as (Record<string, unknown> & { id: string })[];
+        } catch (e) {
+          if ((e as { code?: string }).code !== "23505") throw e; // not a unique-violation, don't retry
+        }
+      }
+      if (!row) throw new Error("Could not allocate a unique PO number, please retry");
       if (lineItems && lineItems.length > 0) {
         for (const li of lineItems) {
           await tx`

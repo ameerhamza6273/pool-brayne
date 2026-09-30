@@ -9,8 +9,8 @@ type VarianceRow = { id: string; expected: number; actual: number; variance_pct:
 export default async function dashboardRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
-      const [invoices, jobs, customers, itemsRaw, stockRaw, varianceRaw, posItemsRaw] = await Promise.all([
-        tx`select amount, status, issue_date from invoices`,
+      const [invoicesRaw, jobs, customers, itemsRaw, stockRaw, varianceRaw, posItemsRaw, invoiceLineItemsRaw] = await Promise.all([
+        tx`select id, amount, status, issue_date from invoices`,
         tx`
           select j.type, j.amount, j.status, j.scheduled_date, j.scheduled_time, j.tech_id,
             j.arrived_at, j.completed_at,
@@ -28,12 +28,24 @@ export default async function dashboardRoutes(app: FastifyInstance) {
           limit 8
         `,
         tx`select item_id, description, quantity, amount from pos_order_items`,
+        tx`select invoice_id, amount, item_type from invoice_line_items`,
       ]);
 
       const items = itemsRaw as unknown as Item[];
       const stock = stockRaw as unknown as Stock[];
       const varianceRows = varianceRaw as unknown as VarianceRow[];
       const posItems = posItemsRaw as unknown as PosOrderItem[];
+      // QA sweep 2026-09-30: "Outstanding Invoices" showed the pre-tax `amount`, while the actual
+      // invoice document/charge is taxed (materials only, see invoicing.ts `taxedTotal`) -- so this
+      // tile always understated what's really owed. `total` matches that same formula.
+      const lineItemsByInvoice = invoiceLineItemsRaw as unknown as { invoice_id: string; amount: number; item_type: string | null }[];
+      const invoices = (invoicesRaw as unknown as { id: string; amount: number; status: string; issue_date: string }[]).map((i) => {
+        const lineItems = lineItemsByInvoice.filter((li) => li.invoice_id === i.id);
+        const materials = lineItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
+        const labor = lineItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
+        const total = lineItems.length > 0 ? materials * 1.0825 + labor : i.amount * 1.0825;
+        return { ...i, total };
+      });
 
       const inventoryAlerts = items
         .map((item) => ({

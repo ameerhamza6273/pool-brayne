@@ -55,10 +55,24 @@ export default async function reportsRoutes(app: FastifyInstance) {
     });
   });
 
+  // QA sweep 2026-09-30: this summed the stored pre-tax `amount`, which never matched the real
+  // Total on the invoice document/charge (materials-only tax, see invoicing.ts `taxedTotal`) --
+  // same fix as Invoicing's list and Dashboard's Outstanding Invoices tile, so a customer's real
+  // amount due is consistent everywhere it's shown.
   app.get("/invoices-due", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
-      select c.id as customer_id, c.name as customer_name, sum(i.amount) as total_due, count(i.id) as invoice_count
-      from invoices i join customers c on c.id = i.customer_id
+      select c.id as customer_id, c.name as customer_name,
+        sum(coalesce(li.taxed_total, i.amount * 1.0825)) as total_due,
+        count(distinct i.id) as invoice_count
+      from invoices i
+      join customers c on c.id = i.customer_id
+      left join lateral (
+        select coalesce(sum(l.amount) filter (where l.item_type != 'labor'), 0) * 1.0825
+             + coalesce(sum(l.amount) filter (where l.item_type = 'labor'), 0) as taxed_total
+        from invoice_line_items l
+        where l.invoice_id = i.id
+        having count(*) > 0
+      ) li on true
       where i.status != 'Paid'
       group by c.id, c.name
       order by total_due desc

@@ -26,7 +26,9 @@ import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEdito
 import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
-type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null };
+// `total` (materials taxed at 8.25%, labor untaxed, added by the backend list endpoint) matches
+// what InvoiceDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
+type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null; total?: number };
 type UninvoicedJob = Database["public"]["Tables"]["jobs"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
@@ -373,9 +375,12 @@ export default function Invoicing() {
     (inv.customers?.name ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalOutstanding = invoices.filter((i) => i.status !== "Paid").reduce((sum, i) => sum + i.amount, 0);
-  const paidThisMonth = invoices.filter((i) => i.status === "Paid").reduce((sum, i) => sum + i.amount, 0);
-  const overdue = invoices.filter((i) => i.status === "Overdue").reduce((sum, i) => sum + i.amount, 0);
+  // QA sweep 2026-09-30: these summed the stored pre-tax `amount`, which never matched the real
+  // Total on the invoice document/charge -- `total` (backend-computed, materials-only tax) is what
+  // was actually charged/is actually owed.
+  const totalOutstanding = invoices.filter((i) => i.status !== "Paid").reduce((sum, i) => sum + (i.total ?? i.amount), 0);
+  const paidThisMonth = invoices.filter((i) => i.status === "Paid").reduce((sum, i) => sum + (i.total ?? i.amount), 0);
+  const overdue = invoices.filter((i) => i.status === "Overdue").reduce((sum, i) => sum + (i.total ?? i.amount), 0);
   const paidWithDays = invoices.filter((i) => i.status === "Paid" && i.paid_date);
   const avgDays = paidWithDays.length > 0
     ? paidWithDays.reduce((sum, i) => sum + daysBetween(i.paid_date as string, i.issue_date), 0) / paidWithDays.length
@@ -395,7 +400,7 @@ export default function Invoicing() {
       const daysPastDue = daysBetween(today.toISOString().slice(0, 10), i.due_date);
       return daysPastDue > b.min - 1 && daysPastDue <= b.max;
     });
-    return { bucket: b.bucket, amount: matching.reduce((sum, i) => sum + i.amount, 0), count: matching.length };
+    return { bucket: b.bucket, amount: matching.reduce((sum, i) => sum + (i.total ?? i.amount), 0), count: matching.length };
   });
 
   return (
@@ -828,7 +833,7 @@ export default function Invoicing() {
                       <td className="py-3 px-4 text-[#64748B] max-w-[220px] truncate">{inv.job_description || "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.issue_date}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.due_date}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${inv.amount.toLocaleString()}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${(inv.total ?? inv.amount).toLocaleString()}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[inv.status]} text-[10px] px-1.5 py-0`}>{t(inv.status)}</Badge>
                       </td>
@@ -872,7 +877,7 @@ export default function Invoicing() {
                       <td className="py-3 px-4 text-[#64748B]">{est.customers?.name ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{est.issue_date}</td>
                       <td className="py-3 px-4 text-[#64748B]">{est.expiry_date ?? "—"}</td>
-                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${est.amount.toLocaleString()}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${(est.total ?? est.amount).toLocaleString()}</td>
                       <td className="text-center py-3 px-4">
                         <Badge className={`${statusColors[est.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-1.5 py-0`}>{t(est.status)}</Badge>
                       </td>

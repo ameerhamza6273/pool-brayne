@@ -132,7 +132,13 @@ export default function AppShell() {
 
   const isActive = (path: string) => {
     const [p, query] = path.split("?");
+    // QA sweep 2026-09-30: opening an Estimate (/invoicing/estimates/:id) highlighted "Customer
+    // Invoices" in the nav instead of "Estimates / Quotes" -- "/invoicing" is a path-prefix match
+    // for both, and the query-based "Estimates / Quotes" entry only ever matched the list page's
+    // own "?tab=estimates" URL, never its detail route.
+    if (query === "tab=estimates" && pathname.startsWith("/invoicing/estimates/")) return true;
     if (query) return pathname === p && search === `?${query}`;
+    if (p === "/invoicing" && pathname.startsWith("/invoicing/estimates/")) return false;
     return (pathname === p || pathname.startsWith(p + "/")) && !search;
   };
   const isGroupActive = (group: NavGroup) => group.items.some((item) => isActive(item.path));

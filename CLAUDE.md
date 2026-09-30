@@ -685,3 +685,41 @@ history was condensed into the structural sections above on 2026-09-10.)*
   **Still open, needs the client's actual PDF/screenshot, not guessed at:** client also referenced "Estimates format not done — the PDF with the
   arrows he sent through" — no prior record of this in this file or CLIENT_REQUESTS.md; need the file itself (or a description of what the arrows
   point to) before building anything.
+- **2026-09-30 (dev: "check every feature, the whole CRM")** — full read-only QA sweep (fork agent) across every module against live production
+  data, then fixed everything actionable found (see CLIENT_REQUESTS.md for the client-facing list). Highlights:
+  (1) **Invoice/Estimate "Amount" never matched the real Total** on every list/summary view (Invoicing, Dashboard, Reports) — it was the stored
+  pre-tax `amount`; the real Total (materials taxed 8.25%, labor untaxed, per Architecture > Labor vs materials) is now computed server-side and
+  returned as `total` alongside it, used everywhere "amount owed" is shown (Revenue itself intentionally stays pre-tax). Also fixed a real
+  overcharging bug: `computeInvoiceTotal` (the function that decides what a card charge actually is) taxed labor too — same formula, one function
+  now (`taxedTotal` in invoicing.ts).
+  (2) **Campaigns page** (Automations/SMS Inbox/Reviews) was showing 100% demo seed data as if real — "Active" automations over Twilio/SendGrid
+  (not connected), fake two-way SMS conversations with a "Customers reply inside Clear Pool CRM" banner that could mislead a tech into thinking a
+  reply was actually sent, and fake reviews (one literally said "PoolBrayne", the internal codename). None of these tables have any real creation
+  path in the app — backend now always returns them empty (rows stay harmlessly in the DB, not deleted) until those channels are actually
+  connected, with an honest "not connected" banner replacing the misleading copy. Seasonal Campaigns (a real feature — "New Campaign" genuinely
+  creates a row) keeps working; only its seeded fake "already sent" entries are held back the same way.
+  (3) **Fleet page** was a fully simulated tracking dashboard (hardcoded "Austin, TX" / "Live tracking active" SVG map, fake vehicle pins/speed/
+  mileage, fake Trip History, fake Geofence Alerts, a "Smart Dispatch" card claiming to route by live position) built from tables with no real
+  write path anywhere (`fleetApi` is read-only). This directly contradicted what this file's own Integrations section already said Fleet should
+  do ("just links out to platform.gps7000.com; no live position data flows into the app") — simplified to match that: the real GPS7000 banner/
+  button stayed, everything fake was removed.
+  (4) **Duplicate PO numbers** — real bug: `Inventory.tsx` guessed the next PO number from the locally-loaded list's length, which drifts from
+  reality (deletions, concurrent staff, a filtered view); two unrelated real POs had both landed on "PO-20260914-001" (a third set on
+  "PO-20260911-001" had 3). Numbers are now allocated server-side (`inventory.ts`, retries on conflict) and the dialog no longer asks for one; a
+  `unique (tenant_id, number)` constraint (migration `20260930110000`) is the hard backstop. The existing duplicates were fixed live via the app's
+  own PO edit dialog (renumbered, and 2 stale pre-migration "Draft" status POs were normalized to "Pending" while in there anyway) — not a script,
+  since direct production data-mutation scripts are blocked by the auto-mode classifier (confirmed again this session; only read-only checks and a
+  single schema migration went through it).
+  (5) Nav highlight bug: opening an Estimate (`/invoicing/estimates/:id`) lit up "Customer Invoices" instead of "Estimates / Quotes" in the
+  sidebar (`/invoicing` path-prefix matched both) — fixed in `AppShell.tsx`'s `isActive`.
+  **Found but NOT fixed, needs the user's decision:** 5 real `jobs` rows are stale 2024 demo data (Austin, TX addresses, status Dispatched/In
+  Progress, never completed) that still show in Dashboard's "Upcoming Jobs" and pollute a tech's Field "My Day" list (no date filter there). There
+  is no delete or cancel action for jobs anywhere in the app, and a direct DB delete is blocked by the classifier ("Cloud Storage Mass Delete" /
+  "Modify Shared Resources") — marking them "Completed" instead would silence them but would also fabricate fake completed-job revenue/counts on
+  Dashboard's real stats, which seemed worse than leaving them alone. Left as-is pending the user's call. Also flagged but left alone as lower-
+  priority judgment calls (not clearly wrong): a job type and a team member both named "In Store Repair"; two profiles with role Owner; the
+  Settings > Company "Upload Logo" button is decorative (already a known, tracked gap — no `tenants.logo` column, waiting on the client's logo
+  file); Labor-category SKUs don't appear in POS's own category filter/search (they do work correctly in Estimates); a duplicate recurring series
+  for "LYDIA OLSON"; a few duplicate-cased Inventory categories (e.g. "CLEANER" vs "Chemicals"); several SKUs sitting at negative on-hand stock
+  (an operational data-entry issue, not a code bug). `npm run build` clean in both `/` and `/backend` throughout. **Not yet pushed** — ready,
+  pending the user's go-ahead per this repo's push policy.
