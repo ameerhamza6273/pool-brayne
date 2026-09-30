@@ -669,4 +669,19 @@ history was condensed into the structural sections above on 2026-09-10.)*
   project an occurrence landing exactly on that date — exactly what Schedule was showing and Map wasn't. Fixed by giving Map its own ghost-job
   computation (same `projectOccurrences` helper from `src/lib/recurring.ts` that Schedule already uses), merged into `mapJobs` alongside the real
   rows, geocoded/plotted the same way. `npm run build` clean in `/`; verified the root cause with a rolled-back-nothing read-only script (no writes,
-  deleted after running, established `_tmp-*.ts` pattern). Not yet pushed — pending the user's go-ahead per this repo's push policy.
+  deleted after running, established `_tmp-*.ts` pattern).
+  Same day, follow-up (user relayed client: "It's not showing jobs — No jobs on Schedule" + reminder to actually live-test, not just reason from a
+  script) — this exposed the Map fix wasn't the whole story: the underlying cause is that a recurring series only ever gets its next real `jobs` row
+  when the PREVIOUS occurrence is explicitly marked Completed (no cron in this environment, see Architecture). A stalled series (tech never marked
+  the old one done) just silently never generates its next real row -- invisible on Map (real-rows-only, now fixed above) AND on **Technician
+  Field's job list** (`GET /api/jobs/mine/active`, also real-rows-only, no ghost concept at all) -- so a tech whose only due job today is a stalled
+  series' occurrence sees a genuinely empty schedule on their phone. Confirmed on prod: exactly the same 18 series. Real fix, backend
+  (`backend/src/routes/recurringJobs.ts` `catchUpOccurrences()`, called from `GET /api/jobs` and `GET /api/jobs/mine/active` in `jobs.ts`): walks
+  each active series forward from its last real occurrence and creates any occurrence due today or earlier that doesn't exist yet (capped 20 steps),
+  self-healing on the next natural request instead of staying invisible until someone happens to complete the old one. `npm run build` clean in
+  `/backend`. **Not yet pushed** — pending the user's go-ahead per this repo's push policy; the one-off production backfill script to create today's
+  18 missing rows immediately was blocked by the auto-mode classifier ("Modify Shared Resources") — once pushed, the very next `/api/jobs` or
+  `/api/jobs/mine/active` request will trigger the same catch-up automatically, so a manual backfill isn't strictly required, just faster.
+  **Still open, needs the client's actual PDF/screenshot, not guessed at:** client also referenced "Estimates format not done — the PDF with the
+  arrows he sent through" — no prior record of this in this file or CLIENT_REQUESTS.md; need the file itself (or a description of what the arrows
+  point to) before building anything.
