@@ -22,6 +22,7 @@ export interface ScheduleJob {
   description: string | null;
   amount: number;
   address: string | null;
+  customer_id?: string;
   customers: { name: string; address?: string | null } | null;
   recurring_job_id?: string | null;
   // Projected occurrence of a recurring job that hasn't been created yet (shown dashed, read-only).
@@ -122,13 +123,16 @@ function layoutDay(jobs: ScheduleJob[]): Placed[] {
 }
 
 export default function ScheduleCalendar({
-  jobs, technicians, onOpenJob, onReschedule, onNewJob, onUnschedule,
+  jobs, technicians, onReschedule, onNewJob, onUnschedule,
   allJobs, recurring, typeColors, dateFrom, dateTo, onOpenRecurring, onColorChange, onRouteOrder,
   extras = [], onOpenExtra,
 }: {
   // Tasks + open estimates (client video 2026-09-25), already narrowed by the page's top filters.
   extras?: ScheduleJob[];
-  onOpenExtra?: (kind: "task" | "estimate", id: string) => void;
+  // Client video 2026-09-29: "when I click task here it shows the pictures... not doing that on
+  // this one [a job]" -- a plain job click now opens the same quick-view popup as task/estimate
+  // (kind "job", id = the job id) instead of jumping straight to the full JobDetail page.
+  onOpenExtra?: (kind: "task" | "estimate" | "job", id: string) => void;
   jobs: ScheduleJob[];
   technicians: ScheduleTech[];
   // Every real job (unfiltered) -- used to find where each recurring series currently ends.
@@ -140,7 +144,6 @@ export default function ScheduleCalendar({
   onOpenRecurring: (recurringId: string) => void;
   onColorChange: (techId: string, color: string) => void;
   onRouteOrder: (items: RouteOrderItem[]) => Promise<RouteOrderSummary>;
-  onOpenJob: (jobId: string) => void;
   // techId: undefined = leave the tech alone; null = unassign; string = reassign (day view's employee columns)
   onReschedule: (jobId: string, dateKey: string, time?: string, techId?: string | null) => void;
   onNewJob: (dateKey: string, time?: string, techId?: string | null) => void;
@@ -354,8 +357,8 @@ export default function ScheduleCalendar({
         key={j.id}
         draggable={!fixed}
         onDragStart={(e) => { if (fixed) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.setData("text/job-id", j.id); e.dataTransfer.effectAllowed = "move"; }}
-        onClick={(e) => { e.stopPropagation(); if (j.kind && j.refId) onOpenExtra?.(j.kind, j.refId); else if (j.virtual && j.recurringId) onOpenRecurring(j.recurringId); else onOpenJob(j.id); }}
-        title={j.virtual ? `${tipOf(j)}\n${t("Recurring — not created yet. Click to open the series.")}` : j.kind ? `${tipOf(j)}\n${t("Click for a quick view.")}` : tipOf(j)}
+        onClick={(e) => { e.stopPropagation(); if (j.virtual && j.recurringId) onOpenRecurring(j.recurringId); else onOpenExtra?.(j.kind ?? "job", j.kind ? j.refId! : j.id); }}
+        title={j.virtual ? `${tipOf(j)}\n${t("Recurring — not created yet. Click to open the series.")}` : `${tipOf(j)}\n${t("Click for a quick view.")}`}
         className={`group text-[10px] leading-tight px-1.5 py-0.5 rounded overflow-hidden ${j.virtual ? "border border-dashed cursor-pointer opacity-80" : j.kind ? "border border-dotted cursor-pointer" : "border-l-2 cursor-grab active:cursor-grabbing"}`}
         style={{ backgroundColor: `${chipColor}1A`, color: chipColor, borderColor: chipColor, ...extra }}
       >

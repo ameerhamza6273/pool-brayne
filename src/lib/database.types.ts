@@ -213,6 +213,7 @@ export type Database = {
           gate_codes: Json
           household_id: string | null
           id: string
+          known_issues: string[]
           last_contact: string | null
           last_name: string | null
           last_service: string | null
@@ -238,6 +239,7 @@ export type Database = {
           gate_codes?: Json
           household_id?: string | null
           id?: string
+          known_issues?: string[]
           last_contact?: string | null
           last_name?: string | null
           last_service?: string | null
@@ -263,6 +265,7 @@ export type Database = {
           gate_codes?: Json
           household_id?: string | null
           id?: string
+          known_issues?: string[]
           last_contact?: string | null
           last_name?: string | null
           last_service?: string | null

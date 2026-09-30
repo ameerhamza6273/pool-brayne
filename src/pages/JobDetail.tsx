@@ -4,7 +4,7 @@ import {
   ArrowLeft, MapPin, Clock, User, Wrench, FileText, Camera,
   Plus, CheckCircle2, Circle, Send, Signature, Truck, DollarSign,
   Phone, MessageSquare, Mail, UserX, AlertCircle, Lock, ExternalLink,
-  Barcode, Receipt, Info, Languages, RotateCw, Copy, Ban,
+  Barcode, Receipt, Info, Languages, RotateCw, Copy, Ban, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -116,6 +116,8 @@ export default function JobDetail() {
   const navigate = useNavigate();
   const { lists: configLists } = useConfigLists();
   const [job, setJob] = useState<JobRow | null>(null);
+  const [knownIssues, setKnownIssues] = useState<string[]>([]);
+  const [newKnownIssue, setNewKnownIssue] = useState("");
   const [descEditing, setDescEditing] = useState(false);
   const [descDraft, setDescDraft] = useState("");
   // Client SMS 2026-09-21: "a way to convert a job to a recurring job or vice versa".
@@ -198,6 +200,21 @@ export default function JobDetail() {
   useEffect(() => {
     libraryApi.list().then(setLibraryDocuments);
   }, []);
+
+  const addKnownIssue = async () => {
+    if (!job?.customer_id || !newKnownIssue.trim()) return;
+    const next = [...knownIssues, newKnownIssue.trim()];
+    setKnownIssues(next);
+    setNewKnownIssue("");
+    await customersApi.update(job.customer_id, { knownIssues: next });
+  };
+
+  const removeKnownIssue = async (issue: string) => {
+    if (!job?.customer_id) return;
+    const next = knownIssues.filter((i) => i !== issue);
+    setKnownIssues(next);
+    await customersApi.update(job.customer_id, { knownIssues: next });
+  };
 
   const handleAttachLibraryDocument = async (doc: LibraryDocument) => {
     if (!id) return;
@@ -315,6 +332,13 @@ export default function JobDetail() {
   useEffect(() => {
     inventoryApi.summary().then((data) => setInventoryItems(data.items));
   }, []);
+  // Client video 2026-09-29: "Known Issue" tab was decorative mock text with no save. Lives on
+  // the customer (property), not the job, so every job at that address shows the same list --
+  // visible to all technicians, matching the tab's own description text.
+  useEffect(() => {
+    if (!job?.customer_id) return;
+    customersApi.detail(job.customer_id).then((d) => setKnownIssues(d.customer.known_issues ?? []));
+  }, [job?.customer_id]);
 
   const openLineItemsEditor = () => {
     setLineItemsDraft(
@@ -1001,27 +1025,39 @@ export default function JobDetail() {
                   <Textarea placeholder={t("Notes for office / dispatch...")} className="text-sm" rows={3} />
                 </TabsContent>
 
-                {/* Known Issue */}
+                {/* Known Issue — client video 2026-09-29: "this is not clickable here" -- this
+                    tab was hardcoded mock text with an "Add Known Issue" button with no handler.
+                    Now real, stored on the customer (property) so it's the same list on every
+                    job at that address, matching the tab's own "visible to all technicians" copy. */}
                 <TabsContent value="known_issue" className="mt-4 space-y-3">
                   <div className="rounded-lg bg-[#F59E0B]/5 border border-[#F59E0B]/20 p-3 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
                     <p className="text-xs text-[#B45309]">{t("Recurring or known issues at this property. Visible to all technicians.")}</p>
                   </div>
                   <div className="space-y-2">
-                    {[
-                      "Gate code: #4291 (side entrance only)",
-                      "Dog in backyard — ask owner to secure before service",
-                      "Pool equipment pad is behind the shed",
-                    ].map((issue) => (
-                      <div key={issue} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    {knownIssues.length === 0 && <p className="text-xs text-[#64748B]">{t("No known issues yet.")}</p>}
+                    {knownIssues.map((issue, i) => (
+                      <div key={i} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
                         <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0" />
                         <span className="text-sm text-[#0F172A] flex-1">{t(issue)}</span>
+                        <button className="p-1 rounded text-[#DC2626] hover:bg-[#DC2626]/10 shrink-0" title={t("Remove")} onClick={() => removeKnownIssue(issue)}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     ))}
                   </div>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Plus className="w-4 h-4" /> {t("Add Known Issue")}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder={t("e.g. Gate code #4291, dog in backyard...")}
+                      className="h-9"
+                      value={newKnownIssue}
+                      onChange={(e) => setNewKnownIssue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") addKnownIssue(); }}
+                    />
+                    <Button variant="outline" size="sm" className="gap-2 shrink-0" disabled={!newKnownIssue.trim()} onClick={addKnownIssue}>
+                      <Plus className="w-4 h-4" /> {t("Add Known Issue")}
+                    </Button>
+                  </div>
                 </TabsContent>
 
                 {/* Private */}

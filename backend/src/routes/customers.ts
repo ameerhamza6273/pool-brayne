@@ -82,10 +82,11 @@ export default async function customersRoutes(app: FastifyInstance) {
       address?: string | null;
       equipment?: Record<string, string>;
       gateCodes?: Record<string, string>;
+      knownIssues?: string[];
     };
   }>("/:id", async (req) => {
     const { id } = req.params;
-    const { name, firstName, lastName, type, phone, email, address, equipment, gateCodes } = req.body;
+    const { name, firstName, lastName, type, phone, email, address, equipment, gateCodes, knownIssues } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const fields: Record<string, unknown> = {};
       if (firstName !== undefined) fields.first_name = firstName;
@@ -101,6 +102,7 @@ export default async function customersRoutes(app: FastifyInstance) {
       if (address !== undefined) fields.address = address;
       if (equipment !== undefined) fields.equipment = tx.json(equipment);
       if (gateCodes !== undefined) fields.gate_codes = tx.json(gateCodes);
+      if (knownIssues !== undefined) fields.known_issues = knownIssues;
       const [row] = await tx`update customers set ${tx(fields)} where id = ${id} returning *`;
       return row;
     });

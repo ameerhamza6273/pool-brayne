@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-09-29
+Last updated: 2026-09-29 (2)
 
 ---
 
@@ -29,6 +29,7 @@ Last updated: 2026-09-29
 | New Recurring: show address under the customer when searching | ✅ | New Recurring dialog |
 | Search jobs: Technician, Job Type and **date range** dropdowns to its right | ✅ | Jobs & Dispatch (top row, applies to every tab) |
 | Map: show **all** addresses, numbered stops, route line between jobs | ✅ | Jobs & Dispatch › **Map** (29/29 jobs, numbered pins per tech, road route lines; dashed pin = approximate address) |
+| *(2026-09-29, video)* Map pin lands on the wrong side of town for some addresses ("11 approximate dashes") | ✅ fixed | Free OpenStreetMap geocoding didn't have some newer subdivision streets and fell back to a city/zip-centroid guess. A free US Census Bureau lookup is now tried first for anything OpenStreetMap can't find (routed through our own server since Census blocks direct browser calls) — verified live: a day that had 11/20 approximate pins now has 0/20; the specific address in the video moved from the wrong side of Marietta to the correct spot near Roswell |
 | Map centered on 2900 Holcomb Bridge Rd (was Austin, TX) and bigger | ✅ | Map tab |
 | **Standard time on every job** so weekly routes keep the same stop order (customer X is always Monday's first stop for tech X) | ✅ | Schedule › **day** view › the list icon in an employee's column header = **Route order**: put the stops in order, set the first-stop time + minutes per stop, Apply. Repeating jobs keep that time every week; non-repeating jobs can be ticked "Repeat weekly" |
 | Recurring series has its own standard start time | ✅ | New / Edit Recurring › "Standard start time" (shown in the Recurring Jobs table) |
@@ -59,6 +60,7 @@ Last updated: 2026-09-29
 | Company logo on invoices | 🟡 | Needs the logo file from the client |
 | Pop-ups (New Estimate, New Task, Purchase Order) at 90% of the screen | ✅ | Those dialogs |
 | Printing: no browser date/page-number header/footer; no menus on the printout | ✅ | Inventory labels (Avery + Zebra) now print as clean PDFs; PO / invoice / estimate print |
+| *(2026-09-29, SMS)* "It won't let me print off barcodes... worked yesterday, not today" | ✅ fixed | Print Labels / Zebra Barcode used to fail completely silently if the browser blocked the popup — now shows "Your browser blocked the popup. Allow popups for this site and try again." right on the page instead of doing nothing |
 | *(2026-09-25)* POS: edit the price of an item in the current sale | ✅ | POS › cart line › "Edit price" under the line total (this sale only, catalog price unchanged) |
 | *(2026-09-25)* POS: see the cost by right-clicking a price | ✅ | Right-click any price in the product list or the current sale; click anywhere to hide |
 | *(2026-09-25)* POS: editable return/refund disclaimer on every printed receipt | ✅ | POS › "Receipt Disclaimer" button (top); receipt › Print now prints a real receipt with it at the bottom |
@@ -97,6 +99,8 @@ Last updated: 2026-09-29
 | *(2026-09-29, video)* Before/after photo upload "not clickable" | ✅ | This was the desktop Job page's decorative Before/After Photos tab (placeholder icons, no upload wired up) — now a real upload, same as Technician Field's |
 | *(2026-09-29, video)* "Upload or attach receipts" button not clickable | ✅ | Job page › Receipts tab — real upload now (reuses the Documents mechanism, kept separate) |
 | *(2026-09-29, video)* Documents button not active | ✅ | Job page › Documents tab — now the same real Documents section used elsewhere on the page |
+| *(2026-09-29, video call)* Known Issue tab "not clickable" | ✅ | Job page › Known Issue tab — now real, saved on the property so it shows the same on every job at that address (add/remove, visible to all techs) |
+| *(2026-09-29, video call)* Clicking a job in Schedule should show a quick preview with pictures, like clicking a Task already does | ✅ | Schedule › click any job (week/day/month) — same popup Tasks use, now also shows that customer's saved photos; "Open Job" still goes to the full page |
 | *(2026-09-29, video)* Equipment Inspection Checklist / One-off Job Checklist should be collapsed so notes aren't pushed off-screen | ✅ | Every form card (Technician Field + Job page) now starts collapsed, showing just the name and "X of Y completed"; tap to open |
 | *(2026-09-29, video)* Job Notes typed on a job "did not save" | ✅ fixed | Technician Field › Job Notes now has its own "Save Note to Customer Record" button (previously only saved if you completed the job in the same sitting — typing notes and coming back later lost them) |
 | *(2026-09-29, video)* Checked off a submitted checklist, but couldn't open/preview it again — notes "not visible" | ✅ fixed | Job page and Technician Field › **Submitted Forms** — click any entry to see exactly what was checked and the notes that were written, read-only |
@@ -124,6 +128,10 @@ Last updated: 2026-09-29
 7. *(confirm only)* Inventory edit "need a drop down" — Manufacturer now suggests from a list; is that the field you meant?
 8. ~~Documents on Invoices~~ — built 2026-09-25 (dev decided, no client question): invoice page › Documents (upload, attach from Library, rename, delete; not printed).
 9. ~~Duplicate POS orders from the double-click bug~~ — removed 2026-09-25 with the dev's OK (6 extra copies deleted, 8 stock units put back; first sale of each group kept).
+
+| *(2026-09-30, video)* Map shows 0 jobs for a date that Dispatch/Schedule clearly has jobs on | ✅ fixed | Map never followed the top date-range filter at all — it only moved with its own separate day arrows, so editing the shared date range (which visually looks like it drives every tab) silently did nothing to Map. Now the top range's start date always sets Map's day too |
+| *(2026-09-30, SMS)* Inventory Valuation report needs an "as of" date, not a date range, for QBO | ✅ | Reports › Inventory Valuation — now shows "As of {today}" instead of the shared date range (which this report never actually used) |
+| *(2026-09-30, SMS)* Grid view on Data › Import/Export | ✅ | Data › Import / Export — same table/cards toggle as Directory, Library, Forms, etc. (top right) |
 
 ## Not built (deliberately, no client request yet)
 

@@ -99,6 +99,10 @@ export default function Jobs() {
     const tab = searchParams.get("tab");
     if (tab === "pipeline" || tab === "dispatch" || tab === "schedule" || tab === "map") setActiveTab(tab);
   }, [searchParams]);
+  // Local (not UTC) YYYY-MM-DD -- toISOString() re-serializes in UTC, which silently rolls the
+  // date back a day in any timezone ahead of UTC once local midnight has passed. Same class of
+  // bug as the 2026-09-25 Timesheets/POS "local day" fix.
+  const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const [search, setSearch] = useState("");
   const [techFilter, setTechFilterState] = useState("all");
   // Client SMS 2026-09-25: Technician defaults to whoever signs in, and the date range to today (with quick
@@ -118,7 +122,8 @@ export default function Jobs() {
   const [scheduleTasks, setScheduleTasks] = useState<FreeformTask[]>([]);
   const [scheduleEstimates, setScheduleEstimates] = useState<Estimate[]>([]);
   const extrasLoadedRef = useRef(false);
-  const [quickView, setQuickView] = useState<{ kind: "task" | "estimate"; id: string } | null>(null);
+  const [quickView, setQuickView] = useState<{ kind: "task" | "estimate" | "job"; id: string } | null>(null);
+  const [quickJobPhotos, setQuickJobPhotos] = useState<{ id: string; url: string }[] | null>(null);
   const [quickLines, setQuickLines] = useState<EstimateLineItem[] | null>(null);
   // Client PDF 2026-09-05: "+New Recurring" next to "+New Job" -- real recurring-job schedule
   // replacing the old read-only, never-linked-to-real-jobs recurring_routes display.
@@ -127,14 +132,13 @@ export default function Jobs() {
   const [newRecurring, setNewRecurring] = useState({
     customerId: "", techId: "", jobType: "", description: "", techNotes: "", amount: "",
     frequency: "weekly" as "weekly" | "biweekly" | "monthly", dayOfWeek: "1", dayOfMonth: "1",
-    startDate: new Date().toISOString().slice(0, 10), endDate: "",
+    startDate: localKey(new Date()), endDate: "",
     nextJobNotes: "", selectedFormIds: [] as string[], startTime: "",
   });
   // Client SMS 2026-09-21: Recurring Jobs list gets a grid (table) view by default + a search field
   // (customer, technician, day of the week, job type); Search row gets a date range.
   const [recSearch, setRecSearch] = useState("");
   const [recView, setRecView] = useViewMode("recurring-jobs");
-  const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const [dateFrom, setDateFromState] = useState(() => localKey(new Date()));
   const [dateTo, setDateToState] = useState(() => localKey(new Date()));
   const setDateFrom = (v: string) => { setDateTouched(true); setDateFromState(v); };
@@ -165,7 +169,18 @@ export default function Jobs() {
   // inventory at all. Same LineItemsEditor + inventory search as Estimates/Invoices now.
   const [newJobLineItems, setNewJobLineItems] = useState<DraftLineItem[]>([]);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
-  const [mapDate, setMapDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [mapDate, setMapDate] = useState(() => localKey(new Date()));
+  // Client video 2026-09-30: "I go to Dispatch, see plenty of jobs lined up on the 28th... I go
+  // to Map view... zero jobs... I go to the date range on the 28th and it still shows zero."
+  // Map only ever shows one day (`mapDate`, moved with its own </> arrows) and never followed the
+  // page's shared date-range filter at all -- so editing the top date range (the one prominent
+  // control that looks like it drives every tab) silently did nothing to Map, and the tech had no
+  // way to know Map was still sitting on a completely different, unrelated day. Now the top
+  // range's start date always drives Map's day too; Map's own </> arrows still work for browsing
+  // day by day from there without touching the top filter.
+  useEffect(() => {
+    setMapDate(dateFrom);
+  }, [dateFrom]);
   // Map: coordinates resolved per job (filled in progressively as addresses are looked up).
   type StopCoord = { lat: number; lng: number; approx: boolean };
   const [stopCoords, setStopCoords] = useState<Record<string, StopCoord>>({});
@@ -257,7 +272,7 @@ export default function Jobs() {
     });
     setNewRecurring({
       customerId: "", techId: "", jobType: "", description: "", techNotes: "", amount: "",
-      frequency: "weekly", dayOfWeek: "1", dayOfMonth: "1", startDate: new Date().toISOString().slice(0, 10), endDate: "",
+      frequency: "weekly", dayOfWeek: "1", dayOfMonth: "1", startDate: localKey(new Date()), endDate: "",
       nextJobNotes: "", selectedFormIds: [], startTime: "",
     });
     setNewRecurringOpen(false);
@@ -286,10 +301,15 @@ export default function Jobs() {
     loadJobs();
   };
 
+  // Bug found 2026-09-29: this used `d.toISOString().slice(0, 10)`, which re-serializes in UTC --
+  // in a timezone ahead of UTC (this client's is, e.g. UTC+5), that silently rolls the date back
+  // one more day on top of the intended shift, so "previous day" jumped back 2 and "next day" did
+  // nothing (the extra -1 canceled the +1). Same class of bug as the 2026-09-25 Timesheets/POS
+  // "local day" fix -- reuse `localKey` (local getters all the way through) instead of toISOString().
   const shiftMapDate = (days: number) => {
     const d = new Date(mapDate + "T00:00:00");
     d.setDate(d.getDate() + days);
-    setMapDate(d.toISOString().slice(0, 10));
+    setMapDate(localKey(d));
   };
 
   // Schedule view state (month/week/day, employee filters) lives in ScheduleCalendar; these are
@@ -392,6 +412,17 @@ export default function Jobs() {
     if (quickView?.kind !== "estimate") return;
     invoicingApi.estimateDetail(quickView.id).then((d) => setQuickLines(d.lineItems ?? [])).catch(() => setQuickLines([]));
   }, [quickView]);
+
+  // Client video 2026-09-29: "when I click task here it shows the pictures too... not doing that
+  // on this one" -- a job's quick view now shows the customer's saved reference photos (pool,
+  // equipment pad) the same way the task quick view already shows its own photos.
+  useEffect(() => {
+    setQuickJobPhotos(null);
+    if (quickView?.kind !== "job") return;
+    const job = jobs.find((j) => j.id === quickView.id);
+    if (!job?.customer_id) { setQuickJobPhotos([]); return; }
+    customersApi.getAttachments(job.customer_id).then((data) => setQuickJobPhotos(data)).catch(() => setQuickJobPhotos([]));
+  }, [quickView, jobs]);
 
   // Client SMS 2026-09-21: the Search / Technician / Job Type row above the tabs narrows every tab.
   const effTech = !techTouched && (activeTab === "schedule" || activeTab === "dispatch") ? "all" : techFilter;
@@ -591,6 +622,7 @@ export default function Jobs() {
   ];
   const quickEstimate = quickView?.kind === "estimate" ? scheduleEstimates.find((e) => e.id === quickView.id) ?? null : null;
   const quickTask = quickView?.kind === "task" ? scheduleTasks.find((k) => k.id === quickView.id) ?? null : null;
+  const quickJob = quickView?.kind === "job" ? jobs.find((j) => j.id === quickView.id) ?? null : null;
 
   const jobsByStage = (stage: string) => filteredJobs.filter((j) => j.stage === stage);
 
@@ -1105,7 +1137,6 @@ export default function Jobs() {
           <ScheduleCalendar
             jobs={filteredJobs}
             technicians={technicians}
-            onOpenJob={(id) => navigate(`/jobs/${id}`)}
             onReschedule={handleRescheduleDrop}
             onNewJob={openNewJobForDate}
             onUnschedule={handleUnschedule}
@@ -1175,6 +1206,35 @@ export default function Jobs() {
                   <div className="flex justify-end gap-2 pt-1">
                     <Button variant="outline" onClick={() => setQuickView(null)}>{t("Close")}</Button>
                     <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => navigate("/invoicing?tab=tasks")}>{t("Open Tasks")}</Button>
+                  </div>
+                </>
+              )}
+              {quickJob && (
+                <>
+                  <DialogHeader><DialogTitle>{t(quickJob.type)} — {quickJob.customers?.name ?? t("Unassigned")}</DialogTitle></DialogHeader>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Customer")}</span><span className="font-medium text-right">{quickJob.customers?.name ?? "—"}</span></div>
+                    {quickJob.address && <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Address")}</span><span className="text-right">{quickJob.address}</span></div>}
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Assigned to")}</span><span>{quickJob.profiles?.name ?? t("Unassigned")}</span></div>
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Status")}</span><Badge variant="outline">{t(quickJob.status)}</Badge></div>
+                    <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Scheduled")}</span><span>{quickJob.scheduled_date ?? "—"}{quickJob.scheduled_time ? ` · ${quickJob.scheduled_time}` : ""}</span></div>
+                    {quickJob.description && <p className="rounded-lg bg-[#F8FAFC] p-2.5 whitespace-pre-wrap">{quickJob.description}</p>}
+                    <div>
+                      <p className="text-xs font-medium text-[#64748B] mb-1">{t("Customer Photos")}</p>
+                      {quickJobPhotos === null ? (
+                        <p className="text-xs text-[#64748B]">{t("Loading...")}</p>
+                      ) : quickJobPhotos.length === 0 ? (
+                        <p className="text-xs text-[#64748B]">{t("No photos on file for this customer.")}</p>
+                      ) : (
+                        <div className="grid grid-cols-4 gap-2">
+                          {quickJobPhotos.map((p) => <a key={p.id} href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt="" className="w-full aspect-square object-cover rounded" /></a>)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={() => setQuickView(null)}>{t("Close")}</Button>
+                    <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={() => navigate(`/jobs/${quickJob.id}`)}>{t("Open Job")}</Button>
                   </div>
                 </>
               )}

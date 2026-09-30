@@ -62,6 +62,7 @@ export const customersApi = {
       address: string | null;
       equipment: Record<string, string>;
       gateCodes: Record<string, string>;
+      knownIssues: string[];
     }>,
   ) => api.patch<Customer>(`/api/customers/${customerId}`, data),
 

@@ -62,13 +62,19 @@ const vendorBillStatusColors: Record<string, string> = {
 // (src/lib/label-pdf.ts) instead of printing an HTML page, so the browser can't stamp its own
 // date/title/URL/page-number onto them. The tab is opened synchronously (popup blockers only
 // allow that inside the click) and pointed at the PDF once it's ready.
+// Client SMS 2026-09-29: "It won't let me print off barcodes... It won't let me do it today" --
+// both failure paths here (a popup blocker returning `win === null`, or the on-demand jsPDF chunk
+// failing to load/generate) used to fail completely silently, so from the tech's side "nothing
+// happens when I click" with no indication why. Now throws a specific, user-facing message
+// instead so the caller can show it.
 const openLabelPdf = async (makeUrl: () => Promise<string>) => {
   const win = window.open("", "_blank");
-  if (!win) return;
+  if (!win) throw new Error("Your browser blocked the popup. Allow popups for this site and try again.");
   try {
     win.location.href = await makeUrl();
   } catch {
     win.close();
+    throw new Error("Could not generate the label PDF. Check your connection and try again.");
   }
 };
 
@@ -97,6 +103,7 @@ export default function Inventory() {
   const [editProductItem, setEditProductItem] = useState<ItemWithStock | null>(null);
   const [deleteItem, setDeleteItem] = useState<ItemWithStock | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [labelError, setLabelError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [editProductDraft, setEditProductDraft] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
@@ -538,16 +545,26 @@ export default function Inventory() {
     });
   };
 
-  const handlePrintLabels = () => {
+  const handlePrintLabels = async () => {
     const toPrint = selectedIds.size > 0 ? filtered.filter((p) => selectedIds.has(p.id)) : filtered;
     if (toPrint.length === 0) return;
-    printLabels(toPrint);
+    setLabelError("");
+    try {
+      await printLabels(toPrint);
+    } catch (err) {
+      setLabelError(err instanceof Error ? err.message : "Could not print labels.");
+    }
   };
 
-  const handlePrintZebraLabels = () => {
+  const handlePrintZebraLabels = async () => {
     const toPrint = selectedIds.size > 0 ? filtered.filter((p) => selectedIds.has(p.id)) : filtered;
     if (toPrint.length === 0) return;
-    printZebraLabels(toPrint, barcodeSource);
+    setLabelError("");
+    try {
+      await printZebraLabels(toPrint, barcodeSource);
+    } catch (err) {
+      setLabelError(err instanceof Error ? err.message : "Could not print labels.");
+    }
   };
 
   const handleCreateWriteoff = async () => {
@@ -734,6 +751,7 @@ export default function Inventory() {
             </div>
           </div>
           <p className="text-xs text-[#64748B]">{t("Products consumed on a job are automatically deducted at close. Select rows below to print only those price labels (Avery 5160 sheet), otherwise all filtered products print.")}</p>
+          {labelError && <p className="text-xs text-[#DC2626]">{t(labelError)}</p>}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

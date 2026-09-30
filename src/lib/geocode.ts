@@ -1,8 +1,29 @@
+import { api } from "@/lib/apiClient";
+
 // Free geocoding via OpenStreetMap's Nominatim (no API key/billing account available for
 // Google Maps/Places). Nominatim's usage policy caps unauthenticated requests at ~1/sec, so
 // lookups are queued sequentially and cached in memory for the life of the tab.
 const cache = new Map<string, { lat: number; lng: number } | null>();
 let queue: Promise<unknown> = Promise.resolve();
+
+// Client video 2026-09-29: several real subdivision addresses (e.g. "3289 Robinson Oaks Way NE,
+// Marietta, GA 30062") pin far from the real house -- Nominatim/OSM's US road data has gaps for
+// newer suburban streets and returns zero results for the exact address, so the code fell all
+// the way to `geocodeApproximate`'s city/zip-centroid tiers (miles off). The US Census Bureau's
+// free, no-key geocoder (built from official TIGER/Line address ranges) found this exact address
+// when Nominatim couldn't -- confirmed against the client's own example. Tried here as a second
+// *exact* attempt before ever falling back to an approximate placement.
+// Gotcha: Census's API sends no `Access-Control-Allow-Origin` header (unlike Nominatim, which
+// does) -- a direct browser fetch() is silently blocked by CORS even though curl/Node works fine.
+// Routed through our own backend (`backend/src/routes/geocode.ts`), which hits Census
+// server-to-server with no CORS restriction.
+async function geocodeCensus(address: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    return await api.get<{ lat: number; lng: number } | null>(`/api/geocode/census?address=${encodeURIComponent(address)}`);
+  } catch {
+    return null;
+  }
+}
 
 export function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
   if (cache.has(address)) return Promise.resolve(cache.get(address) ?? null);
@@ -13,7 +34,8 @@ export function geocodeAddress(address: string): Promise<{ lat: number; lng: num
         `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(address)}`,
       );
       const results = (await res.json()) as { lat: string; lon: string }[];
-      const result = results[0] ? { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) } : null;
+      let result = results[0] ? { lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) } : null;
+      if (!result) result = await geocodeCensus(address);
       cache.set(address, result);
       await new Promise((r) => setTimeout(r, 1000));
       return result;

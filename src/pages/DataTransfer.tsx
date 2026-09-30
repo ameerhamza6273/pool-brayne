@@ -11,6 +11,7 @@ import { configListsApi } from "@/lib/api/configLists";
 import { dataTransferApi, type ImportResult } from "@/lib/api/dataTransfer";
 import { downloadCsv, normalizeHeader, parseCsv, toCsv } from "@/lib/csv";
 import { useLanguage } from "@/lib/language-context";
+import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 
 // Client SMS 2026-09-21: "Under Data: need import and export fields with csv file -- Customer list,
 // Inventory list, Vendor list, Inventory Categories, Inventory Manufacture list, Library Category list,
@@ -200,6 +201,9 @@ export default function DataTransfer() {
   const [progress, setProgress] = useState<Record<string, string | undefined>>({});
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
+  // Client SMS 2026-09-30: "on import and export give us a grid view" -- same table/cards toggle
+  // already used on Directory, Library, Forms, Form Builder, Manufacturers and Campaigns.
+  const [viewMode, setViewMode] = useViewMode("data-transfer");
 
   const handleExport = async (d: Dataset) => {
     setBusy(`export-${d.key}`);
@@ -269,13 +273,93 @@ export default function DataTransfer() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Import / Export")}</h1>
-        <p className="text-sm text-[#64748B] mt-0.5">{t("Download any list as a CSV file, or upload a CSV to add and update records. Start from the template if you're unsure of the columns.")}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-[#0F172A]">{t("Import / Export")}</h1>
+          <p className="text-sm text-[#64748B] mt-0.5">{t("Download any list as a CSV file, or upload a CSV to add and update records. Start from the template if you're unsure of the columns.")}</p>
+        </div>
+        <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
 
+      <DocumentListCard />
+
+      {viewMode === "table" && (
+        <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("List")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Columns")}</th>
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {datasets.map((d) => {
+                  const Icon = d.icon;
+                  const p = pending[d.key];
+                  const res = results[d.key];
+                  return (
+                    <tr key={d.key} className="border-b border-[#F1F5F9] last:border-0 align-top">
+                      <td className="py-3 px-4">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0"><Icon className="w-4 h-4 text-[#0891B2]" /></div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-[#0F172A]">{t(d.title)}</p>
+                            <p className="text-xs text-[#64748B] mt-0.5">{t(d.description)}</p>
+                            {p && (
+                              <p className={`text-xs mt-1 ${p.problem ? "text-[#DC2626]" : "text-[#0891B2]"}`}>
+                                {p.fileName}{p.problem ? ` — ${t(p.problem)}` : ` — ${p.rows.length} ${t("rows ready to import")}`}
+                              </p>
+                            )}
+                            {res && (
+                              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                                <Badge className="bg-[#16A34A]/10 text-[#16A34A] text-[10px]">{res.created} {t("added")}</Badge>
+                                <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px]">{res.updated} {t("updated")}</Badge>
+                                <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px]">{res.skipped} {t("skipped")}</Badge>
+                                {res.errors.length > 0 && <Badge className="bg-[#DC2626]/10 text-[#DC2626] text-[10px]">{res.errors.length} {t("errors")}</Badge>}
+                              </div>
+                            )}
+                            {errors[d.key] && <p className="text-xs text-[#DC2626] mt-1">{t(errors[d.key] as string)}</p>}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap gap-1 max-w-xs">
+                          {d.columns.map((c) => <span key={c} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#64748B]">{c}</span>)}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          <input ref={(el) => { fileInputs.current[d.key] = el; }} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => handleFile(d, e.target.files?.[0])} />
+                          {p && !p.problem ? (
+                            <Button className="h-8 bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={busy !== null} onClick={() => runImport(d)}>
+                              {busy === `import-${d.key}` ? `${t("Importing...")} ${progress[d.key] ?? ""}` : t("Import")}
+                            </Button>
+                          ) : (
+                            <Button variant="outline" size="sm" className="h-8 gap-1.5 border-[#E2E8F0]" disabled={busy !== null} onClick={() => fileInputs.current[d.key]?.click()}>
+                              <Upload className="w-3.5 h-3.5 text-[#0891B2]" /> {t("Import CSV")}
+                            </Button>
+                          )}
+                          <Button variant="outline" size="sm" className="h-8 gap-1.5 border-[#E2E8F0]" disabled={busy !== null} onClick={() => handleExport(d)}>
+                            <Download className="w-3.5 h-3.5 text-[#0891B2]" /> {busy === `export-${d.key}` ? t("Preparing...") : t("Export CSV")}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-[#64748B]" onClick={() => handleTemplate(d)}>
+                            <FileSpreadsheet className="w-3.5 h-3.5" /> {t("Template")}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {viewMode === "cards" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DocumentListCard />
         {datasets.map((d) => {
           const Icon = d.icon;
           const p = pending[d.key];
@@ -347,6 +431,7 @@ export default function DataTransfer() {
           );
         })}
       </div>
+      )}
     </div>
   );
 }

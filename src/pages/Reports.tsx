@@ -71,12 +71,16 @@ export default function Reports() {
     if (tab && reportTabs.includes(tab)) setActiveTab(tab);
   }, [searchParams]);
 
+  // Local (not UTC) YYYY-MM-DD -- toISOString() re-serializes in UTC, which silently rolls the
+  // date back a day in any timezone ahead of UTC (same class of bug fixed 2026-09-25 for
+  // Timesheets/POS "today", and 2026-09-29 for the Jobs Map day-nav).
+  const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const [start, setStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().slice(0, 10);
+    return localKey(d);
   });
-  const [end, setEnd] = useState(() => new Date().toISOString().slice(0, 10));
+  const [end, setEnd] = useState(() => localKey(new Date()));
 
   const [salesTax, setSalesTax] = useState<SalesReport | null>(null);
   const [movement, setMovement] = useState<ItemMovementRow[]>([]);
@@ -133,7 +137,7 @@ export default function Reports() {
     load();
   };
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localKey(new Date());
   const totalValuation = valuation.reduce((s, v) => s + Number(v.value), 0);
 
   const movementSort = useSort(movement, (m, key) => (m as unknown as Record<string, string | number | null>)[key]);
@@ -152,11 +156,20 @@ export default function Reports() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-[#0F172A]">{t("Reports")}</h1>
-        <div className="flex items-center gap-2">
-          <Input type="date" className="h-9 w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
-          <span className="text-[#64748B] text-sm">{t("to")}</span>
-          <Input type="date" className="h-9 w-auto" value={end} onChange={(e) => setEnd(e.target.value)} />
-        </div>
+        {/* Client SMS 2026-09-30: "Inventory valuation report - need an 'as of' date, not a date
+            range for QBO." Valuation never used this shared range to begin with (see the tab's
+            own note below) -- showing it there implied the report could be filtered by range,
+            which it can't. QBO's own Inventory Valuation Summary is a single as-of date, not a
+            range, so the Valuation tab now shows that instead of the range picker. */}
+        {activeTab === "valuation" ? (
+          <p className="text-sm text-[#64748B]">{t("As of")} <span className="font-medium text-[#0F172A]">{today}</span></p>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Input type="date" className="h-9 w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
+            <span className="text-[#64748B] text-sm">{t("to")}</span>
+            <Input type="date" className="h-9 w-auto" value={end} onChange={(e) => setEnd(e.target.value)} />
+          </div>
+        )}
       </div>
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading reports...")}</div>}
@@ -333,7 +346,7 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="valuation" className="mt-4 space-y-3">
-          <p className="text-xs text-[#64748B]">{t("Historical stock snapshots aren't tracked, so this reflects current on-hand quantities, not a true point-in-time valuation as of the date range above.")}</p>
+          <p className="text-xs text-[#64748B]">{t("Historical stock snapshots aren't tracked, so this always reflects current on-hand quantities as of today.")}</p>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
