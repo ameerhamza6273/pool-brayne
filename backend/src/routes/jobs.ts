@@ -240,6 +240,36 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
+  // Dev request 2026-09-30 (QA sweep turned up 5 stale demo jobs with no way to remove them):
+  // "should there be an edit/delete option" — yes, mirroring the same pattern already used for
+  // Inventory SKUs (2026-09-23): a job that's still just a job (no invoice/estimate generated from
+  // it, no parts consumed against it) can be deleted outright; one with real downstream records is
+  // refused so that history is never silently lost. job_line_items/attachments/forms/crew cascade;
+  // an invoice/estimate that came FROM this job just loses the link (schema-level set-null), but
+  // that case is refused before it ever gets there.
+  app.delete<{ Params: { id: string } }>("/:id", async (req, reply) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [usage] = (await tx`
+        select
+          (select count(*) from invoices where job_id = ${id})::int as invoices,
+          (select count(*) from estimates where job_id = ${id} or converted_job_id = ${id})::int as estimates,
+          (select count(*) from job_parts_used where job_id = ${id})::int as parts
+      `) as unknown as { invoices: number; estimates: number; parts: number }[];
+      if (usage.invoices > 0 || usage.estimates > 0 || usage.parts > 0) {
+        const parts = [
+          usage.invoices > 0 ? `has ${usage.invoices} invoice${usage.invoices === 1 ? "" : "s"}` : null,
+          usage.estimates > 0 ? `is linked to ${usage.estimates} estimate${usage.estimates === 1 ? "" : "s"}` : null,
+          usage.parts > 0 ? `has parts used against it` : null,
+        ].filter(Boolean);
+        return reply.code(409).send({ error: `This job can't be deleted because it ${parts.join(" and ")}. Its history must be kept.` });
+      }
+      const deleted = await tx`delete from jobs where id = ${id} returning id`;
+      if (deleted.length === 0) return reply.code(404).send({ error: "Job not found" });
+      return { id };
+    });
+  });
+
   // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously
   // only had a flat `amount`, no itemized breakdown like Estimates/Invoices already have.
   app.get<{ Params: { id: string } }>("/:id/line-items", async (req) => {

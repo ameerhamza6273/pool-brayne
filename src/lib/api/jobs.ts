@@ -44,6 +44,8 @@ export const jobsApi = {
 
   update: (id: string, fields: Record<string, unknown>) => api.patch<Job>(`/api/jobs/${id}`, fields),
 
+  delete: (id: string) => api.del<{ id: string }>(`/api/jobs/${id}`),
+
   uninvoiced: (customerId: string, start: string, end: string) =>
     api.get<Job[]>(`/api/jobs/uninvoiced?customerId=${customerId}&start=${start}&end=${end}`),
 

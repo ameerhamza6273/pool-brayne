@@ -653,4 +653,10 @@ export const esDictionary: Record<string, string> = {
   "No sent campaigns yet — this fills in once a Seasonal campaign is actually sent.":
     "Aún no hay campañas enviadas — esto se llenará cuando se envíe realmente una campaña de temporada.",
   "No sent campaigns yet.": "Aún no hay campañas enviadas.",
+  "Delete": "Eliminar",
+  "Delete Job Permanently?": "¿Eliminar el trabajo permanentemente?",
+  "Are you sure you want to permanently delete this job? This action cannot be undone.":
+    "¿Seguro que quieres eliminar este trabajo permanentemente? Esta acción no se puede deshacer.",
+  "Deleting...": "Eliminando...",
+  "Delete Permanently": "Eliminar permanentemente",
 };

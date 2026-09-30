@@ -145,7 +145,8 @@ Last updated: 2026-09-30
 | Fleet page showed a fake simulated map/trucks instead of being honest that GPS7000 isn't connected | ✅ fixed | Fleet — now just the GPS7000 link and a plain "not connected yet" message, no more fake map |
 | Two Purchase Orders had the same PO number | ✅ fixed | Renumbered; the app now assigns PO numbers itself so this can't happen again |
 | Opening an Estimate lit up "Customer Invoices" in the sidebar instead of "Estimates / Quotes" | ✅ fixed | — |
-| 5 old leftover test jobs (Austin, TX, dated 2024) still showing on the Dashboard and on a tech's phone schedule | ⏳ needs your OK | There's no delete button for jobs anywhere yet, and removing them directly would need your explicit go-ahead since it touches the database directly — let us know how you'd like these handled |
+| 5 old leftover test jobs (Austin, TX, dated 2024) still showing on the Dashboard and on a tech's phone schedule | 🟡 fix ready | Job page now has a real Delete button (and a way to unassign a tech) — once this is live, these 5 can just be deleted one by one through the app itself |
+| *(dev)* "Shouldn't there be an edit/delete option" for a job | ✅ | Job page › **Delete** button (top right, permanent, asks to confirm) — refuses if the job already has a real invoice/estimate/parts used, so real history is never lost |
 
 ## Not built (deliberately, no client request yet)
 

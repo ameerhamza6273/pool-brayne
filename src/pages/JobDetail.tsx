@@ -4,7 +4,7 @@ import {
   ArrowLeft, MapPin, Clock, User, Wrench, FileText, Camera,
   Plus, CheckCircle2, Circle, Send, Signature, Truck, DollarSign,
   Phone, MessageSquare, Mail, UserX, AlertCircle, Lock, ExternalLink,
-  Barcode, Receipt, Info, Languages, RotateCw, Copy, Ban, X,
+  Barcode, Receipt, Info, Languages, RotateCw, Copy, Ban, X, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -140,6 +140,12 @@ export default function JobDetail() {
   const [writeOffOpen, setWriteOffOpen] = useState(false);
   const [writeOffReason, setWriteOffReason] = useState("");
   const [writingOff, setWritingOff] = useState(false);
+  // Dev request 2026-09-30 (QA sweep found stale/mistaken jobs with no way to remove them) --
+  // mirrors Inventory's SKU delete (2026-09-23): permanent, behind a confirm, refused with a
+  // reason if the job has real downstream history (see backend jobs.ts DELETE /:id).
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
@@ -438,9 +444,10 @@ export default function JobDetail() {
 
   // Client meeting 2026-09: "Once we have a job here, we're unable to change this assigned tech."
   // Crew (below) covers additional techs; this reassigns the primary/lead tech (job.tech_id).
+  // "" (the QA sweep's "Unassigned" option below) means clear the tech, not an empty id.
   const handleReassignTech = async (techId: string) => {
     if (!job) return;
-    await jobsApi.update(job.id, { tech_id: techId });
+    await jobsApi.update(job.id, { tech_id: techId || null });
     setTechEditing(false);
     loadJob();
   };
@@ -457,6 +464,19 @@ export default function JobDetail() {
     setWriteOffOpen(false);
     setWriteOffReason("");
     loadJob();
+  };
+
+  const handleDeleteJob = async () => {
+    if (!job) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await jobsApi.delete(job.id);
+      navigate("/jobs");
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : String(e));
+      setIsDeleting(false);
+    }
   };
 
   const handleReschedule = async () => {
@@ -574,6 +594,27 @@ export default function JobDetail() {
             <Copy className="w-4 h-4" />
             <span className="hidden sm:inline">{t("Clone Job")}</span>
           </Button>
+          <Dialog open={deleteOpen} onOpenChange={(open) => { if (!open && !isDeleting) { setDeleteOpen(false); setDeleteError(""); } }}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#DC2626] hover:bg-[#FEF2F2]" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="w-4 h-4" />
+                <span className="hidden sm:inline">{t("Delete")}</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader><DialogTitle>{t("Delete Job Permanently?")}</DialogTitle></DialogHeader>
+              <div className="space-y-3 pt-1 text-sm">
+                <p className="text-[#475569]">{t("Are you sure you want to permanently delete this job? This action cannot be undone.")}</p>
+                {deleteError && <p className="rounded-md bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] p-2.5 text-xs">{t(deleteError)}</p>}
+                <div className="flex justify-end gap-2 pt-1">
+                  <Button variant="outline" disabled={isDeleting} onClick={() => { setDeleteOpen(false); setDeleteError(""); }}>{t("Cancel")}</Button>
+                  <Button className="bg-[#DC2626] hover:bg-[#B91C1C] text-white" disabled={isDeleting} onClick={handleDeleteJob}>
+                    <Trash2 className="w-4 h-4 mr-1.5" />{isDeleting ? t("Deleting...") : t("Delete Permanently")}
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
           {job.stage === "completed" && job.status !== "Written Off" && (
             <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
               <DialogTrigger asChild>
@@ -812,7 +853,7 @@ export default function JobDetail() {
                           value={job.tech_id ?? ""}
                           onChange={handleReassignTech}
                           placeholder={t("Select a technician")}
-                          options={allTechs.map((tech) => ({ value: tech.id, label: tech.name }))}
+                          options={[{ value: "", label: t("Unassigned") }, ...allTechs.map((tech) => ({ value: tech.id, label: tech.name }))]}
                         />
                         <button className="text-[#64748B] hover:text-[#DC2626] text-xs shrink-0" onClick={() => setTechEditing(false)}>{t("Cancel")}</button>
                       </div>
@@ -821,7 +862,7 @@ export default function JobDetail() {
                         <Avatar className="w-5 h-5">
                           <AvatarFallback className="bg-[#0891B2] text-white text-[10px]">{job.profiles?.avatar}</AvatarFallback>
                         </Avatar>
-                        <span className="font-medium text-[#0F172A]">{job.profiles?.name}</span>
+                        <span className="font-medium text-[#0F172A]">{job.profiles?.name ?? t("Unassigned")}</span>
                         <button className="text-[#64748B] hover:text-[#0891B2]" onClick={() => setTechEditing(true)}>
                           <Pencil className="w-3.5 h-3.5" />
                         </button>
