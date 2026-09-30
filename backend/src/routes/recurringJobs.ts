@@ -249,5 +249,30 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
   });
 }
 
-export { nextOccurrenceDate, generateOccurrence };
+// Poor-man's cron (client SMS 2026-09-30: "no jobs on Schedule" / Map showing 0 for today, both
+// traced to the same cause): roll-forward previously only ever ran when a generated occurrence was
+// marked Completed, so a series whose prior visit was never explicitly completed just stalls --
+// its due date shows on the office Schedule as a projected/dashed "ghost" (client-side only), but
+// nothing real ever gets created, so Field.tsx's job list (a real `jobs` query, no ghost concept)
+// and the Map (same) show nothing at all for that tech/day. Confirmed on prod: 18 active series had
+// no real row for today. This runs at the top of the job-list endpoints and catches any series up
+// to today, so a stalled series heals itself on the next request instead of staying invisible until
+// someone happens to complete the old occurrence. Capped at 20 catch-up steps per series per call.
+async function catchUpOccurrences(tx: postgres.TransactionSql, tenantId: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const active = (await tx`select * from recurring_jobs where tenant_id = ${tenantId} and active = true`) as unknown as RecurringJob[];
+  for (const rj of active) {
+    const [{ d: last }] = (await tx`select max(scheduled_date) as d from jobs where recurring_job_id = ${rj.id}`) as unknown as { d: string | null }[];
+    let anchor = last ?? rj.start_date;
+    for (let i = 0; i < 20; i++) {
+      const next = nextOccurrenceDate(anchor, rj);
+      if (next > today || (rj.end_date && next > rj.end_date)) break;
+      const [exists] = (await tx`select 1 from jobs where recurring_job_id = ${rj.id} and scheduled_date = ${next} limit 1`) as unknown as unknown[];
+      if (!exists) await generateOccurrence(tx, tenantId, rj, next);
+      anchor = next;
+    }
+  }
+}
+
+export { nextOccurrenceDate, generateOccurrence, catchUpOccurrences };
 export type { RecurringJob };

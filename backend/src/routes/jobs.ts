@@ -1,18 +1,22 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
-import { nextOccurrenceDate, generateOccurrence, type RecurringJob } from "./recurringJobs.js";
+import { nextOccurrenceDate, generateOccurrence, catchUpOccurrences, type RecurringJob } from "./recurringJobs.js";
 
 export default async function jobsRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
-    return withTenantContext(req.userId, (tx) => tx`
-      select j.*,
-        jsonb_build_object('name', c.name, 'address', c.address, 'lat', c.lat, 'lng', c.lng) as customers,
-        case when p.id is null then null else jsonb_build_object('name', p.name, 'avatar', p.avatar) end as profiles
-      from jobs j
-      left join customers c on c.id = j.customer_id
-      left join profiles p on p.id = j.tech_id
-      order by j.scheduled_date desc nulls last
-    `);
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      await catchUpOccurrences(tx, tenant.id);
+      return tx`
+        select j.*,
+          jsonb_build_object('name', c.name, 'address', c.address, 'lat', c.lat, 'lng', c.lng) as customers,
+          case when p.id is null then null else jsonb_build_object('name', p.name, 'avatar', p.avatar) end as profiles
+        from jobs j
+        left join customers c on c.id = j.customer_id
+        left join profiles p on p.id = j.tech_id
+        order by j.scheduled_date desc nulls last
+      `;
+    });
   });
 
   app.get("/today", async (req) => {
@@ -36,13 +40,17 @@ export default async function jobsRoutes(app: FastifyInstance) {
   });
 
   app.get("/mine/active", async (req) => {
-    return withTenantContext(req.userId, (tx) => tx`
-      select j.*, jsonb_build_object('name', c.name, 'address', c.address) as customers
-      from jobs j
-      left join customers c on c.id = j.customer_id
-      where j.tech_id = ${req.userId} and j.status != 'Completed'
-      order by j.scheduled_date
-    `);
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      await catchUpOccurrences(tx, tenant.id);
+      return tx`
+        select j.*, jsonb_build_object('name', c.name, 'address', c.address) as customers
+        from jobs j
+        left join customers c on c.id = j.customer_id
+        where j.tech_id = ${req.userId} and j.status != 'Completed'
+        order by j.scheduled_date
+      `;
+    });
   });
 
   // Client request 2026-08-28 (bulk invoicing): completed jobs for a customer in a date range
