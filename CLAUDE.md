@@ -651,3 +651,22 @@ history was condensed into the structural sections above on 2026-09-10.)*
   POS header cards were summed from the 8 loaded recent sales (new `GET /api/pos/stats`, browser time zone) and "Show more" reloaded the whole
   register; Spanish for Inventory tabs/PO terms/POS cards. Verified live on local dev against prod data (line-item drag+save, PO empty cost, all
   Timesheets actions, Field clock in/out, POS Show more); all test data removed.
+- **2026-09-30 (live-production QA pass on commits 8afffcd + 3c4e738, no code changes)** — verified the previous session's pushed work directly on
+  pool-brayne.vercel.app (not local dev): Map date-range sync (top range now drives Map's day), Map geocoding accuracy (Sep 4 test day, 2/2 jobs
+  landed on exact pins, no "approximate" flags), JobDetail's Documents/Receipts/Before-After Photos tabs (each real and independent), Field.tsx's
+  "Guardar nota en el registro del cliente" button (typed a test note, confirmed it landed on the customer's real Notes tab, then removed it via
+  the established `backend/_tmp-*.ts` one-off-script pattern since CustomerDetail's Notes UI has no delete affordance), and DynamicForm's
+  collapsed-by-default state. Everything held up live, no new bugs found. Sent the client a short SMS-style summary (drafted in chat, not sent by
+  Claude — no client-messaging channel available) covering the Map fix plus the rest of the 2026-09-29/30 batch, condensed to ~5 bullets per the
+  dev's request. `CLIENT_REQUESTS.md` "Last updated" bumped to 2026-09-30 (no table changes — everything from this batch was already logged there
+  the prior session).
+- **2026-09-30 (client SMS: "Maps still not working... zara check kro live")** — the earlier same-day date-range-sync fix wasn't the whole story:
+  live-checked today's actual date (Sep 30) and Map genuinely showed 0/0 while Schedule/Dispatch showed a full day of stops for several techs.
+  Root cause, confirmed directly against production data: `jobs.filter(scheduled_date === mapDate)` only ever counted **real** `jobs` table rows;
+  it never included a recurring series' *projected* occurrence (the dashed "ghost" chips Schedule already draws via `ScheduleCalendar`'s own
+  separate `ghosts` computation) for days where the prior occurrence hasn't been marked Completed yet so the server hasn't generated the next real
+  row. A one-off check against prod Postgres confirmed it: 0 real job rows had `scheduled_date = 2026-09-30`, but 18 active recurring series
+  project an occurrence landing exactly on that date — exactly what Schedule was showing and Map wasn't. Fixed by giving Map its own ghost-job
+  computation (same `projectOccurrences` helper from `src/lib/recurring.ts` that Schedule already uses), merged into `mapJobs` alongside the real
+  rows, geocoded/plotted the same way. `npm run build` clean in `/`; verified the root cause with a rolled-back-nothing read-only script (no writes,
+  deleted after running, established `_tmp-*.ts` pattern). Not yet pushed — pending the user's go-ahead per this repo's push policy.

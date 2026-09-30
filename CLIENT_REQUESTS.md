@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-09-29 (2)
+Last updated: 2026-09-30
 
 ---
 
@@ -130,6 +130,7 @@ Last updated: 2026-09-29 (2)
 9. ~~Duplicate POS orders from the double-click bug~~ — removed 2026-09-25 with the dev's OK (6 extra copies deleted, 8 stock units put back; first sale of each group kept).
 
 | *(2026-09-30, video)* Map shows 0 jobs for a date that Dispatch/Schedule clearly has jobs on | ✅ fixed | Map never followed the top date-range filter at all — it only moved with its own separate day arrows, so editing the shared date range (which visually looks like it drives every tab) silently did nothing to Map. Now the top range's start date always sets Map's day too |
+| *(2026-09-30, SMS)* "Maps still not working" (still 0 jobs on today's date after the above fix) | ✅ fixed | A second, separate cause: Map only ever plotted real generated jobs, never a recurring series' upcoming visit that hasn't turned into a real job yet (the dashed "repeat" jobs you already see on Schedule/Dispatch). On a day where every due maintenance visit was still just one of those, Map showed 0 while Schedule showed a full day. Map now shows those the same way Schedule does |
 | *(2026-09-30, SMS)* Inventory Valuation report needs an "as of" date, not a date range, for QBO | ✅ | Reports › Inventory Valuation — now shows "As of {today}" instead of the shared date range (which this report never actually used) |
 | *(2026-09-30, SMS)* Grid view on Data › Import/Export | ✅ | Data › Import / Export — same table/cards toggle as Directory, Library, Forms, etc. (top right) |
 

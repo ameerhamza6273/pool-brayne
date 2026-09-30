@@ -28,7 +28,7 @@ import { useAuth } from "@/lib/auth-context";
 import { customerOption } from "@/lib/customer-options";
 import { techDotColor, techStyle, unassignedColor, registerTechColors } from "@/lib/tech-colors";
 import { matchesQuery } from "@/lib/search";
-import { repeatsOn } from "@/lib/recurring";
+import { repeatsOn, projectOccurrences } from "@/lib/recurring";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import ScheduleCalendar, { type ScheduleJob } from "@/components/ScheduleCalendar";
 import { invoicingApi, type Estimate, type EstimateLineItem } from "@/lib/api/invoicing";
@@ -448,7 +448,32 @@ export default function Jobs() {
   const recurringFiltered = recurringJobs.filter((rj) => matchesQuery(recSearch, [rj.customers?.name, rj.profiles?.name, repeatsOn(rj), rj.job_type, rj.frequency]));
   const typeColors = Object.fromEntries(configLists.job_types.map((jt) => [jt.label, jt.color ?? unassignedColor]));
 
-  const mapJobs = jobs.filter((j) => j.scheduled_date === mapDate && passesTopFilters(j));
+  // Client SMS 2026-09-30 ("Maps still not working"): Map only ever plotted real `jobs` table rows,
+  // never a recurring series' projected occurrence for the day -- the same gap Schedule already
+  // covers (see ScheduleCalendar's `ghosts`, same idea, duplicated here since Map computes its own
+  // single-day job list). On a day where a due weekly maintenance visit is still just a projection
+  // (the prior occurrence hasn't been marked Completed yet, so the server hasn't generated the next
+  // real row), Map silently showed 0/0 while Schedule/Dispatch showed a full day of stops.
+  const customerById = new Map(customers.map((c) => [c.id, c]));
+  const mapGhostJobs: Job[] = recurringJobs
+    .filter((rj) => rj.active && passesRecurringFilters(rj))
+    .flatMap((rj) => {
+      const anchorDate = jobs.reduce((m, j) => (j.recurring_job_id === rj.id && j.scheduled_date && j.scheduled_date > m ? j.scheduled_date : m), rj.start_date);
+      if (!projectOccurrences(rj, anchorDate, mapDate).includes(mapDate)) return [];
+      const cust = customerById.get(rj.customer_id);
+      return [{
+        id: `rec:${rj.id}:${mapDate}`,
+        customer_id: rj.customer_id,
+        tech_id: rj.tech_id,
+        type: rj.job_type,
+        scheduled_date: mapDate,
+        scheduled_time: rj.start_time,
+        address: rj.address,
+        customers: { name: rj.customers?.name ?? cust?.name ?? "", address: cust?.address ?? rj.address ?? null, lat: cust?.lat ?? null, lng: cust?.lng ?? null },
+        profiles: rj.profiles ? { name: rj.profiles.name, avatar: null } : null,
+      } as unknown as Job];
+    });
+  const mapJobs = [...jobs.filter((j) => j.scheduled_date === mapDate && passesTopFilters(j)), ...mapGhostJobs];
 
   // Jobs map view (client request 2026-08-27): plot the selected day's jobs on a free
   // OpenStreetMap/Leaflet map (no Google Maps billing account available), color-coded by tech —
