@@ -81,6 +81,11 @@ export default function Reports() {
     return localKey(d);
   });
   const [end, setEnd] = useState(() => localKey(new Date()));
+  // Client SMS 2026-09-30: "allow us to change the inventory valuation as of date." Valuation
+  // doesn't use the shared start/end range (a single as-of date, like QBO's own Inventory
+  // Valuation Summary) -- kept as its own state/effect so changing it doesn't refetch every
+  // other tab.
+  const [valuationAsOf, setValuationAsOf] = useState(() => localKey(new Date()));
 
   const [salesTax, setSalesTax] = useState<SalesReport | null>(null);
   const [movement, setMovement] = useState<ItemMovementRow[]>([]);
@@ -90,19 +95,19 @@ export default function Reports() {
   const [valuation, setValuation] = useState<ValuationRow[]>([]);
   const [customers, setCustomers] = useState<{ id: string; name: string; address: string | null; phone: string | null }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [valuationLoading, setValuationLoading] = useState(false);
 
   const [reminderOpen, setReminderOpen] = useState(false);
   const [newReminder, setNewReminder] = useState({ customerId: "", label: "", frequencyMonths: "", nextDue: "" });
 
   const load = useCallback(async () => {
     setIsLoading(true);
-    const [taxData, movementData, depositsData, dueData, remindersData, valuationData, customersData] = await Promise.all([
+    const [taxData, movementData, depositsData, dueData, remindersData, customersData] = await Promise.all([
       posApi.reports(start, end),
       reportsApi.itemMovement(start, end),
       reportsApi.deposits(start, end),
       reportsApi.invoicesDue(),
       reportsApi.reminders(),
-      reportsApi.inventoryValuation(),
       customersApi.list(),
     ]);
     setSalesTax(taxData);
@@ -110,7 +115,6 @@ export default function Reports() {
     setDeposits(depositsData ?? []);
     setInvoicesDue(dueData ?? []);
     setReminders(remindersData ?? []);
-    setValuation(valuationData ?? []);
     setCustomers((customersData ?? []).map((c) => ({ id: c.id, name: c.name, address: c.address, phone: c.phone })));
     setIsLoading(false);
   }, [start, end]);
@@ -118,6 +122,14 @@ export default function Reports() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setValuationLoading(true);
+    reportsApi.inventoryValuation(valuationAsOf).then((data) => {
+      setValuation(data ?? []);
+      setValuationLoading(false);
+    });
+  }, [valuationAsOf]);
 
   const handleAddReminder = async () => {
     if (!newReminder.customerId || !newReminder.label || !newReminder.frequencyMonths || !newReminder.nextDue) return;
@@ -160,9 +172,20 @@ export default function Reports() {
             range for QBO." Valuation never used this shared range to begin with (see the tab's
             own note below) -- showing it there implied the report could be filtered by range,
             which it can't. QBO's own Inventory Valuation Summary is a single as-of date, not a
-            range, so the Valuation tab now shows that instead of the range picker. */}
+            range, so the Valuation tab now shows that instead of the range picker, and (as of
+            the same-day follow-up SMS) it's an editable date, not just a label. */}
         {activeTab === "valuation" ? (
-          <p className="text-sm text-[#64748B]">{t("As of")} <span className="font-medium text-[#0F172A]">{today}</span></p>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="valuation-as-of" className="text-sm text-[#64748B]">{t("As of")}</Label>
+            <Input
+              id="valuation-as-of"
+              type="date"
+              className="h-9 w-auto"
+              max={today}
+              value={valuationAsOf}
+              onChange={(e) => { setValuationAsOf(e.target.value); setValuationPage(1); }}
+            />
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <Input type="date" className="h-9 w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
@@ -346,7 +369,11 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="valuation" className="mt-4 space-y-3">
-          <p className="text-xs text-[#64748B]">{t("Historical stock snapshots aren't tracked, so this always reflects current on-hand quantities as of today.")}</p>
+          <p className="text-xs text-[#64748B]">
+            {valuationAsOf === today
+              ? t("Showing current on-hand quantities. Pick an earlier date above to see what stock was worth then (reconstructed from sales, job parts used, write-offs and received purchase orders since that date — cost is always today's cost, since per-purchase cost history isn't tracked).")
+              : t("Reconstructed for the date above from sales, job parts used, write-offs and received purchase orders since then. Cost is always today's cost, since per-purchase cost history isn't tracked.")}
+          </p>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -360,7 +387,9 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedValuation.map((v, i) => (
+                  {valuationLoading && <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{t("Loading...")}</td></tr>}
+                  {!valuationLoading && paginatedValuation.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{t("No inventory items")}</td></tr>}
+                  {!valuationLoading && paginatedValuation.map((v, i) => (
                     <tr key={i} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{v.name}</td>
                       <td className="py-3 px-4 text-[#64748B]">{v.sku}</td>

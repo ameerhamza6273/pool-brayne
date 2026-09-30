@@ -2,7 +2,7 @@
 // and no place for a return/refund disclaimer ("no returns on chemicals", "30 days to return", ...). This
 // builds a narrow printable receipt in its own window, with the tenant's editable disclaimer at the bottom.
 
-export type ReceiptLine = { name: string; sku: string; qty: number; price: number };
+export type ReceiptLine = { name: string; sku: string; itemNumber?: string | number | null; qty: number; price: number };
 export type ReceiptData = {
   number: string;
   date: Date;
@@ -15,7 +15,8 @@ export type ReceiptData = {
   payment: string;
   note: string | null;
 };
-export type ReceiptBusiness = { businessName: string; phone: string; address: string; disclaimer: string };
+// Client SMS 2026-09-30: settings-level choice of SKU vs the internal Item # under each line.
+export type ReceiptBusiness = { businessName: string; phone: string; address: string; disclaimer: string; lineId?: "sku" | "item_number" };
 // Printed labels follow the app language (pass t("...") values); English by default.
 export type ReceiptLabels = { receipt: string; date: string; customer: string; subtotal: string; discount: string; tax: string; total: string; paidBy: string; ret: string; thanks: string; locale: string };
 const DEFAULT_LABELS: ReceiptLabels = { receipt: "Receipt", date: "Date", customer: "Customer", subtotal: "Subtotal", discount: "Discount", tax: "Tax", total: "Total", paidBy: "Paid by", ret: "Return", thanks: "Thank you!", locale: "en-US" };
@@ -25,9 +26,12 @@ const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
 
 export function receiptHtml(r: ReceiptData, b: ReceiptBusiness, labels?: Partial<ReceiptLabels>): string {
   const L = { ...DEFAULT_LABELS, ...labels };
-  const rows = r.lines.map((l) => `
+  const rows = r.lines.map((l) => {
+    const identifier = b.lineId === "item_number" && l.itemNumber != null ? String(l.itemNumber) : l.sku;
+    return `
     <tr><td colspan="3" class="name">${esc(l.name)}${l.qty < 0 ? ` (${esc(L.ret)})` : ""}</td></tr>
-    <tr class="sub"><td>${esc(l.sku)}</td><td>${l.qty} x ${money(l.price)}</td><td class="r">${money(l.qty * l.price)}</td></tr>`).join("");
+    <tr class="sub"><td>${esc(identifier)}</td><td>${l.qty} x ${money(l.price)}</td><td class="r">${money(l.qty * l.price)}</td></tr>`;
+  }).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(r.number)}</title>
 <style>
   @page { margin: 0; }

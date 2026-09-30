@@ -20,7 +20,20 @@ export default async function customersRoutes(app: FastifyInstance) {
       const household = customer[0]?.household_id
         ? await tx`select id, name, phone, email from customers where household_id = ${customer[0].household_id} and id != ${id} order by name`
         : [];
-      const posOrders = posOrdersRaw as unknown as { id: string }[];
+      // Client SMS 2026-09-30: "Walk in customer is still not showing history under previous
+      // sales." Root cause: POS's "Walk-in" option always saved pos_orders.customer_id as null
+      // (see pos.ts checkout, now fixed to attach new sales to this customer when its name
+      // matches), so sales made before that fix -- and any future sale from a tenant without a
+      // "Walk in" customer record at checkout time -- would never show here even after opening
+      // this exact customer. When this customer IS the tenant's walk-in bucket (matched by name,
+      // same as the checkout-side lookup), also pull in every orphaned null-customer_id sale so
+      // its history is complete rather than needing a one-off data backfill.
+      const isWalkinCustomer = /^walk[\s-]?in$/i.test((customer[0]?.name ?? "").trim());
+      const orphanedWalkinOrders = isWalkinCustomer
+        ? await tx`select * from pos_orders where customer_id is null order by created_at desc`
+        : [];
+      const posOrders = [...(posOrdersRaw as unknown as { id: string; created_at: string }[]), ...(orphanedWalkinOrders as unknown as { id: string; created_at: string }[])]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       const orderIds = posOrders.map((o) => o.id);
       const itemsRaw = orderIds.length > 0
         ? await tx`select * from pos_order_items where order_id in ${tx(orderIds)}`

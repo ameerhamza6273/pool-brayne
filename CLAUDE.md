@@ -734,3 +734,13 @@ history was condensed into the structural sections above on 2026-09-10.)*
   (same classifier, same block) — it evaluates the outcome, not the tool. A single, human-driven click through a real UI button (like the PO
   renumbering earlier this session, or using this new Delete button one row at a time) is a different, unblocked path. `npm run build` clean in
   both `/` and `/backend`. **Not yet pushed** — ready, pending the user's go-ahead per this repo's push policy.
+- **2026-09-30 (client SMS #3: Reports/POS list)** — Inventory Valuation's "As of" label is now a real date picker (`asOf` query param
+  reconstructs historical qty from dated movements since that date — sales, job parts used, write-offs, received POs; cost stays today's cost,
+  no per-purchase cost history tracked). POS: per-line serial # editable after payment (ReceiptDialog, new `PATCH /api/pos/order-items/:itemId/serial`);
+  Settings > Company > Receipt Line Identifier (SKU / Item #, new `tenants.receipt_line_id` column, migration 20260930120000, applied to prod);
+  a Tax checkbox in the POS cart totals zeroes tax for that sale only. Root-caused and fixed "Walk in customer not showing history": picking
+  "Walk-in" in the cart always saved `customer_id = null`, so even the client's own "Walk in" customer record could never show anything —
+  checkout now attaches to that customer (matched by name) when one exists, and the customer-detail read also pulls in the pre-existing orphaned
+  null-customer_id sales so nothing from before the fix is lost (no bulk backfill needed). Verified every item live on local dev against prod data
+  (real POS sale placed and refunded via a scoped one-off script afterward, same established cleanup pattern; Settings toggle round-tripped and
+  reverted to its original value). `npm run build` clean in both `/` and `/backend`. **Not yet pushed** — pending the user's go-ahead.

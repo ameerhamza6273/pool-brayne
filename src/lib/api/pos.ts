@@ -6,7 +6,7 @@ type PosOrder = Database["public"]["Tables"]["pos_orders"]["Row"] & { customers:
 
 export type PosOrderDetail = {
   order: Database["public"]["Tables"]["pos_orders"]["Row"] & { customer_name: string | null; cashier_name: string | null };
-  items: { id: string; item_id: string | null; description: string; quantity: number; unit_price: number; amount: number; serial_number: string | null; sku: string | null }[];
+  items: { id: string; item_id: string | null; description: string; quantity: number; unit_price: number; amount: number; serial_number: string | null; sku: string | null; item_number: number | null }[];
   payments: { method: string; amount: number }[];
 };
 
@@ -27,6 +27,9 @@ export const posApi = {
   order: (id: string) => api.get<PosOrderDetail>(`/api/pos/orders/${id}`),
 
   saveOrderNote: (id: string, note: string | null) => api.patch<{ id: string; note: string | null }>(`/api/pos/orders/${id}/note`, { note }),
+
+  saveLineSerial: (itemId: string, serialNumber: string | null) =>
+    api.patch<{ id: string; serial_number: string | null }>(`/api/pos/order-items/${itemId}/serial`, { serialNumber }),
 
   reports: (start: string, end: string) => api.get<SalesReport>(`/api/pos/reports?start=${start}&end=${end}`),
 

@@ -114,6 +114,8 @@ export default function Settings() {
   const [zip, setZip] = useState("");
   const [invoiceBusinessName, setInvoiceBusinessName] = useState("");
   const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
+  // Client SMS 2026-09-30: "settings screen: set sku# or Item # as a default on receipt."
+  const [receiptLineId, setReceiptLineId] = useState<"sku" | "item_number">("sku");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   // Client PDF 2026-09-18: Job Types/Statuses, Estimate Statuses, Call Types/Sources,
   // Reschedule Types, Cancellation Reasons -- previously hardcoded arrays with non-functional
@@ -147,7 +149,7 @@ export default function Settings() {
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
-    const data = await settingsApi.all();
+    const [data, receiptData] = await Promise.all([settingsApi.all(), settingsApi.receipt()]);
     setTeamMembers(data.teamMembers);
     setIntegrations(data.integrations);
     setSubscriptionPlans(data.subscriptionPlans);
@@ -161,6 +163,7 @@ export default function Settings() {
     setInvoiceBusinessName(data.invoiceBusinessName);
     setPayrollWeekStartDay(data.payrollWeekStartDay);
     setSelectedPlan(data.planId);
+    setReceiptLineId(receiptData.lineId);
     setIsLoading(false);
   }, []);
 
@@ -214,6 +217,12 @@ export default function Settings() {
     const day = parseInt(value, 10);
     setPayrollWeekStartDay(day);
     await settingsApi.savePayrollWeekStart(day);
+  };
+
+  const handleSaveReceiptLineId = async (value: string) => {
+    const lineId = value === "item_number" ? "item_number" : "sku";
+    setReceiptLineId(lineId);
+    await settingsApi.saveReceiptLineId(lineId);
   };
 
   const handleSelectPlan = async (planId: string) => {
@@ -344,6 +353,17 @@ export default function Settings() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-[#64748B] mt-1">{t("Controls which day the Timesheets weekly view starts on.")}</p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Receipt Line Identifier")}</Label>
+                  <Select value={receiptLineId} onValueChange={handleSaveReceiptLineId}>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="sku">{t("SKU")}</SelectItem>
+                      <SelectItem value="item_number">{t("Item #")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-[#64748B] mt-1">{t("Which identifier prints under each line on a Point of Sale receipt.")}</p>
                 </div>
               </div>
               <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany}>{t("Save Changes")}</Button>

@@ -257,16 +257,19 @@ export default async function settingsRoutes(app: FastifyInstance) {
   });
 
   // Client video 2026-09-25: editable return/refund disclaimer printed at the bottom of every POS receipt.
+  // Client SMS 2026-09-30: also let the tenant pick SKU vs the internal Item # as the identifier
+  // printed under each receipt line (same choice already offered for barcode labels).
   app.get("/receipt", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const [row] = (await tx`
-        select name, invoice_business_name, phone, address, receipt_disclaimer from tenants where id = current_tenant_id() limit 1
-      `) as unknown as { name: string; invoice_business_name: string | null; phone: string | null; address: string | null; receipt_disclaimer: string | null }[];
+        select name, invoice_business_name, phone, address, receipt_disclaimer, receipt_line_id from tenants where id = current_tenant_id() limit 1
+      `) as unknown as { name: string; invoice_business_name: string | null; phone: string | null; address: string | null; receipt_disclaimer: string | null; receipt_line_id: string }[];
       return {
         businessName: row?.invoice_business_name || row?.name || "",
         phone: row?.phone ?? "",
         address: row?.address ?? "",
         disclaimer: row?.receipt_disclaimer ?? "",
+        lineId: row?.receipt_line_id === "item_number" ? "item_number" : "sku",
       };
     });
   });
@@ -276,6 +279,14 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, async (tx) => {
       await tx`update tenants set receipt_disclaimer = ${disclaimer || null} where id = current_tenant_id()`;
       return { disclaimer };
+    });
+  });
+
+  app.patch<{ Body: { lineId: "sku" | "item_number" } }>("/receipt-line-id", async (req) => {
+    const lineId = req.body.lineId === "item_number" ? "item_number" : "sku";
+    return withTenantContext(req.userId, async (tx) => {
+      await tx`update tenants set receipt_line_id = ${lineId} where id = current_tenant_id()`;
+      return { lineId };
     });
   });
 

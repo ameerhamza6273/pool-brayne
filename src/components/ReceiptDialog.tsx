@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { Printer, Save } from "lucide-react";
+import { Printer, Save, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -26,12 +27,23 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [business, setBusiness] = useState<ReceiptBusiness>({ businessName: "", phone: "", address: "", disclaimer: "" });
   const [printBlocked, setPrintBlocked] = useState(false);
+  // Client SMS 2026-09-30: "allow us to input serial number after taking payment" -- editable
+  // per line item, same save-in-place pattern as the note above.
+  const [serials, setSerials] = useState<Record<string, string>>({});
+  const [savedSerials, setSavedSerials] = useState<Record<string, string>>({});
+  const [savingSerial, setSavingSerial] = useState<string | null>(null);
 
   useEffect(() => {
     if (!orderId) return;
     setData(null); setError(null); setPrintBlocked(false);
     posApi.order(orderId)
-      .then((d) => { setData(d); setNote(d.order.note ?? ""); setSavedNote(d.order.note ?? ""); })
+      .then((d) => {
+        setData(d);
+        setNote(d.order.note ?? ""); setSavedNote(d.order.note ?? "");
+        const s: Record<string, string> = {};
+        for (const i of d.items) s[i.id] = i.serial_number ?? "";
+        setSerials(s); setSavedSerials(s);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Couldn't load this sale"));
     settingsApi.receipt().then(setBusiness).catch(() => { /* prints without header / disclaimer */ });
   }, [orderId]);
@@ -50,6 +62,17 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
     }
   };
 
+  const saveSerial = async (itemId: string) => {
+    setSavingSerial(itemId);
+    try {
+      const r = await posApi.saveLineSerial(itemId, serials[itemId]?.trim() || null);
+      setSavedSerials((prev) => ({ ...prev, [itemId]: r.serial_number ?? "" }));
+      onSaved?.();
+    } finally {
+      setSavingSerial(null);
+    }
+  };
+
   const print = async () => {
     if (!data) return;
     const o = data.order;
@@ -61,7 +84,7 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
       number: receiptNumber(o.id),
       date: new Date(o.created_at),
       customer: o.customer_name ?? t("Walk-in"),
-      lines: data.items.map((i) => ({ name: i.description, sku: i.sku ?? "", qty: Number(i.quantity), price: Number(i.unit_price) })),
+      lines: data.items.map((i) => ({ name: i.description, sku: i.sku ?? "", itemNumber: i.item_number, qty: Number(i.quantity), price: Number(i.unit_price) })),
       subtotal,
       // Discount isn't stored separately; it's whatever makes subtotal + tax reach the total.
       discount: Math.max(0, Math.round((subtotal + tax - total) * 100) / 100),
@@ -111,17 +134,40 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
                   </tr>
                 </thead>
                 <tbody>
-                  {data.items.map((i) => (
+                  {data.items.map((i) => {
+                    const serialDirty = (serials[i.id] ?? "").trim() !== (savedSerials[i.id] ?? "").trim();
+                    return (
                     <tr key={i.id} className="border-b border-[#F1F5F9] last:border-0">
                       <td className="py-2 px-3">
                         <p className="text-[#0F172A]">{i.description}{Number(i.quantity) < 0 ? ` (${t("Return")})` : ""}</p>
-                        {(i.sku || i.serial_number) && <p className="text-[11px] text-[#94A3B8]">{[i.sku, i.serial_number ? `S/N ${i.serial_number}` : null].filter(Boolean).join(" · ")}</p>}
+                        {i.sku && <p className="text-[11px] text-[#94A3B8]">{i.sku}</p>}
+                        {i.item_id && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <Input
+                              className="h-6 text-[11px] px-1.5 w-32"
+                              placeholder={t("Serial #")}
+                              value={serials[i.id] ?? ""}
+                              onChange={(e) => setSerials((prev) => ({ ...prev, [i.id]: e.target.value }))}
+                            />
+                            {serialDirty && (
+                              <Button
+                                size="sm" variant="ghost" className="h-6 w-6 p-0 text-[#0891B2]"
+                                disabled={savingSerial === i.id}
+                                onClick={() => saveSerial(i.id)}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </Button>
+                            )}
+                            {!serialDirty && savedSerials[i.id] && <span className="text-[10px] text-[#16A34A]">{t("Saved")}</span>}
+                          </div>
+                        )}
                       </td>
                       <td className={`py-2 px-3 text-right ${Number(i.quantity) < 0 ? "text-[#DC2626]" : ""}`}>{Number(i.quantity)}</td>
                       <td className="py-2 px-3 text-right">{money(Number(i.unit_price))}</td>
                       <td className="py-2 px-3 text-right font-medium">{money(Number(i.amount))}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
               <div className="bg-[#F8FAFC] border-t border-[#E2E8F0] px-3 py-2 text-sm space-y-0.5">

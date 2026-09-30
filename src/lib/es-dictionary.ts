@@ -638,7 +638,6 @@ export const esDictionary: Record<string, string> = {
   "Customer Photos": "Fotos del cliente",
   "No photos on file for this customer.": "No hay fotos guardadas de este cliente.",
   "As of": "A partir de",
-  "Historical stock snapshots aren't tracked, so this always reflects current on-hand quantities as of today.": "No se registran instantáneas históricas de existencias, así que esto siempre refleja las cantidades actuales en existencia a partir de hoy.",
   "List": "Lista",
   "Columns": "Columnas",
   "Actions": "Acciones",
@@ -659,4 +658,15 @@ export const esDictionary: Record<string, string> = {
     "¿Seguro que quieres eliminar este trabajo permanentemente? Esta acción no se puede deshacer.",
   "Deleting...": "Eliminando...",
   "Delete Permanently": "Eliminar permanentemente",
+
+  // 2026-09-30: inventory valuation as-of date, POS serial-after-payment, receipt line
+  // identifier setting, POS tax toggle, walk-in previous sales.
+  "Showing current on-hand quantities. Pick an earlier date above to see what stock was worth then (reconstructed from sales, job parts used, write-offs and received purchase orders since that date — cost is always today's cost, since per-purchase cost history isn't tracked).":
+    "Mostrando las cantidades actuales en existencia. Elige una fecha anterior arriba para ver cuánto valía el inventario en ese momento (reconstruido a partir de ventas, piezas usadas en trabajos, bajas de inventario y órdenes de compra recibidas desde esa fecha — el costo siempre es el costo de hoy, ya que no se registra el historial de costo por compra).",
+  "Reconstructed for the date above from sales, job parts used, write-offs and received purchase orders since then. Cost is always today's cost, since per-purchase cost history isn't tracked.":
+    "Reconstruido para la fecha de arriba a partir de ventas, piezas usadas en trabajos, bajas de inventario y órdenes de compra recibidas desde entonces. El costo siempre es el costo de hoy, ya que no se registra el historial de costo por compra.",
+  "No inventory items": "No hay artículos de inventario",
+  "Serial #": "N.º de serie",
+  "Receipt Line Identifier": "Identificador en el recibo",
+  "Which identifier prints under each line on a Point of Sale receipt.": "Qué identificador se imprime debajo de cada línea en un recibo de Punto de Venta.",
 };

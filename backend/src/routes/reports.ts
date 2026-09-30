@@ -129,15 +129,45 @@ export default async function reportsRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Historical stock snapshots aren't tracked, so this reflects current on-hand quantities —
-  // the `asOf` param is accepted for the UI's date picker but the figures are always "as of now".
-  app.get("/inventory-valuation", async (req) => {
+  // Client SMS 2026-09-30: "allow us to change the inventory valuation as of date" (QBO's own
+  // Inventory Valuation Summary lets you pick any as-of date). There's no stock-history table, so
+  // a past date is reconstructed by walking today's on-hand quantity backwards through every
+  // dated movement that happened AFTER that date: add back what left (POS sales, job parts used,
+  // write-offs), subtract what came in (received PO line items, matched by SKU the same way
+  // receiving a PO does in inventory.ts). Today (the default) skips all of that and just reflects
+  // current stock. Cost is always today's `unit_cost` -- historical cost-per-unit isn't tracked,
+  // so this (like the rest of the app) has no FIFO/average-cost layers; a genuine limitation, not
+  // a bug, worth knowing if a past-dated figure doesn't reconcile with QBO to the cent.
+  app.get<{ Querystring: { asOf?: string } }>("/inventory-valuation", async (req) => {
+    const asOf = req.query.asOf || new Date().toISOString().slice(0, 10);
     return withTenantContext(req.userId, (tx) => tx`
-      select ii.name, ii.sku, ii.unit_cost, coalesce(sum(s.quantity), 0) as quantity,
-        ii.unit_cost * coalesce(sum(s.quantity), 0) as value
+      select ii.name, ii.sku, ii.unit_cost,
+        coalesce(stock.qty, 0) + coalesce(pos_mv.qty, 0) + coalesce(job_mv.qty, 0) + coalesce(wo_mv.qty, 0) - coalesce(po_mv.qty, 0) as quantity,
+        ii.unit_cost * (coalesce(stock.qty, 0) + coalesce(pos_mv.qty, 0) + coalesce(job_mv.qty, 0) + coalesce(wo_mv.qty, 0) - coalesce(po_mv.qty, 0)) as value
       from inventory_items ii
-      left join inventory_stock s on s.item_id = ii.id
-      group by ii.id, ii.name, ii.sku, ii.unit_cost
+      left join (
+        select item_id, sum(quantity) as qty from inventory_stock group by item_id
+      ) stock on stock.item_id = ii.id
+      left join (
+        select poi.item_id, sum(poi.quantity) as qty
+        from pos_order_items poi join pos_orders po on po.id = poi.order_id
+        where poi.item_id is not null and po.created_at::date > ${asOf}
+        group by poi.item_id
+      ) pos_mv on pos_mv.item_id = ii.id
+      left join (
+        select item_id, sum(quantity) as qty from job_parts_used where created_at::date > ${asOf} group by item_id
+      ) job_mv on job_mv.item_id = ii.id
+      left join (
+        select item_id, sum(quantity) as qty from inventory_writeoffs where created_at::date > ${asOf} group by item_id
+      ) wo_mv on wo_mv.item_id = ii.id
+      left join (
+        select ii2.id as item_id, sum(poli.quantity) as qty
+        from purchase_order_line_items poli
+        join purchase_orders po2 on po2.id = poli.po_id
+        join inventory_items ii2 on ii2.sku = poli.sku
+        where po2.status = 'Received' and po2.received_date > ${asOf}
+        group by ii2.id
+      ) po_mv on po_mv.item_id = ii.id
       order by value desc
     `);
   });

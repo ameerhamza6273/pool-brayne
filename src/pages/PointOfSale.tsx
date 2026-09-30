@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Checkbox } from "@/components/ui/checkbox";
 import { posApi, receiptNumber, type SalesReport } from "@/lib/api/pos";
 import ReceiptDialog from "@/components/ReceiptDialog";
 import { customersApi } from "@/lib/api/customers";
@@ -32,6 +33,7 @@ type CartItem = {
   id: string | null;
   name: string;
   sku: string;
+  itemNumber?: number | null;
   price: number;
   qty: number;
   taxable: boolean;
@@ -243,7 +245,11 @@ export default function PointOfSale() {
     cart.filter((i) => i.taxable).reduce((s, i) => s + i.price * i.qty, 0) - (discountAmount * cart.filter((i) => i.taxable).length / Math.max(cart.length, 1)),
     [cart, discountAmount],
   );
-  const tax = useMemo(() => Math.max(0, taxableAmount * TAX_RATE), [taxableAmount]);
+  // Client SMS 2026-09-30: "allow us the ability to turn on or off the sales tax via a check
+  // mark" when ringing up a sale (e.g. a tax-exempt reseller) -- per-transaction, not a tenant
+  // setting; defaults on like normal.
+  const [taxEnabled, setTaxEnabled] = useState(true);
+  const tax = useMemo(() => (taxEnabled ? Math.max(0, taxableAmount * TAX_RATE) : 0), [taxableAmount, taxEnabled]);
   const total = useMemo(() => subtotal - discountAmount + tax, [subtotal, discountAmount, tax]);
 
   const addToCart = (p: Product) => {
@@ -251,7 +257,7 @@ export default function PointOfSale() {
     setCart((prev) => {
       const existing = prev.find((i) => i.id === p.id);
       if (existing) return prev.map((i) => i.id === p.id ? { ...i, qty: i.qty + direction } : i);
-      return [...prev, { id: p.id, name: p.name, sku: p.sku, price: p.price ?? 0, qty: direction, taxable: p.taxable, unit: p.unit ?? "ea" }];
+      return [...prev, { id: p.id, name: p.name, sku: p.sku, itemNumber: p.item_number, price: p.price ?? 0, qty: direction, taxable: p.taxable, unit: p.unit ?? "ea" }];
     });
   };
 
@@ -281,6 +287,7 @@ export default function PointOfSale() {
     setDiscount(0);
     setCustomerName("Walk-in");
     setCustomerId(null);
+    setTaxEnabled(true);
   };
 
   const remainingTender = total - tenderLines.reduce((s, t) => s + t.amount, 0);
@@ -368,7 +375,7 @@ export default function PointOfSale() {
       number, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0),
       receipt: {
         number, date: new Date(), customer: customerName === "Walk-in" ? t("Walk-in") : customerName,
-        lines: cart.map((i) => ({ name: i.name, sku: i.sku, qty: i.qty, price: i.price })),
+        lines: cart.map((i) => ({ name: i.name, sku: i.sku, itemNumber: i.itemNumber, qty: i.qty, price: i.price })),
         subtotal, discount: discountAmount, tax, total, payment: paymentLabel, note: saleNote.trim() || null,
       },
     });
@@ -805,8 +812,11 @@ export default function PointOfSale() {
                     <span className="font-medium">-${discountAmount.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-[#64748B]">
-                  <span>{t("Tax (8.25%)")}</span>
+                <div className="flex items-center justify-between text-[#64748B]">
+                  <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                    <Checkbox checked={taxEnabled} onCheckedChange={(v) => setTaxEnabled(v === true)} />
+                    <span>{t("Tax (8.25%)")}</span>
+                  </label>
                   <span className="font-medium text-[#0F172A]">${tax.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-[#E2E8F0]">

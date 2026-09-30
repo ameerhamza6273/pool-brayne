@@ -80,7 +80,7 @@ export default async function posRoutes(app: FastifyInstance) {
       `;
       if (!order) return reply.code(404).send({ error: "Sale not found" });
       const [items, payments] = await Promise.all([
-        tx`select i.*, ii.sku from pos_order_items i left join inventory_items ii on ii.id = i.item_id where i.order_id = ${order.id} order by i.id`,
+        tx`select i.*, ii.sku, ii.item_number from pos_order_items i left join inventory_items ii on ii.id = i.item_id where i.order_id = ${order.id} order by i.id`,
         tx`select method, amount from pos_order_payments where order_id = ${order.id}`,
       ]);
       return { order, items, payments };
@@ -92,6 +92,19 @@ export default async function posRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`update pos_orders set note = ${note} where id = ${req.params.id} returning id, note`;
       if (!row) return reply.code(404).send({ error: "Sale not found" });
+      return row;
+    });
+  });
+
+  // Client SMS 2026-09-30: "allow us to input serial number after taking payment" -- the cart's
+  // own serial field (PointOfSale.tsx) only works before the sale is completed; sometimes the
+  // real serial (e.g. off the box, or off the installed unit) isn't known until after checkout.
+  // Same edit-after-the-fact pattern as the order note above, but per line item.
+  app.patch<{ Params: { itemId: string }; Body: { serialNumber: string | null } }>("/order-items/:itemId/serial", async (req, reply) => {
+    const serial = (req.body?.serialNumber ?? "").trim() || null;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`update pos_order_items set serial_number = ${serial} where id = ${req.params.itemId} returning id, serial_number`;
+      if (!row) return reply.code(404).send({ error: "Line item not found" });
       return row;
     });
   });
@@ -197,9 +210,19 @@ export default async function posRoutes(app: FastifyInstance) {
 
       return await withTenantContext(req.userId, async (tx) => {
         const [tenant] = await tx`select current_tenant_id() as id`;
+        // Client SMS 2026-09-30: "Walk in customer is still not showing history under previous
+        // sales" -- picking "Walk-in" in the cart always saved customer_id as null, so it could
+        // never show up on any customer's Previous Sales, even a "Walk in" customer record made
+        // specifically to catch these. If the tenant has one (matched by name), attach it there
+        // instead of leaving it orphaned; tenants without one keep the old null behavior.
+        let resolvedCustomerId = customerId;
+        if (!resolvedCustomerId) {
+          const [walkin] = await tx`select id from customers where name ~* '^walk[[:space:]-]?in$' limit 1` as unknown as { id: string }[];
+          if (walkin) resolvedCustomerId = walkin.id;
+        }
         const [order] = await tx`
           insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id, note)
-          values (${tenant.id}, ${customerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId}, ${note || null})
+          values (${tenant.id}, ${resolvedCustomerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId}, ${note || null})
           returning id
         `;
 

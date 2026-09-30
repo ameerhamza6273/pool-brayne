@@ -31,7 +31,8 @@ export const reportsApi = {
 
   deleteReminder: (id: string) => api.del(`/api/reports/reminders/${id}`),
 
-  inventoryValuation: () => api.get<ValuationRow[]>("/api/reports/inventory-valuation"),
+  inventoryValuation: (asOf?: string) =>
+    api.get<ValuationRow[]>(`/api/reports/inventory-valuation${asOf ? `?asOf=${asOf}` : ""}`),
 
   vendorBillsDue: () => api.get<VendorBillDueRow[]>("/api/reports/vendor-bills-due"),
 };

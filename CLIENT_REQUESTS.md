@@ -135,6 +135,11 @@ Last updated: 2026-09-30
 | *(2026-09-30, SMS)* "Estimates format not done — the PDF with the arrows" | ⏳ need the file | No record of this PDF anywhere in this tracker or the project notes -- please resend it (or describe what the arrows point to) so it can be matched to the right change |
 | *(2026-09-30, SMS)* Inventory Valuation report needs an "as of" date, not a date range, for QBO | ✅ | Reports › Inventory Valuation — now shows "As of {today}" instead of the shared date range (which this report never actually used) |
 | *(2026-09-30, SMS)* Grid view on Data › Import/Export | ✅ | Data › Import / Export — same table/cards toggle as Directory, Library, Forms, etc. (top right) |
+| *(2026-09-30, SMS #2)* "Allow us to change the inventory valuation as of date" (it only ever showed today) | ✅ | Reports › Inventory Valuation — the "As of" label is now a real date picker. Picking a past date reconstructs that day's stock from everything that happened since (sales, job parts used, write-offs, received POs); cost is always today's cost since per-purchase cost history isn't tracked (same limitation QBO itself would need FIFO/average-cost layers for) |
+| *(2026-09-30, SMS #2)* POS: input a serial number after taking payment | ✅ | Click any past sale (POS › Recent Transactions, or Customer › Previous Sales) to open its receipt — each line item now has its own serial # field there, saved on the spot |
+| *(2026-09-30, SMS #2)* Settings: default SKU or Item # on the receipt | ✅ | Settings › Company › **Receipt Line Identifier** dropdown |
+| *(2026-09-30, SMS #2)* POS: check mark to turn sales tax on/off per transaction | ✅ | POS cart totals — a checkbox next to "Tax (8.25%)"; unchecking zeroes the tax for that sale only, doesn't change the 8.25% rate itself |
+| *(2026-09-30, SMS #2)* "Walk in customer is still not showing history under previous sales" | ✅ fixed | Root cause: choosing "Walk-in" in the cart never actually attached the sale to any customer record, so even the "Walk in" customer you made could never show anything. New walk-in sales now attach to that customer automatically (matched by name); its Previous Sales tab also now pulls in the past unattached walk-in sales so nothing's missing |
 
 ## 6. Full app QA sweep (2026-09-30, "check every feature")
 
