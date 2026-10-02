@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-09-30
+Last updated: 2026-10-02
 
 ---
 
@@ -122,6 +122,8 @@ Last updated: 2026-09-30
 1. **Logo file** (PNG) for invoices.
 2. **Email account** — free SendGrid account + API key (or their business email SMTP details) so invoices and purchase-order emails can be sent from the CRM. (Text messages via Twilio can come later.)
 3. **POS returns:** refund back to the customer's card, or cash/check only?
+10. **Authorize.net production merchant account** (API Login ID + Transaction Key) — card charging already works end-to-end, just on sandbox/test credentials.
+11. **Dialpad account + API key** (Settings › API/Integrations in their own Dialpad admin panel) — needed before click-to-call or call logging can be built.
 4. One SMS line was cut off: *"Allow us the option to click on an option to click…"* — what was the rest?
 5. **Inventory (2026-09-18 list):** *"Remove the original in inventory list (default list we started with)"* — which list? A leftover demo category, or the old imported product list?
 6. ~~Documents folder (2026-09-18)~~ — answered by the 2026-09-25 video: built as Data › **Document List**.
@@ -152,6 +154,16 @@ Last updated: 2026-09-30
 | Opening an Estimate lit up "Customer Invoices" in the sidebar instead of "Estimates / Quotes" | ✅ fixed | — |
 | 5 old leftover test jobs (Austin, TX, dated 2024) still showing on the Dashboard and on a tech's phone schedule | 🟡 3 of 5 deleted | Deleted live via the new Delete button: Sunset Country Club, Austin Aquatic Center, Jennifer Walsh. **2 left**: Emily & Tom Brooks (job id `d7663c5f-a881-41d8-9f4e-793f7bdfa439`) and David Foster (`f9f23607-1d17-4d4c-b2ef-50e19771bf6c`) — open `/jobs/<id>` and click Delete (top right); Claude got rate-limited by its own safety classifier after 3 deletes in one session and couldn't finish these 2 |
 | *(dev)* "Shouldn't there be an edit/delete option" for a job | ✅ | Job page › **Delete** button (top right, permanent, asks to confirm) — refuses if the job already has a real invoice/estimate/parts used, so real history is never lost |
+
+## 7. 2026-10-02 SMS batch
+
+| Request | Status | Where to find it |
+|---|---|---|
+| Make customer Estimates look like the customer Invoice | ✅ | Estimate page now uses the exact same document layout as Invoice (dark header band, Business/Client/Billing/Service Details boxes, Breakdown of Services, Service Line Items table) |
+| Make the word "Invoice" ~1.5x bigger | ✅ | Invoice (and now Estimate) document header |
+| Invoice shows one combined "service line item" with the total of all SKUs instead of the real items (example given: INV-20260925-5333) | ✅ fixed | Root cause: completing a job auto-created its invoice but never copied the job's own line items onto it, so the invoice fell back to one made-up line equal to the total. Fixed going forward; the exact invoice named (INV-20260925-5333) plus one other old invoice with the same gap (INV-20260915-D229) were corrected with their real line items |
+| Use a real API for Authorize.net credit card charging | ✅ already built | This has been real since early September — Invoice/POS "Collect Payment" (Card) already charges through Authorize.net's live API (sandbox credentials for now). 🟡 Needs the client's own Authorize.net **production** merchant account (API Login ID + Transaction Key) to charge real cards instead of test ones — same item already tracked below |
+| Set up an API for Dialpad (phone) | 🟡 needs the client's account | Settings › Integrations now has a Dialpad card (honest "Not Connected", same as Twilio/SendGrid) so there's a real place to track it. Dialpad's own API supports click-to-call and call-logging webhooks, but needs the client's Dialpad plan + a Dialpad Developer API key before anything real can be built — same category as the Twilio/SendGrid items below |
 
 ## Not built (deliberately, no client request yet)
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Download, FileText, ArrowRight, Link2, Mail, Camera, Upload, Pencil } from "lucide-react";
+import { ArrowLeft, Download, ArrowRight, Link2, Mail, Upload, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,16 @@ const statusColors: Record<string, string> = {
   Accepted: "bg-[#16A34A]/10 text-[#16A34A]",
   Declined: "bg-[#DC2626]/10 text-[#DC2626]",
   Converted: "bg-[#0891B2]/10 text-[#0891B2]",
+};
+
+// MM/DD/YYYY, matching InvoiceDetail.tsx so the two documents look the same. Date-only strings
+// are split rather than parsed so a timezone cannot shift the day.
+const fmtDate = (d?: string | null) => {
+  if (!d) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
+  if (m && d.length === 10) return `${m[2]}/${m[3]}/${m[1]}`;
+  const dt = new Date(d);
+  return isNaN(dt.getTime()) ? d : dt.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 };
 
 export default function EstimateDetail() {
@@ -137,6 +147,14 @@ export default function EstimateDetail() {
   const downPayment = estimate.down_payment ?? 0;
   const remainingBalance = total - downPayment;
   const totalCost = items.reduce((sum, li) => sum + (li.cost ?? 0) * li.quantity, 0);
+  // customers.address is one free-text string ("street, city, ST, zip") -- street on line 1, rest
+  // on line 2, matching InvoiceDetail.tsx's Billing Address box.
+  const customerAddressLines = (() => {
+    const a = estimate.customers?.address;
+    if (!a) return [] as string[];
+    const i = a.indexOf(",");
+    return i > 0 ? [a.slice(0, i).trim(), a.slice(i + 1).trim()] : [a];
+  })();
 
   const handleConvert = async () => {
     if (!id) return;
@@ -349,57 +367,69 @@ export default function EstimateDetail() {
         </Card>
       )}
 
+      {/* Estimate Document — mirrors InvoiceDetail.tsx's layout exactly (client ask, 2026-10-02:
+          "make the customer estimates look like the customer invoice") so the two documents read
+          as one consistent system: dark header band with Business / Client Details / Billing
+          Address / Service Details boxes, then a Breakdown of Services. */}
       {!editing && (
       <Card className="border-[#E2E8F0] shadow-sm">
-        <CardContent className="p-6 lg:p-8">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-lg bg-[#0891B2] flex items-center justify-center">
-                  <FileText className="w-4 h-4 text-white" />
+        <CardContent className="p-4 sm:p-6 lg:p-8">
+          <div className="rounded-xl bg-gradient-to-r from-[#0E7490] to-[#0891B2] p-3 sm:p-4 text-white [print-color-adjust:exact] [-webkit-print-color-adjust:exact]">
+            <div className="flex items-center justify-center gap-3 mb-3">
+              <h2 className="text-[27px] leading-none font-bold text-center">{t("Estimate")}</h2>
+              <Badge className="bg-white/20 text-white border border-white/30 text-[10px] px-2 py-0.5 print:hidden">{t(estimate.status)}</Badge>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-4 print:grid-cols-4 gap-2 text-[11px] leading-relaxed">
+              <div className="rounded-lg border border-white/30 bg-white/10 p-3 flex flex-col">
+                <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{business?.invoice_business_name || business?.name || "—"}</p>
+                <div className="mt-auto space-y-0.5">
+                  {business?.phone && <p>{t("Phone #")}: {business.phone}</p>}
+                  {business?.address && <p>{business.address}</p>}
+                  {(business?.city || business?.state || business?.zip) && (
+                    <p>{[business?.city, business?.state].filter(Boolean).join(", ")} {business?.zip ?? ""}</p>
+                  )}
                 </div>
-                <h2 className="text-xl font-bold text-[#0F172A]">{business?.invoice_business_name || business?.name || "—"}</h2>
               </div>
-              {business?.address && <p className="text-sm text-[#64748B]">{business.address}</p>}
-              {(business?.city || business?.state || business?.zip) && (
-                <p className="text-sm text-[#64748B]">{[business?.city, business?.state].filter(Boolean).join(", ")} {business?.zip ?? ""}</p>
-              )}
-              {business?.phone && <p className="text-sm text-[#64748B]">{business.phone}</p>}
-            </div>
-            <div className="text-right">
-              <h3 className="text-2xl font-bold text-[#0F172A]">ESTIMATE</h3>
-              <p className="text-sm text-[#64748B]">{estimate.number}</p>
-              <div className="mt-2">
-                <Badge className={`${statusColors[estimate.status] ?? "bg-[#F1F5F9] text-[#64748B]"} text-[10px] px-2 py-0.5`}>{t(estimate.status)}</Badge>
+              <div className="rounded-lg border border-white/30 bg-white/10 p-3 space-y-0.5">
+                <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{t("Client Details")}</p>
+                <p>{t("Name")}: {estimate.customers?.name ?? "—"}</p>
+                <p>{t("Phone #")}: {estimate.customers?.phone || "—"}</p>
+                <p>{t("Estimate #")}: {estimate.number}</p>
+                <p>{t("Date of Request")}: {fmtDate(estimate.issue_date)}</p>
+                <p>{t("Expires")}: {fmtDate(estimate.expiry_date)}</p>
+              </div>
+              <div className="rounded-lg border border-white/30 bg-white/10 p-3 space-y-0.5">
+                <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{t("Billing Address")}:</p>
+                <p>{estimate.customers?.name ?? "—"}</p>
+                {customerAddressLines.length > 0 ? customerAddressLines.map((line, i) => <p key={i}>{line}</p>) : <p>—</p>}
+              </div>
+              <div className="rounded-lg border border-white/30 bg-white/10 p-3 space-y-0.5">
+                <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{t("Service Details")}</p>
+                <p>{t("Item/Parts")}: ${materialsSubtotal.toFixed(2)}</p>
+                <p>{t("Labor Cost")}: ${laborSubtotal.toFixed(2)}</p>
+                <p>{t("Item Tax")}: ${tax.toFixed(2)}</p>
+                <p>{t("Total Tax")}: ${tax.toFixed(2)}</p>
+                <p>{t("Total")}: ${total.toFixed(2)}</p>
+                <p>{t("Down Payment")}: ${downPayment.toFixed(2)}</p>
+                <p>{t("Remaining Balance")}: ${remainingBalance.toFixed(2)}</p>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8 p-4 rounded-lg bg-[#F8FAFC]">
-            <div>
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Client Details")}</p>
-              <p className="font-medium text-[#0F172A]">{estimate.customers?.name ?? "—"}</p>
-              <p className="text-sm text-[#64748B]">{estimate.customers?.phone ?? ""}</p>
-              <p className="text-sm text-[#64748B]">{estimate.customers?.address ?? ""}</p>
-            </div>
-            <div className="sm:text-right">
-              <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Estimate Details")}</p>
-              <p className="text-sm text-[#0F172A]">{t("Date of Request:")} <span className="text-[#64748B]">{estimate.issue_date}</span></p>
-              <p className="text-sm text-[#0F172A]">{t("Expires:")} <span className="text-[#64748B]">{estimate.expiry_date ?? "—"}</span></p>
-            </div>
-          </div>
+          <h3 className="font-bold text-[#0F172A] mt-6 mb-2 text-sm">{t("Breakdown of Services")}</h3>
 
-          {(estimate.job_description || photos.length > 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+          {/* Job Description + Trip Photos (estimates aren't tied to a completed job yet, so
+              photos are uploaded directly on the estimate rather than pulled from job_attachments). */}
+          <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 mb-3 space-y-3">
               {estimate.job_description && (
-                <div className="border border-[#E2E8F0] rounded-lg p-4">
-                  <p className="text-xs font-semibold text-[#64748B] uppercase mb-1">{t("Job Description")}</p>
-                  <p className="text-sm text-[#0F172A] whitespace-pre-wrap">{estimate.job_description}</p>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0891B2] mb-1">{t("Job Description")}:</p>
+                  <p className="text-xs text-[#0F172A] whitespace-pre-wrap">{estimate.job_description}</p>
                 </div>
               )}
-              <div className="border border-[#E2E8F0] rounded-lg p-4">
+              <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-[#64748B] uppercase flex items-center gap-1.5"><Camera className="w-3.5 h-3.5" /> {t("Trip Photos")}</p>
+                  <p className="text-base font-bold text-[#0F172A]">{t("Trip Photos")}</p>
                   <label className="inline-flex items-center gap-1 text-xs text-[#0891B2] cursor-pointer hover:underline print:hidden">
                     <Upload className="w-3 h-3" /> {photosUploading ? t("Uploading...") : t("Add")}
                     <input type="file" accept="image/*" className="hidden" onChange={handleUploadPhoto} disabled={photosUploading} />
@@ -408,85 +438,57 @@ export default function EstimateDetail() {
                 {photos.length === 0 ? (
                   <p className="text-xs text-[#94A3B8]">{t("No photos yet.")}</p>
                 ) : (
-                  <div className="grid grid-cols-3 gap-2">
-                    {photos.map((p) => (
-                      <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="block aspect-square rounded-md overflow-hidden border border-[#E2E8F0]">
-                        <img src={p.url} alt="Trip" className="w-full h-full object-cover" />
-                      </a>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {photos.map((photo) => (
+                      <div key={photo.id} className="rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] p-2 break-inside-avoid">
+                        <img src={photo.url} alt="Trip" className="w-full h-36 object-contain" />
+                      </div>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
-          )}
-          {!estimate.job_description && photos.length === 0 && (
-            <div className="mb-6 border border-dashed border-[#E2E8F0] rounded-lg p-4 print:hidden">
-              <label className="inline-flex items-center gap-1.5 text-xs text-[#0891B2] cursor-pointer hover:underline">
-                <Camera className="w-3.5 h-3.5" /> {t("Add Trip Photos")}
-                <input type="file" accept="image/*" className="hidden" onChange={handleUploadPhoto} disabled={photosUploading} />
-              </label>
-            </div>
-          )}
+          </div>
 
-          <div className="mb-6">
-            <table className="w-full text-sm">
+          {/* Service Line Items */}
+          <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 mb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#0891B2] mb-2">{t("Service Line Items")}:</p>
+            <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-[#E2E8F0]">
-                  <th className="text-left py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Qty")}</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Price")}</th>
-                  <th className="text-right py-3 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
+                <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]">
+                  <th className="text-left py-2 pr-2 font-medium w-12">{t("SI No")}</th>
+                  <th className="text-left py-2 font-medium">{t("Description")}</th>
+                  <th className="text-right py-2 font-medium">{t("Qty")}</th>
+                  <th className="text-right py-2 font-medium pl-3">{t("Unit Price")}</th>
+                  <th className="text-right py-2 font-medium pl-3">{t("Amount")}</th>
                 </tr>
               </thead>
               <tbody>
                 {laborFirst(items).map((li, idx: number) => (
-                  <tr key={idx} className="border-b border-[#F1F5F9]">
-                    <td className="py-3 text-[#0F172A]">
+                  <tr key={idx} className="border-b border-[#E2E8F0] align-top">
+                    <td className="py-2 pr-2 text-[#64748B]">{idx + 1}</td>
+                    <td className="py-2 text-[#0F172A]">
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
                       {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
-                      {li.notes && <p className="text-xs text-[#94A3B8] whitespace-pre-wrap">{li.notes}</p>}
+                      {li.notes && <p className="text-[11px] text-[#94A3B8] whitespace-pre-wrap">{li.notes}</p>}
                     </td>
-                    <td className="text-right py-3 text-[#64748B]">{li.quantity}</td>
-                    <td className="text-right py-3 text-[#64748B]">${li.rate.toFixed(2)}</td>
-                    <td className="text-right py-3 font-medium text-[#0F172A]">${li.amount.toFixed(2)}</td>
+                    <td className="text-right py-2 text-[#64748B]">{li.quantity}</td>
+                    <td className="text-right py-2 pl-3 text-[#64748B]">${li.rate.toFixed(2)}</td>
+                    <td className="text-right py-2 pl-3 font-medium text-[#0F172A]">${li.amount.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div className="flex justify-end">
-            <div className="w-full sm:w-64 space-y-2">
-              {/* Client sample estimate PDF (2026-09-06): Parts & Materials / Labor shown as
-                  separate lines, not a single combined Subtotal. */}
-              <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">{t("Parts & Materials")}</span>
-                <span className="text-[#0F172A]">${materialsSubtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">{t("Labor")}</span>
-                <span className="text-[#0F172A]">${laborSubtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[#64748B]">{t("Tax (8.25%)")}</span>
-                <span className="text-[#0F172A]">${tax.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-lg font-bold pt-2 border-t border-[#E2E8F0]">
-                <span className="text-[#0F172A]">{t("Total")}</span>
-                <span className="text-[#0891B2]">${total.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]">
-                <span className="text-[#64748B]">{t("Down Payment")}</span>
-                <span className="text-[#0F172A]">${downPayment.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm font-semibold">
-                <span className="text-[#0F172A]">{t("Remaining Balance")}</span>
-                <span className="text-[#0F172A]">${remainingBalance.toFixed(2)}</span>
-              </div>
-            </div>
+          <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 text-xs text-[#0F172A] space-y-1.5 sm:ml-auto sm:w-72">
+            <p>{t("Tax")}: ${tax.toFixed(2)}</p>
+            <p>{t("Total")}: ${total.toFixed(2)}</p>
+            <p>{t("Down Payment")}: ${downPayment.toFixed(2)}</p>
+            <p>{t("Remaining Balance")}: ${remainingBalance.toFixed(2)}</p>
           </div>
 
+          {/* Internal cost/margin — staff only, excluded from Download PDF (window.print). */}
           {totalCost > 0 && (
             <div className="print:hidden mt-8 border border-dashed border-[#E2E8F0] rounded-lg p-4 bg-[#F8FAFC]">
               <p className="text-xs font-semibold text-[#64748B] uppercase mb-2">{t("Internal Costs (Staff Only — not shown to customer)")}</p>
@@ -501,7 +503,7 @@ export default function EstimateDetail() {
             </div>
           )}
 
-          <div className="mt-12 flex justify-end">
+          <div className="mt-8 flex justify-end">
             <div className="text-center">
               <div className="w-56 border-t border-[#0F172A] pt-1">
                 <p className="text-xs text-[#64748B]">{t("Customer Signature")}</p>
@@ -512,16 +514,18 @@ export default function EstimateDetail() {
       </Card>
       )}
 
-      <DocumentsSection
-        documents={documents}
-        onUpload={handleUploadDocument}
-        uploading={docsUploading}
-        libraryDocuments={libraryDocuments}
-        onAttachExisting={handleAttachLibraryDocument}
-        onRename={handleRenameDocument}
-        onDelete={handleDeleteDocument}
-            collapseWhenEmpty
-      />
+      <div className="print:hidden">
+        <DocumentsSection
+          documents={documents}
+          onUpload={handleUploadDocument}
+          uploading={docsUploading}
+          libraryDocuments={libraryDocuments}
+          onAttachExisting={handleAttachLibraryDocument}
+          onRename={handleRenameDocument}
+          onDelete={handleDeleteDocument}
+          collapseWhenEmpty
+        />
+      </div>
     </div>
   );
 }

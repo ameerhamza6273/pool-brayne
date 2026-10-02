@@ -5,6 +5,14 @@
 export const esDictionary: Record<string, string> = {
   "Access Notes": "Notas de acceso",
   "Active": "Activo",
+  // Settings > Integrations honest "not connected" descriptions (2026-09-30 fix + Dialpad added 2026-10-02).
+  "Awaiting your Dialpad account/API credentials to enable click-to-call and call logging.": "Esperando su cuenta/credenciales de API de Dialpad para habilitar clic-para-llamar y el registro de llamadas.",
+  "Awaiting your Gusto account/credentials to enable payroll export.": "Esperando su cuenta/credenciales de Gusto para habilitar la exportación de nómina.",
+  "Awaiting your SendGrid account/credentials to enable email.": "Esperando su cuenta/credenciales de SendGrid para habilitar el correo electrónico.",
+  "Awaiting your Twilio account/credentials to enable SMS.": "Esperando su cuenta/credenciales de Twilio para habilitar los SMS.",
+  "GPS7000 has no public API yet — Fleet page links out to platform.gps7000.com directly.": "GPS7000 aún no tiene una API pública — la página de Flota enlaza directamente a platform.gps7000.com.",
+  "Not used — Authorize.net is the active payment processor.": "No se usa — Authorize.net es el procesador de pagos activo.",
+  "Add": "Agregar",
   "Add Another Form": "Agregar otro formulario",
   "Add Card Tender": "Agregar pago con tarjeta",
   "Add Document": "Agregar documento",
@@ -106,6 +114,7 @@ export const esDictionary: Record<string, string> = {
   "Current": "Actual",
   "Current Sale": "Venta actual",
   "Custom Item": "Artículo personalizado",
+  "Customer Signature": "Firma del cliente",
   "Customer Signature on completion": "Firma del cliente al completar",
   "Customer Since": "Cliente desde",
   "Customer Summary": "Resumen del cliente",
@@ -361,6 +370,7 @@ export const esDictionary: Record<string, string> = {
   "Processing...": "Procesando...",
   "Product": "Producto",
   "Pump": "Bomba",
+  "Push customers and invoices to QuickBooks — each business connects its own account.": "Envíe clientes y facturas a QuickBooks — cada negocio conecta su propia cuenta.",
   "Put the stops in the order you want, then set the start time. Each stop gets its standard time, and repeating jobs keep that time every week, so the route stays in the same order.": "Ponga las paradas en el orden que desee y fije la hora de inicio. Cada parada recibe su hora fija y los trabajos que se repiten conservan esa hora cada semana, así la ruta mantiene el mismo orden.",
   "Qty": "Cant.",
   "Qty Sold": "Cant. vendida",
@@ -508,6 +518,7 @@ export const esDictionary: Record<string, string> = {
   "Total Sales": "Ventas totales",
   "Total Tax": "Impuesto total",
   "Travel Miles": "Millas recorridas",
+  "Two-way sync active.": "Sincronización bidireccional activa.",
   "Trip Photos": "Fotos de la visita",
   "Truck 1 — Ford Transit": "Camioneta 1 — Ford Transit",
   "Truck 2 — Ram Promaster": "Camioneta 2 — Ram Promaster",
@@ -583,6 +594,7 @@ export const esDictionary: Record<string, string> = {
   "updated": "actualizados",
   "via ACH": "por ACH",
   // "Estimate" is always "presupuesto" (Google mixed in "estimación").
+  "Estimate": "Presupuesto",
   "Create Estimate": "Crear presupuesto", "Create New Estimate": "Crear nuevo presupuesto", "Estimate #": "Presupuesto #",
   "Estimate Statuses": "Estados de presupuesto", "New Estimate": "Nuevo presupuesto", "No estimates yet": "Aún no hay presupuestos",
   // Data > Import / Export cards

@@ -42,6 +42,7 @@ const iconMap: Record<string, React.ElementType> = {
   MessageSquare: MessageSquare,
   Mail: Mail,
   CreditCard: CreditCard,
+  Phone: Phone,
 };
 
 const staffRoles = ["owner", "manager", "technician", "contractor", "office_manager"];
@@ -502,6 +503,12 @@ export default function Settings() {
               const Icon = iconMap[int.icon ?? ""] || Shield;
               const isQuickbooks = int.provider === "quickbooks";
               const isConnected = int.status === "Connected";
+              // The stored description for QuickBooks is a leftover from the original demo seed
+              // ("Two-way sync active...") and goes stale once disconnected -- show a description
+              // that always matches the real isConnected state instead of trusting that column.
+              const description = isQuickbooks
+                ? (isConnected ? t("Two-way sync active.") : t("Push customers and invoices to QuickBooks — each business connects its own account."))
+                : t(int.description ?? "");
               return (
                 <Card key={int.id} className="border-[#E2E8F0] shadow-sm">
                   <CardContent className="p-5">
@@ -516,7 +523,7 @@ export default function Settings() {
                             {t(int.status)}
                           </Badge>
                         </div>
-                        <p className="text-sm text-[#64748B] mt-1">{t(int.description ?? "")}</p>
+                        <p className="text-sm text-[#64748B] mt-1">{description}</p>
                         {isQuickbooks ? (
                           <Button
                             variant="outline"

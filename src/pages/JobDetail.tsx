@@ -542,6 +542,9 @@ export default function JobDetail() {
           dueDate: dueDate.toISOString().slice(0, 10),
           amount: job.amount,
           status: "Sent",
+          lineItems: jobLineItems.length > 0
+            ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes }))
+            : undefined,
         });
         setGeneratingInvoice(false);
         navigate(`/invoicing/${invoice.id}`);

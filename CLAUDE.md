@@ -744,3 +744,19 @@ history was condensed into the structural sections above on 2026-09-10.)*
   null-customer_id sales so nothing from before the fix is lost (no bulk backfill needed). Verified every item live on local dev against prod data
   (real POS sale placed and refunded via a scoped one-off script afterward, same established cleanup pattern; Settings toggle round-tripped and
   reverted to its original value). `npm run build` clean in both `/` and `/backend`. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-02 (client SMS: Estimate/Invoice look + a real invoice bug + Authorize.net + Dialpad)** — EstimateDetail.tsx now uses the exact same
+  document layout as InvoiceDetail.tsx (dark gradient header band, 4-box grid, Breakdown of Services, Service Line Items table); "Invoice"/"Estimate"
+  header word is ~1.5x bigger on both. Found and fixed the real bug behind "invoice shows one line item with the total of all SKUs" (client's
+  example: INV-20260925-5333): completing a job (JobDetail.tsx and Field.tsx both) auto-creates its invoice but never copied the job's own line
+  items onto it, so the invoice always fell back to one made-up combined line — backend already supported passing `lineItems` on invoice create
+  (used elsewhere), the frontend just never passed them at this one call site. Fixed both call sites; backfilled the two existing invoices this had
+  already happened to (INV-20260925-5333 and INV-20260915-D229) with their real line items via a scoped one-off script, additive only. Authorize.net:
+  confirmed this is already fully live (client-side Accept.js tokenization + server-side charge, used in POS/Invoice Collect Payment) — just needs the
+  client's production merchant credentials to stop being sandbox, same as the already-tracked Open Item. Dialpad: no client account exists yet, so
+  nothing fake was built — added an honest "Not Connected" Dialpad card to Settings › Integrations (same pattern as Twilio/SendGrid) so there's a real
+  place to point to, and confirmed via a quick look at Dialpad's own API docs that click-to-call + call-logging webhooks are realistic once the client
+  provides a Dialpad plan + API key. While verifying the Integrations tab, also found and fixed a smaller honesty gap from the same family as the
+  2026-09-30 QA sweep: the QuickBooks integration card's description column still said "Two-way sync active. Last synced 4 min ago." even while
+  correctly showing "Not Connected" (the status itself was already fixed by the real OAuth flow updating that column — only the description text was
+  stale demo-seed leftover) — now computed client-side from the real connected state instead of trusted from that column, so it can't drift out of
+  sync again. `npm run build` clean in both `/` and `/backend`. **Not yet pushed** — pending the user's go-ahead.

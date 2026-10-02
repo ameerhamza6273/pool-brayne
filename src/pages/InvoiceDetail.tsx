@@ -289,7 +289,7 @@ export default function InvoiceDetail() {
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <div className="rounded-xl bg-gradient-to-r from-[#0E7490] to-[#0891B2] p-3 sm:p-4 text-white [print-color-adjust:exact] [-webkit-print-color-adjust:exact]">
             <div className="flex items-center justify-center gap-3 mb-3">
-              <h2 className="text-lg font-bold text-center">{t("Invoice")}</h2>
+              <h2 className="text-[27px] leading-none font-bold text-center">{t("Invoice")}</h2>
               <Badge className="bg-white/20 text-white border border-white/30 text-[10px] px-2 py-0.5 print:hidden">{t(invoice.status)}</Badge>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 print:grid-cols-4 gap-2 text-[11px] leading-relaxed">
