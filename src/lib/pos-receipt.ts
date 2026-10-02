@@ -35,19 +35,18 @@ export function receiptHtml(r: ReceiptData, b: ReceiptBusiness, labels?: Partial
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(r.number)}</title>
 <style>
   @page { margin: 0; }
-  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; font-size: 12px; color: #0F172A; margin: 0; padding: 16px; }
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; font-size: 12px; font-weight: 700; color: #000; margin: 0; padding: 16px; }
   .wrap { max-width: 300px; margin: 0 auto; }
-  h1 { font-size: 16px; text-align: center; margin: 0 0 2px; }
-  .c { text-align: center; color: #475569; }
-  hr { border: 0; border-top: 1px dashed #94A3B8; margin: 8px 0; }
+  h1 { font-size: 16px; font-weight: 700; text-align: center; margin: 0 0 2px; }
+  .c { text-align: center; }
+  hr { border: 0; border-top: 1px dashed #000; margin: 8px 0; }
   table { width: 100%; border-collapse: collapse; }
   td { padding: 1px 0; vertical-align: top; }
-  .name { font-weight: 600; padding-top: 4px; }
-  .sub td { color: #475569; }
+  .name { font-weight: 700; padding-top: 4px; }
   .r { text-align: right; white-space: nowrap; }
   .tot td { padding: 2px 0; }
-  .grand td { font-size: 14px; font-weight: 700; border-top: 1px solid #0F172A; padding-top: 4px; }
-  .disc { white-space: pre-wrap; font-size: 11px; color: #334155; text-align: center; }
+  .grand td { font-size: 14px; font-weight: 700; border-top: 1px solid #000; padding-top: 4px; }
+  .disc { white-space: pre-wrap; font-size: 11px; text-align: center; }
 </style></head><body><div class="wrap">
   <h1>${esc(b.businessName || L.receipt)}</h1>
   ${b.address ? `<div class="c">${esc(b.address)}</div>` : ""}
