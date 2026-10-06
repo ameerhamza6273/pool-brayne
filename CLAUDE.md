@@ -983,4 +983,5 @@ history was condensed into the structural sections above on 2026-09-10.)*
   customers" bug report, confirmed gone. Not independently re-tested (same reasoning as when each was built, nothing new): actual email/SMS
   sending (still blocked on the SMTP password / no Twilio account), a real card charge (Accept.js needs a live purchase, not safe to fire for
   a test), and the job-status auto-email triggers (would require mutating a real job's `en_route_at`/stage). Everything else: live, working,
-  ready for the client to be told about.
+  ready for the client to be told about. An SMS summarizing this whole batch (all 9 items above) was sent to the client the same day, asking
+  again for the SMTP password so email/pay-link sending can go live.
