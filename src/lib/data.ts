@@ -696,3 +696,14 @@ export const spanishTranslations: Record<string, string> = {
   "Receipts": "Recibos",
   "Extra Job Info": "Información Adicional",
 };
+
+// Client doc 2026-10-05: "Booked" -> "Scheduled", "Dispatched" -> "En Route" is a display-only
+// rename -- jobs.status/.stage keep storing the literal "Booked"/"Dispatched" (written by
+// Jobs.tsx's stageStatusLabels and JobDetail.tsx's realStatuses) so old and newly-moved jobs never
+// diverge into two different stored values for the same stage. Wrap any raw job.status string
+// that reaches the screen as read-only text with this before rendering.
+export const jobStatusDisplayLabel = (status: string): string => {
+  if (status === "Booked") return "Scheduled";
+  if (status === "Dispatched") return "En Route";
+  return status;
+};

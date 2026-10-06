@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 import { nextOccurrenceDate, generateOccurrence, catchUpOccurrences, type RecurringJob } from "./recurringJobs.js";
+import { notifyCustomerOfJobEvent } from "../lib/mailer.js";
 
 export default async function jobsRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -234,6 +235,28 @@ export default async function jobsRoutes(app: FastifyInstance) {
           if (!rj.end_date || next <= rj.end_date) {
             await generateOccurrence(tx, rj.tenant_id, rj, next);
           }
+        }
+      }
+      // Client video 2026-10-06 (ServiceWorks reference screenshots): "Tech Enroute" / "Tech
+      // Arrival" / "Trip Complete" customer email notifications -- all 3 go through this one
+      // generic PATCH regardless of which page (JobDetail or Field) triggered the change, so
+      // this is the single place to hook them. Only fires when the field is actually being SET
+      // (not cleared back to null) and the job has a customer with an email on file.
+      const jobEvent = fields.en_route_at ? "en_route" : fields.arrived_at ? "arrived" : fields.stage === "completed" ? "completed" : null;
+      if (jobEvent && row.customer_id) {
+        const [withCustomer] = await tx`
+          select c.name as customer_name, c.email as customer_email, coalesce(t.invoice_business_name, t.name) as business_name
+          from customers c join tenants t on t.id = c.tenant_id
+          where c.id = ${row.customer_id} limit 1
+        `;
+        if (withCustomer?.customer_email) {
+          void notifyCustomerOfJobEvent({
+            to: withCustomer.customer_email,
+            customerName: withCustomer.customer_name,
+            businessName: withCustomer.business_name,
+            event: jobEvent,
+            jobDescription: row.description,
+          });
         }
       }
       return row;

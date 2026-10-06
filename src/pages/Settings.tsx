@@ -19,6 +19,8 @@ import { contentCategories } from "@/lib/data";
 import { useLanguage } from "@/lib/language-context";
 import { useConfigLists } from "@/hooks/use-config-lists";
 import type { ConfigListKey, ConfigListItem } from "@/lib/api/configLists";
+import { useAuth } from "@/lib/auth-context";
+import { supabase } from "@/lib/supabase";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Integration = Database["public"]["Tables"]["integrations"]["Row"];
@@ -115,6 +117,15 @@ export default function Settings() {
   const [zip, setZip] = useState("");
   const [invoiceBusinessName, setInvoiceBusinessName] = useState("");
   const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
+  // Client text 2026-10-06: "under profile the Save Changes is not functional. The upload logo
+  // is not Functional" -- Save Changes actually did save, it just gave zero feedback either way;
+  // Upload Logo had no handler and tenants had no column for it at all (tracked gap since
+  // 2026-09-30). Both real now.
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [companySaveResult, setCompanySaveResult] = useState<"saved" | "error" | null>(null);
+  const { tenantId } = useAuth();
   // Client SMS 2026-09-30: "settings screen: set sku# or Item # as a default on receipt."
   const [receiptLineId, setReceiptLineId] = useState<"sku" | "item_number">("sku");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
@@ -163,6 +174,7 @@ export default function Settings() {
     setZip(data.zip ?? "");
     setInvoiceBusinessName(data.invoiceBusinessName);
     setPayrollWeekStartDay(data.payrollWeekStartDay);
+    setLogoUrl(data.logoUrl);
     setSelectedPlan(data.planId);
     setReceiptLineId(receiptData.lineId);
     setIsLoading(false);
@@ -211,7 +223,34 @@ export default function Settings() {
   }, [loadSettings]);
 
   const handleSaveCompany = async () => {
-    await settingsApi.saveCompany({ name: tenantName, phone, address, city, state, zip, invoiceBusinessName });
+    setSavingCompany(true);
+    setCompanySaveResult(null);
+    try {
+      await settingsApi.saveCompany({ name: tenantName, phone, address, city, state, zip, invoiceBusinessName });
+      setCompanySaveResult("saved");
+    } catch {
+      setCompanySaveResult("error");
+    }
+    setSavingCompany(false);
+    setTimeout(() => setCompanySaveResult(null), 3000);
+  };
+
+  const handleLogoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !tenantId) return;
+    setLogoUploading(true);
+    try {
+      const path = `logos/${tenantId}/logo-${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+      if (!error) {
+        const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+        await settingsApi.saveLogo(data.publicUrl);
+        setLogoUrl(data.publicUrl);
+      }
+    } finally {
+      setLogoUploading(false);
+    }
   };
 
   const handleSavePayrollWeekStart = async (value: string) => {
@@ -280,12 +319,17 @@ export default function Settings() {
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardContent className="p-5 space-y-6">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-xl bg-[#0891B2] flex items-center justify-center">
-                  <span className="text-xl font-bold text-white">{tenantName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
+                <div className="w-16 h-16 rounded-xl bg-[#0891B2] flex items-center justify-center overflow-hidden shrink-0">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt={t("Company logo")} className="w-full h-full object-contain" />
+                  ) : (
+                    <span className="text-xl font-bold text-white">{tenantName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
+                  )}
                 </div>
                 <div>
-                  <Button variant="outline" className="h-9 border-[#E2E8F0] text-[#0F172A] gap-2">
-                    <Upload className="w-4 h-4" /> {t("Upload Logo")}
+                  <input type="file" accept="image/*" id="logo-upload-input" className="hidden" onChange={handleLogoSelect} />
+                  <Button variant="outline" className="h-9 border-[#E2E8F0] text-[#0F172A] gap-2" disabled={logoUploading} onClick={() => document.getElementById("logo-upload-input")?.click()}>
+                    <Upload className="w-4 h-4" /> {logoUploading ? t("Uploading...") : t("Upload Logo")}
                   </Button>
                   <p className="text-xs text-[#64748B] mt-1">{t("Recommended: 200x200px PNG")}</p>
                 </div>
@@ -367,7 +411,13 @@ export default function Settings() {
                   <p className="text-xs text-[#64748B] mt-1">{t("Which identifier prints under each line on a Point of Sale receipt.")}</p>
                 </div>
               </div>
-              <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany}>{t("Save Changes")}</Button>
+              <div className="flex items-center gap-3">
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany} disabled={savingCompany}>
+                  {savingCompany ? t("Saving...") : t("Save Changes")}
+                </Button>
+                {companySaveResult === "saved" && <span className="text-sm text-[#16A34A] flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {t("Saved")}</span>}
+                {companySaveResult === "error" && <span className="text-sm text-[#DC2626]">{t("Couldn't save — try again")}</span>}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

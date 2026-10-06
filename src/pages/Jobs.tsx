@@ -44,10 +44,12 @@ type Job = Database["public"]["Tables"]["jobs"]["Row"] & {
   profiles: { name: string; avatar: string | null } | null;
 };
 
+// Client doc 2026-10-05: Booked -> Scheduled, Dispatched -> En Route (display only; `id` stays
+// the real stage key, see jobStatusDisplayLabel in lib/data.ts for why the stored value doesn't change).
 const stages = [
   { id: "lead", label: "Lead", color: "bg-[#F59E0B]/10 border-t-[#F59E0B]" },
-  { id: "booked", label: "Booked", color: "bg-[#0891B2]/10 border-t-[#0891B2]" },
-  { id: "dispatched", label: "Dispatched", color: "bg-[#8B5CF6]/10 border-t-[#8B5CF6]" },
+  { id: "booked", label: "Scheduled", color: "bg-[#0891B2]/10 border-t-[#0891B2]" },
+  { id: "dispatched", label: "En Route", color: "bg-[#8B5CF6]/10 border-t-[#8B5CF6]" },
   { id: "in_progress", label: "In Progress", color: "bg-[#3B82F6]/10 border-t-[#3B82F6]" },
   { id: "completed", label: "Completed", color: "bg-[#16A34A]/10 border-t-[#16A34A]" },
 ];
@@ -192,6 +194,18 @@ export default function Jobs() {
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const navigate = useNavigate();
+  // Client video 2026-10-05: "give us the opportunity to click this and deselect a person... so we
+  // don't get cluttered" -- click a technician in the Map's "Daily Route by Technician" legend to
+  // hide/show just their pins+route, without touching the top Technician filter (which would also
+  // hide them from Dispatch/Schedule). "" = the Unassigned group.
+  const [hiddenMapTechIds, setHiddenMapTechIds] = useState<Set<string>>(new Set());
+  const toggleMapTech = (id: string) => {
+    setHiddenMapTechIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const loadJobs = useCallback(async () => {
     const data = await jobsApi.list();
@@ -555,6 +569,7 @@ export default function Jobs() {
     for (const j of mapJobs) groups.set(j.tech_id ?? "", [...(groups.get(j.tech_id ?? "") ?? []), j]);
 
     groups.forEach((group, techId) => {
+      if (hiddenMapTechIds.has(techId)) return;
       const color = techId ? techDotColor(techId) : unassignedColor;
       const line: [number, number][] = [];
       orderStops(group).forEach((job, idx) => {
@@ -592,7 +607,7 @@ export default function Jobs() {
       mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, stopCoords, mapJobsKey, mapIdle, mapDate]);
+  }, [activeTab, stopCoords, mapJobsKey, mapIdle, mapDate, hiddenMapTechIds]);
 
   const routeByTech = technicians
     .map((t) => ({
@@ -961,6 +976,26 @@ export default function Jobs() {
             {technicians.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        {/* Client video 2026-10-05: "always have it present here so we can toggle back and forth"
+            -- Admin View resets Technician + Job Type to All (matching the video: "revert
+            everything back to all technicians and all job types"); Tech View goes back to this
+            login's own jobs, same default this page already starts on. */}
+        {profileId && (
+          <div className="flex h-10 rounded-md border border-[#E2E8F0] bg-white overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => setTechFilter(profileId)}
+              className={`px-3 ${techFilter === profileId ? "bg-[#0891B2] text-white" : "text-[#0F172A] hover:bg-[#F8FAFC]"}`}
+            >
+              {t("Tech View")}
+            </button>
+            <button
+              onClick={() => { setTechFilter("all"); setTypeFilter("all"); }}
+              className={`px-3 border-l border-[#E2E8F0] ${techFilter === "all" && typeFilter === "all" ? "bg-[#0891B2] text-white" : "text-[#0F172A] hover:bg-[#F8FAFC]"}`}
+            >
+              {t("Admin View")}
+            </button>
+          </div>
+        )}
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="h-10 w-full sm:w-56 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Job Type")} /></SelectTrigger>
           <SelectContent className="max-h-72">
@@ -1141,7 +1176,14 @@ export default function Jobs() {
                         <p className="font-medium text-sm text-[#0F172A]">{tech.name}</p>
                         <Badge className={`${statusColors[tech.status] || ""} text-[10px] px-1.5 py-0`}>{tech.status}</Badge>
                       </div>
-                      <p className="text-xs text-[#64748B]">{jobs.filter((j) => j.tech_id === tech.id).length} {t("jobs today")}</p>
+                      {/* Client video 2026-10-05: "we're not able to drag and drop jobs and move
+                          them on different orders" on this tab -- Dispatch Board only ever shows a
+                          job count per tech, never an orderable list (that's Schedule > day view's
+                          Route order dialog, with its own drag + Permanent/Temporary prompt). Links
+                          straight there instead of duplicating that whole feature here. */}
+                      <button className="text-xs text-[#0891B2] hover:underline" onClick={() => setActiveTab("schedule")}>
+                        {jobs.filter((j) => j.tech_id === tech.id).length} {t("jobs today")} — {t("reorder in Schedule")}
+                      </button>
                     </div>
                     <div className="shrink-0 text-xs text-[#64748B]">
                       {tech.status === "On a job" && <div className="flex items-center gap-1"><Clock className="w-3 h-3" /> {t("Active")}</div>}
@@ -1245,7 +1287,11 @@ export default function Jobs() {
                     <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Scheduled")}</span><span>{quickJob.scheduled_date ?? "—"}{quickJob.scheduled_time ? ` · ${quickJob.scheduled_time}` : ""}</span></div>
                     {quickJob.description && <p className="rounded-lg bg-[#F8FAFC] p-2.5 whitespace-pre-wrap">{quickJob.description}</p>}
                     <div>
-                      <p className="text-xs font-medium text-[#64748B] mb-1">{t("Customer Photos")}</p>
+                      {/* Client doc 2026-10-05: "automatically uploads customer photos" on a job that
+                          had none uploaded -- these are the customer's existing saved reference
+                          photos (property-level, same ones on their Customer page), not anything
+                          added to this job. Label made explicit so that reads as "on file", not "uploaded". */}
+                      <p className="text-xs font-medium text-[#64748B] mb-1">{t("Customer's Photos on File (not uploaded to this job)")}</p>
                       {quickJobPhotos === null ? (
                         <p className="text-xs text-[#64748B]">{t("Loading...")}</p>
                       ) : quickJobPhotos.length === 0 ? (
@@ -1456,37 +1502,45 @@ export default function Jobs() {
 
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4 space-y-4 lg:max-h-[calc(100vh-260px)] lg:min-h-[560px] overflow-y-auto">
             <h3 className="font-semibold text-[#0F172A]">{t("Daily Route by Technician")}</h3>
-            {routeByTech.map(({ tech, stops }) => (
-              <div key={tech.id}>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: techDotColor(tech.id) }} />
-                  <p className="font-medium text-sm text-[#0F172A]">{tech.name}</p>
-                  <span className="text-xs text-[#64748B]">({stops.length})</span>
-                </div>
-                <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
-                  {stops.map((s, i) => (
-                    <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2] flex items-start gap-1.5" onClick={() => navigate(`/jobs/${s.id}`)}>
-                      <span className="w-4 h-4 rounded-full text-[9px] font-bold text-white flex items-center justify-center shrink-0 mt-px" style={{ background: techDotColor(tech.id) }}>{i + 1}</span>
-                      <span>{s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}</span>
+            <p className="text-[11px] text-[#94A3B8] -mt-2">{t("Click a technician to hide/show their pins on the map")}</p>
+            {routeByTech.map(({ tech, stops }) => {
+              const hidden = hiddenMapTechIds.has(tech.id);
+              return (
+                <div key={tech.id}>
+                  <button type="button" className="flex items-center gap-2 mb-1.5 w-full text-left" onClick={() => toggleMapTech(tech.id)} title={hidden ? t("Show on map") : t("Hide from map")}>
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: hidden ? "#CBD5E1" : techDotColor(tech.id) }} />
+                    <p className={`font-medium text-sm ${hidden ? "text-[#94A3B8] line-through" : "text-[#0F172A]"}`}>{tech.name}</p>
+                    <span className="text-xs text-[#64748B]">({stops.length})</span>
+                  </button>
+                  {!hidden && (
+                    <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
+                      {stops.map((s, i) => (
+                        <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2] flex items-start gap-1.5" onClick={() => navigate(`/jobs/${s.id}`)}>
+                          <span className="w-4 h-4 rounded-full text-[9px] font-bold text-white flex items-center justify-center shrink-0 mt-px" style={{ background: techDotColor(tech.id) }}>{i + 1}</span>
+                          <span>{s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {unassignedStops.length > 0 && (
               <div>
-                <div className="flex items-center gap-2 mb-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full" style={{ background: unassignedColor }} />
-                  <p className="font-medium text-sm text-[#0F172A]">{t("Unassigned")}</p>
+                <button type="button" className="flex items-center gap-2 mb-1.5 w-full text-left" onClick={() => toggleMapTech("")} title={hiddenMapTechIds.has("") ? t("Show on map") : t("Hide from map")}>
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: hiddenMapTechIds.has("") ? "#CBD5E1" : unassignedColor }} />
+                  <p className={`font-medium text-sm ${hiddenMapTechIds.has("") ? "text-[#94A3B8] line-through" : "text-[#0F172A]"}`}>{t("Unassigned")}</p>
                   <span className="text-xs text-[#64748B]">({unassignedStops.length})</span>
-                </div>
-                <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
-                  {unassignedStops.map((s) => (
-                    <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2]" onClick={() => navigate(`/jobs/${s.id}`)}>
-                      {s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}
-                    </div>
-                  ))}
-                </div>
+                </button>
+                {!hiddenMapTechIds.has("") && (
+                  <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
+                    {unassignedStops.map((s) => (
+                      <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2]" onClick={() => navigate(`/jobs/${s.id}`)}>
+                        {s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {mapJobs.length === 0 && <p className="text-sm text-[#64748B] text-center py-4">{t("No jobs scheduled this day")}</p>}

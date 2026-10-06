@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
 import {
   LayoutDashboard, Users, Wrench, Package, Truck, Clock, Receipt, Megaphone, Settings,
@@ -9,6 +9,7 @@ import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
 import NotificationsPanel from "@/components/NotificationsPanel";
 import LanguageToggle from "@/components/LanguageToggle";
+import { searchApi, type GlobalSearchResult } from "@/lib/api/search";
 
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -117,6 +118,36 @@ export default function AppShell() {
   // just be empty since visibleFlatNavLinks is already field-only).
   const visibleMobileTabs = fieldOnly ? [{ path: "/field", label: "Field", icon: Phone }, { path: "more", label: "More", icon: MoreHorizontal }] : mobileTabs;
   const [searchOpen, setSearchOpen] = useState(false);
+  // Client video 2026-10-06: "the top search field is not working... doesn't matter which
+  // section I'm in" -- was pure decoration (no value/onChange at all). Real now: debounced,
+  // searches customers/jobs/invoices/estimates, click a result to go straight there.
+  const [globalQuery, setGlobalQuery] = useState("");
+  const [globalResults, setGlobalResults] = useState<GlobalSearchResult | null>(null);
+  const [globalDropdownOpen, setGlobalDropdownOpen] = useState(false);
+  const globalSearchRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (globalQuery.trim().length < 2) {
+      setGlobalResults(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      searchApi.search(globalQuery.trim()).then(setGlobalResults).catch(() => setGlobalResults(null));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [globalQuery]);
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (globalSearchRef.current && !globalSearchRef.current.contains(e.target as Node)) setGlobalDropdownOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+  const goToGlobalResult = (path: string) => {
+    setGlobalDropdownOpen(false);
+    setGlobalQuery("");
+    setGlobalResults(null);
+    navigate(path);
+  };
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   // Groups default open ("(collapsible fields)" per the client's spec — collapsible, not
   // collapsed-by-default).
@@ -247,12 +278,72 @@ export default function AppShell() {
       <div className="flex-1 lg:ml-64 print:ml-0 flex flex-col min-h-screen min-w-0">
         {/* Desktop Top Bar */}
         <header className="hidden lg:flex items-center gap-4 px-6 py-3 bg-white border-b border-[#E2E8F0] sticky top-0 z-30 print:hidden">
-          <div className="flex-1 max-w-md relative">
+          <div className="flex-1 max-w-md relative" ref={globalSearchRef}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
             <Input
               placeholder={t("Search customers, jobs, invoices...")}
               className="pl-9 h-9 bg-[#F8FAFC] border-[#E2E8F0] text-sm"
+              value={globalQuery}
+              onChange={(e) => { setGlobalQuery(e.target.value); setGlobalDropdownOpen(true); }}
+              onFocus={() => setGlobalDropdownOpen(true)}
+              onKeyDown={(e) => { if (e.key === "Escape") setGlobalDropdownOpen(false); }}
             />
+            {globalDropdownOpen && globalQuery.trim().length >= 2 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#E2E8F0] rounded-lg shadow-lg max-h-96 overflow-y-auto z-40">
+                {!globalResults ? (
+                  <p className="px-3 py-3 text-sm text-[#64748B]">{t("Searching...")}</p>
+                ) : (globalResults.customers.length + globalResults.jobs.length + globalResults.invoices.length + globalResults.estimates.length) === 0 ? (
+                  <p className="px-3 py-3 text-sm text-[#64748B]">{t("No results")}</p>
+                ) : (
+                  <>
+                    {globalResults.customers.length > 0 && (
+                      <div className="py-1">
+                        <p className="px-3 py-1 text-[10px] font-semibold text-[#94A3B8] uppercase">{t("Customers")}</p>
+                        {globalResults.customers.map((c) => (
+                          <button key={c.id} onClick={() => goToGlobalResult(`/customers/${c.id}`)} className="w-full text-left px-3 py-2 hover:bg-[#F8FAFC]">
+                            <p className="text-sm font-medium text-[#0F172A]">{c.name}</p>
+                            <p className="text-xs text-[#64748B]">{[c.phone, c.address].filter(Boolean).join(" · ")}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {globalResults.jobs.length > 0 && (
+                      <div className="py-1 border-t border-[#F1F5F9]">
+                        <p className="px-3 py-1 text-[10px] font-semibold text-[#94A3B8] uppercase">{t("Jobs")}</p>
+                        {globalResults.jobs.map((j) => (
+                          <button key={j.id} onClick={() => goToGlobalResult(`/jobs/${j.id}`)} className="w-full text-left px-3 py-2 hover:bg-[#F8FAFC]">
+                            <p className="text-sm font-medium text-[#0F172A]">{j.type}{j.customer_name ? ` — ${j.customer_name}` : ""}</p>
+                            <p className="text-xs text-[#64748B]">{j.description ?? j.scheduled_date ?? ""}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {globalResults.estimates.length > 0 && (
+                      <div className="py-1 border-t border-[#F1F5F9]">
+                        <p className="px-3 py-1 text-[10px] font-semibold text-[#94A3B8] uppercase">{t("Estimates")}</p>
+                        {globalResults.estimates.map((e) => (
+                          <button key={e.id} onClick={() => goToGlobalResult(`/invoicing/estimates/${e.id}`)} className="w-full text-left px-3 py-2 hover:bg-[#F8FAFC]">
+                            <p className="text-sm font-medium text-[#0F172A]">{e.number}</p>
+                            <p className="text-xs text-[#64748B]">{[e.customer_name, e.status].filter(Boolean).join(" · ")}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {globalResults.invoices.length > 0 && (
+                      <div className="py-1 border-t border-[#F1F5F9]">
+                        <p className="px-3 py-1 text-[10px] font-semibold text-[#94A3B8] uppercase">{t("Customer Invoices")}</p>
+                        {globalResults.invoices.map((i) => (
+                          <button key={i.id} onClick={() => goToGlobalResult(`/invoicing/${i.id}`)} className="w-full text-left px-3 py-2 hover:bg-[#F8FAFC]">
+                            <p className="text-sm font-medium text-[#0F172A]">{i.number}</p>
+                            <p className="text-xs text-[#64748B]">{[i.customer_name, i.status].filter(Boolean).join(" · ")}</p>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3 ml-auto">
             <LanguageToggle />

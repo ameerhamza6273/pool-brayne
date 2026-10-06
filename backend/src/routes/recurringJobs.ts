@@ -44,12 +44,19 @@ function nextOccurrenceDate(fromDate: string, rj: Pick<RecurringJob, "frequency"
 // Client SMS 2026-09-21: "forms for all jobs" (selected_form_ids is copied onto every occurrence) and
 // "notes for this job only" (next_job_notes goes onto THIS occurrence's description, then is cleared so
 // it doesn't repeat).
+// Client video 2026-10-06: "map view doubled up the customer on recurring jobs" -- two concurrent
+// requests (e.g. two tabs, or two components loading jobs around the same time) could both pass
+// catchUpOccurrences()'s "does this occurrence already exist" check before either committed its
+// insert, creating two real rows for the same series+date (confirmed in production, see migration
+// 20261006130000). `on conflict do nothing` against that migration's unique index makes the loser
+// of the race a harmless no-op instead of a duplicate row.
 async function generateOccurrence(tx: postgres.TransactionSql, tenantId: string, rj: RecurringJob, scheduledDate: string) {
   const oneShot = rj.next_job_notes?.trim();
   const description = oneShot ? [rj.description, `Note (this job only): ${oneShot}`].filter(Boolean).join("\n\n") : rj.description;
   const [job] = await tx`
     insert into jobs (tenant_id, customer_id, tech_id, type, status, stage, scheduled_date, scheduled_time, description, tech_notes, address, amount, recurring_job_id, selected_form_ids)
     values (${tenantId}, ${rj.customer_id}, ${rj.tech_id}, ${rj.job_type}, ${rj.tech_id ? "Booked" : "Lead"}, ${rj.tech_id ? "booked" : "lead"}, ${scheduledDate}, ${rj.start_time}, ${description}, ${rj.tech_notes}, ${rj.address}, ${rj.amount}, ${rj.id}, ${tx.json(rj.selected_form_ids ?? [])})
+    on conflict (recurring_job_id, scheduled_date) where recurring_job_id is not null do nothing
     returning *
   `;
   if (oneShot) await tx`update recurring_jobs set next_job_notes = null where id = ${rj.id}`;
@@ -230,8 +237,14 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
       let jobId: string | null = open[0]?.id ?? null;
       if (open.length === 0) {
         const [last] = (await tx`select max(scheduled_date) as d from jobs where recurring_job_id = ${id}`) as unknown as { d: string | null }[];
-        const created = await generateOccurrence(tx, rj.tenant_id, rj, nextOccurrenceDate(last?.d ?? rj.start_date, rj));
-        jobId = (created as unknown as { id: string }).id;
+        const nextDate = nextOccurrenceDate(last?.d ?? rj.start_date, rj);
+        const created = await generateOccurrence(tx, rj.tenant_id, rj, nextDate);
+        if (created) {
+          jobId = (created as unknown as { id: string }).id;
+        } else {
+          const [existing] = (await tx`select id from jobs where recurring_job_id = ${id} and scheduled_date = ${nextDate} limit 1`) as unknown as { id: string }[];
+          jobId = existing?.id ?? null;
+        }
       }
       await tx`update jobs set recurring_job_id = null where recurring_job_id = ${id}`;
       await tx`delete from recurring_jobs where id = ${id}`;
@@ -261,9 +274,19 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
 async function catchUpOccurrences(tx: postgres.TransactionSql, tenantId: string) {
   const today = new Date().toISOString().slice(0, 10);
   const active = (await tx`select * from recurring_jobs where tenant_id = ${tenantId} and active = true`) as unknown as RecurringJob[];
+  if (active.length === 0) return;
+  // Perf fix 2026-10-05: this used to issue one `max(scheduled_date)` query per active series --
+  // 74 series meant 74+ sequential round-trips to the Supabase pooler on every single GET
+  // /api/jobs or /api/jobs/mine/active call (confirmed live: ~10-15s per request), which read as
+  // "buttons that do nothing" (Mark En Route, etc. all reload the job/list afterward and just sat
+  // on a spinner). One batched query replaces all of those per-series lookups.
+  const lastRows = (await tx`
+    select recurring_job_id, max(scheduled_date) as d from jobs
+    where recurring_job_id = any(${active.map((rj) => rj.id)}) group by recurring_job_id
+  `) as unknown as { recurring_job_id: string; d: string | null }[];
+  const lastBySeries = new Map(lastRows.map((r) => [r.recurring_job_id, r.d]));
   for (const rj of active) {
-    const [{ d: last }] = (await tx`select max(scheduled_date) as d from jobs where recurring_job_id = ${rj.id}`) as unknown as { d: string | null }[];
-    let anchor = last ?? rj.start_date;
+    let anchor = lastBySeries.get(rj.id) ?? rj.start_date;
     for (let i = 0; i < 20; i++) {
       const next = nextOccurrenceDate(anchor, rj);
       if (next > today || (rj.end_date && next > rj.end_date)) break;

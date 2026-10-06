@@ -367,6 +367,7 @@ export default function PointOfSale() {
         price: item.price,
         isService: products.find((p) => p.id === item.id)?.category === "Services",
         serialNumber: item.serial || null,
+        taxable: item.taxable,
       })),
     });
 
@@ -731,6 +732,18 @@ export default function PointOfSale() {
                           onClick={() => setCart((prev) => prev.map((c, i) => (i === index ? { ...c, qty: -c.qty } : c)))}
                         >
                           {item.qty < 0 ? t("Undo return") : t("Return this item")}
+                        </button>
+                        {" · "}
+                        {/* Client video 2026-10-06: "I see you have an icon for tax yes or no for the
+                            whole transaction. I'm going to need it for individual SKUs." -- each line
+                            already carried a `taxable` flag from the catalog (drives the real tax math
+                            below), there was just no way to flip it per sale until now. */}
+                        <button
+                          type="button"
+                          className={item.taxable ? "text-[#0891B2] hover:underline" : "text-[#F59E0B] hover:underline"}
+                          onClick={() => setCart((prev) => prev.map((c, i) => (i === index ? { ...c, taxable: !c.taxable } : c)))}
+                        >
+                          {item.taxable ? t("Taxable") : t("Tax-exempt")}
                         </button>
                       </p>
                       <input

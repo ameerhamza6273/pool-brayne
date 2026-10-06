@@ -59,6 +59,11 @@ export default function EstimateDetail() {
   const [photos, setPhotos] = useState<EstimateAttachment[]>([]);
   const [photosUploading, setPhotosUploading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  // Client video 2026-10-06: real "Send via Email" now exists (backend/src/lib/mailer.ts) --
+  // replaces the old mailto: fallback. Fails with a clear message until the server's SMTP
+  // password is configured.
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendEmailResult, setSendEmailResult] = useState<string | null>(null);
   const { tenantId } = useAuth();
 
   // Client PDF 2026-09-05: "Need to be able to edit an estimate once created and saves".
@@ -134,15 +139,17 @@ export default function EstimateDetail() {
     );
   }
 
-  const items: { description: string; sku?: string | null; item_type?: string; notes?: string | null; quantity: number; rate: number; cost?: number; amount: number }[] =
+  const items: { description: string; sku?: string | null; item_type?: string; notes?: string | null; quantity: number; rate: number; cost?: number; amount: number; taxable?: boolean }[] =
     lineItems.length > 0 ? lineItems : [{ description: `Estimate - ${estimate.customers?.name ?? ""}`, quantity: 1, rate: estimate.amount, amount: estimate.amount }];
   const subtotal = items.reduce((sum, li) => sum + li.amount, 0);
   // Client sample estimate PDF (2026-09-06): "Parts & Materials" and "Labor" shown as separate
   // subtotal lines, not one combined Subtotal.
   const materialsSubtotal = items.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const laborSubtotal = items.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
-  const tax = materialsSubtotal * 0.0825;
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
+  // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
+  const taxableSubtotal = items.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
+  const tax = taxableSubtotal * 0.0825;
   const total = subtotal + tax;
   const downPayment = estimate.down_payment ?? 0;
   const remainingBalance = total - downPayment;
@@ -249,13 +256,22 @@ export default function EstimateDetail() {
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
-  const emailApprovalHref = estimate?.customers
-    ? `mailto:?subject=${encodeURIComponent(`Estimate ${estimate.number} — please review and approve`)}&body=${encodeURIComponent(`Hi ${estimate.customers.name},\n\nPlease review and approve your estimate here:\n${approvalUrl}\n\nThank you!`)}`
-    : "#";
+  const handleSendEmail = async () => {
+    if (!id) return;
+    setSendingEmail(true);
+    setSendEmailResult(null);
+    try {
+      await invoicingApi.sendEstimateEmail(id);
+      setSendEmailResult("sent");
+    } catch (err) {
+      setSendEmailResult(err instanceof Error ? err.message : "Failed to send");
+    }
+    setSendingEmail(false);
+  };
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 print:hidden">
+      <div className="flex items-center flex-wrap gap-3 print:hidden">
         <button onClick={() => navigate("/invoicing")} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -302,11 +318,11 @@ export default function EstimateDetail() {
             <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={handleCopyApprovalLink}>
               <Link2 className="w-4 h-4 text-[#0891B2]" /> {linkCopied ? t("Link Copied!") : t("Copy Approval Link")}
             </Button>
-            <a href={emailApprovalHref}>
-              <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" disabled={!estimate.customers?.name}>
-                <Mail className="w-4 h-4 text-[#0891B2]" /> {t("Email Customer")}
-              </Button>
-            </a>
+            <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={handleSendEmail} disabled={sendingEmail}>
+              <Mail className="w-4 h-4 text-[#0891B2]" /> {sendingEmail ? t("Sending...") : t("Send via Email")}
+            </Button>
+            {sendEmailResult === "sent" && <span className="text-xs text-[#16A34A]">{t("Email sent")}</span>}
+            {sendEmailResult && sendEmailResult !== "sent" && <span className="text-xs text-[#DC2626]">{t(sendEmailResult)}</span>}
           </>
         )}
         {estimate.approved_at && (
@@ -315,9 +331,6 @@ export default function EstimateDetail() {
           </Badge>
         )}
       </div>
-      {/* No email-sending service is wired up (no SendGrid) -- the link above is real and works,
-          but reaching the customer's inbox is a manual copy/mailto step, not automatic. */}
-      <p className="text-xs text-[#94A3B8] print:hidden">{t("Share the approval link above with the customer — there's no automatic email delivery yet.")}</p>
 
       {editing && (
         <Card className="border-[#E2E8F0] shadow-sm">
@@ -393,7 +406,7 @@ export default function EstimateDetail() {
               <div className="rounded-lg border border-white/30 bg-white/10 p-3 space-y-0.5">
                 <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{t("Client Details")}</p>
                 <p>{t("Name")}: {estimate.customers?.name ?? "—"}</p>
-                <p>{t("Phone #")}: {estimate.customers?.phone || "—"}</p>
+                <p>{t("Phone #")}: {estimate.customers?.phone ? <a href={`tel:${estimate.customers.phone}`} className="hover:underline">{estimate.customers.phone}</a> : "—"}</p>
                 <p>{t("Estimate #")}: {estimate.number}</p>
                 <p>{t("Date of Request")}: {fmtDate(estimate.issue_date)}</p>
                 <p>{t("Expires")}: {fmtDate(estimate.expiry_date)}</p>
@@ -470,6 +483,9 @@ export default function EstimateDetail() {
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
                       {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
+                      {(li.taxable ?? li.item_type !== "labor") !== (li.item_type !== "labor") && (
+                        <Badge className="ml-2 bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{(li.taxable ?? li.item_type !== "labor") ? t("Taxable") : t("Tax-exempt")}</Badge>
+                      )}
                       {li.notes && <p className="text-[11px] text-[#94A3B8] whitespace-pre-wrap">{li.notes}</p>}
                     </td>
                     <td className="text-right py-2 text-[#64748B]">{li.quantity}</td>

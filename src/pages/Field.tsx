@@ -77,15 +77,21 @@ export default function Field() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
 
+  // Client video 2026-10-05: "Admin view... just reversed back to the dashboard, doesn't really
+  // do anything" -- it used to navigate away entirely instead of toggling what this same page
+  // shows. Now an in-place toggle: Admin View = jobsApi.list() (every job, same source the desktop
+  // Jobs page uses), Tech View = jobsApi.mine() (just this login's assigned jobs, the original
+  // default) -- "revert back to the person assigned to whatever login we're under", per the video.
+  const [adminView, setAdminView] = useState(false);
   const loadMyJobs = useCallback(async () => {
     if (!profileId) return;
     setIsLoading(true);
-    const data = await jobsApi.mine();
+    const data = adminView ? await jobsApi.list() : await jobsApi.mine();
     const list = (data ?? []) as Job[];
     setMyJobs(list);
     setActiveJobId((prev) => prev ?? (list.length > 0 ? list[0].id : null));
     setIsLoading(false);
-  }, [profileId]);
+  }, [profileId, adminView]);
 
   useEffect(() => {
     loadMyJobs();
@@ -319,7 +325,9 @@ export default function Field() {
         issueDate,
         dueDate: dueDate.toISOString().slice(0, 10),
         amount: currentJob.amount,
-        status: "Sent",
+        // Client doc 2026-10-05: "Sent" claimed the invoice was emailed/texted when nothing actually
+        // was (SendGrid/Twilio aren't connected) -- "Draft" is honest about what happened.
+        status: "Draft",
         lineItems: jobLineItems.length > 0
           ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes }))
           : undefined,
@@ -340,21 +348,27 @@ export default function Field() {
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
-        <h1 className="text-xl font-bold text-[#0F172A]">{t("My Day")}</h1>
+        <h1 className="text-xl font-bold text-[#0F172A]">{adminView ? t("All Jobs") : t("My Day")}</h1>
         <div className="ml-auto flex items-center gap-3">
-          {/* Client request 2026-09-03: "On the phone app be able to toggle between admin and
-              tech view" — jumps straight to the full desktop-style Dashboard/nav. Client feedback
-              2026-09-11: technician/contractor role accounts are field-only now (ProtectedRoute
-              bounces them back), so this toggle only makes sense for admin/manager roles who are
-              previewing the field view themselves. */}
-          {!fieldOnly && (
+          {/* Client video 2026-10-05: "always have it present here so we can toggle back and
+              forth" -- an in-place Admin View / Tech View toggle, not the old button that just
+              navigated away to the desktop Dashboard. Admin View = every job (jobsApi.list(), same
+              source the desktop Jobs page uses); Tech View = back to this login's own jobs. Visible
+              to everyone here (including a field-only tech), not just an admin previewing. */}
+          <div className="flex h-8 rounded-md border border-[#0891B2]/30 overflow-hidden text-xs font-medium">
             <button
-              onClick={() => navigate("/dashboard")}
-              className="text-xs font-medium text-[#0891B2] border border-[#0891B2]/30 rounded-md px-2 py-1 hover:bg-[#0891B2]/10"
+              onClick={() => setAdminView(false)}
+              className={`px-2.5 ${!adminView ? "bg-[#0891B2] text-white" : "text-[#0891B2] hover:bg-[#0891B2]/10"}`}
+            >
+              {t("Tech View")}
+            </button>
+            <button
+              onClick={() => setAdminView(true)}
+              className={`px-2.5 border-l border-[#0891B2]/30 ${adminView ? "bg-[#0891B2] text-white" : "text-[#0891B2] hover:bg-[#0891B2]/10"}`}
             >
               {t("Admin View")}
             </button>
-          )}
+          </div>
           <div className="flex items-center gap-1 text-sm text-[#64748B]">
             <Clock className="w-4 h-4" />
             <span>{myJobs.length} {t("jobs")}</span>

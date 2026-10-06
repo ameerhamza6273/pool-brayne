@@ -30,6 +30,7 @@ import Forms from "@/pages/Forms";
 import FormBuilder from "@/pages/FormBuilder";
 import PublicForm from "@/pages/PublicForm";
 import PublicEstimate from "@/pages/PublicEstimate";
+import PublicInvoice from "@/pages/PublicInvoice";
 import { Toaster } from "@/components/ui/sonner";
 
 // Client feedback 2026-09-11: "Allow us to set up permission: Admin / Tech view / Contractor
@@ -52,6 +53,7 @@ function AppRoutes() {
       <Route path="/signup" element={<Signup />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/estimate/:token" element={<PublicEstimate />} />
+      <Route path="/invoice/:token" element={<PublicInvoice />} />
       <Route path="/form/:token" element={<PublicForm />} />
       <Route
         element={

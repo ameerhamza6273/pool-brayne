@@ -77,6 +77,10 @@ export default function CustomerDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [editDraft, setEditDraft] = useState({ firstName: "", lastName: "", type: "Residential", phone: "", email: "", address: "", pump: "", heater: "", filter: "", salt: "" });
   const [gateDraft, setGateDraft] = useState({ frontGate: "", houseGate: "", padlock: "", subdivisionEntrance: "none", notes: "" });
+  // Client report 2026-10-05: "Save Access Info button does not do anything" -- it actually saved
+  // fine, it just gave zero feedback (no toast, no loading state), so a click looked like a no-op.
+  const [savingGateCodes, setSavingGateCodes] = useState(false);
+  const [gateCodesSavedAt, setGateCodesSavedAt] = useState<number | null>(null);
   const [addContactOpen, setAddContactOpen] = useState(false);
   const [contactDraft, setContactDraft] = useState({ firstName: "", lastName: "", phone: "", email: "" });
 
@@ -86,6 +90,10 @@ export default function CustomerDetail() {
   const [reminders, setReminders] = useState<CustomerReminder[]>([]);
   const [reminderTypeOpen, setReminderTypeOpen] = useState(false);
   const [reminderTypeDraft, setReminderTypeDraft] = useState({ label: "", frequencyMonths: "", nextDue: "" });
+  // Client video 2026-10-06: "need to be a way to see or click on it here to see what this other
+  // reminder is" -- the list only had Mark Done / Delete, no way to view or correct what was
+  // actually saved. Clicking a row now reopens this same dialog pre-filled, editable.
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
 
   // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs".
   const [serviceForms, setServiceForms] = useState<CustomerServiceForm[]>([]);
@@ -199,15 +207,30 @@ export default function CustomerDetail() {
 
   const handleAddReminderType = async () => {
     if (!id || !reminderTypeDraft.label || !reminderTypeDraft.frequencyMonths || !reminderTypeDraft.nextDue) return;
-    await reportsApi.addReminder({
-      customerId: id,
-      label: reminderTypeDraft.label,
-      frequencyMonths: parseInt(reminderTypeDraft.frequencyMonths, 10),
-      nextDue: reminderTypeDraft.nextDue,
-    });
+    if (editingReminderId) {
+      await reportsApi.updateReminder(editingReminderId, {
+        label: reminderTypeDraft.label,
+        frequencyMonths: parseInt(reminderTypeDraft.frequencyMonths, 10),
+        nextDue: reminderTypeDraft.nextDue,
+      });
+    } else {
+      await reportsApi.addReminder({
+        customerId: id,
+        label: reminderTypeDraft.label,
+        frequencyMonths: parseInt(reminderTypeDraft.frequencyMonths, 10),
+        nextDue: reminderTypeDraft.nextDue,
+      });
+    }
     setReminderTypeDraft({ label: "", frequencyMonths: "", nextDue: "" });
+    setEditingReminderId(null);
     setReminderTypeOpen(false);
     load();
+  };
+
+  const handleOpenReminderEdit = (r: CustomerReminder) => {
+    setEditingReminderId(r.id);
+    setReminderTypeDraft({ label: r.label, frequencyMonths: String(r.frequency_months), nextDue: r.next_due });
+    setReminderTypeOpen(true);
   };
 
   const handleMarkReminderDone = async (reminderId: string) => {
@@ -248,9 +271,17 @@ export default function CustomerDetail() {
     load();
   };
 
+  const updateGateDraft = (patch: Partial<typeof gateDraft>) => {
+    setGateDraft((p) => ({ ...p, ...patch }));
+    setGateCodesSavedAt(null);
+  };
+
   const handleSaveGateCodes = async () => {
     if (!id) return;
+    setSavingGateCodes(true);
     await customersApi.update(id, { gateCodes: { ...gateDraft } });
+    setSavingGateCodes(false);
+    setGateCodesSavedAt(Date.now());
   };
 
   const handleAddContact = async () => {
@@ -316,15 +347,22 @@ export default function CustomerDetail() {
             <Pencil className="w-4 h-4" />
             <span className="hidden sm:inline">{t("Edit")}</span>
           </Button>
-          <Button
-            size="sm"
-            className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9"
-            disabled={!customer.phone}
-            onClick={() => customer.phone && (window.location.href = `tel:${customer.phone}`)}
-          >
-            <Phone className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("Call")}</span>
-          </Button>
+          {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension detects
+              real `tel:` links in the page, not JS button handlers -- a plain onClick with
+              `window.location.href` was invisible to it even once their domain is whitelisted. */}
+          {customer.phone ? (
+            <Button asChild size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9">
+              <a href={`tel:${customer.phone}`}>
+                <Phone className="w-4 h-4" />
+                <span className="hidden sm:inline">{t("Call")}</span>
+              </a>
+            </Button>
+          ) : (
+            <Button size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9" disabled>
+              <Phone className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("Call")}</span>
+            </Button>
+          )}
           <Button
             size="sm"
             className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9"
@@ -475,7 +513,7 @@ export default function CustomerDetail() {
               <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
                 <Bell className="w-4 h-4 text-[#0891B2]" /> {t("Other Reminders")}
               </CardTitle>
-              <Button size="icon" variant="outline" className="h-7 w-7 border-[#E2E8F0]" onClick={() => setReminderTypeOpen(true)}>
+              <Button size="icon" variant="outline" className="h-7 w-7 border-[#E2E8F0]" onClick={() => { setEditingReminderId(null); setReminderTypeDraft({ label: "", frequencyMonths: "", nextDue: "" }); setReminderTypeOpen(true); }}>
                 <Plus className="w-3.5 h-3.5" />
               </Button>
             </CardHeader>
@@ -484,7 +522,11 @@ export default function CustomerDetail() {
               {reminders.map((r) => {
                 const overdue = new Date(r.next_due) <= new Date();
                 return (
-                  <div key={r.id} className="flex items-center justify-between rounded-lg border border-[#F1F5F9] px-3 py-2">
+                  <button
+                    key={r.id}
+                    onClick={() => handleOpenReminderEdit(r)}
+                    className="w-full flex items-center justify-between rounded-lg border border-[#F1F5F9] px-3 py-2 text-left hover:bg-[#F8FAFC]"
+                  >
                     <div>
                       <p className="text-sm font-medium text-[#0F172A]">{r.label}</p>
                       <p className={`text-xs ${overdue ? "text-[#DC2626] font-medium" : "text-[#64748B]"}`}>
@@ -492,14 +534,14 @@ export default function CustomerDetail() {
                       </p>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleMarkReminderDone(r.id)}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleMarkReminderDone(r.id); }}>
                         <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteReminder(r.id)}>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleDeleteReminder(r.id); }}>
                         <Trash2 className="w-3.5 h-3.5 text-[#DC2626]" />
                       </Button>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </CardContent>
@@ -528,9 +570,9 @@ export default function CustomerDetail() {
             </CardContent>
           </Card>
 
-          <Dialog open={reminderTypeOpen} onOpenChange={setReminderTypeOpen}>
+          <Dialog open={reminderTypeOpen} onOpenChange={(open) => { setReminderTypeOpen(open); if (!open) setEditingReminderId(null); }}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{t("Add Reminder Type")}</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>{editingReminderId ? t("Edit Reminder") : t("Add Reminder Type")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div><Label>{t("Label")}</Label><ReminderLabelSelect value={reminderTypeDraft.label} onChange={(label) => setReminderTypeDraft((p) => ({ ...p, label }))} /></div>
                 <div className="grid grid-cols-2 gap-4">
@@ -579,19 +621,19 @@ export default function CustomerDetail() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">{t("Front Gate Code")}</p>
-                  <Input placeholder="e.g. #1234" className="h-9 text-sm" value={gateDraft.frontGate} onChange={(e) => setGateDraft((p) => ({ ...p, frontGate: e.target.value }))} />
+                  <Input placeholder="e.g. #1234" className="h-9 text-sm" value={gateDraft.frontGate} onChange={(e) => updateGateDraft({ frontGate: e.target.value })} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">{t("House Gate Code")}</p>
-                  <Input placeholder="e.g. #5678" className="h-9 text-sm" value={gateDraft.houseGate} onChange={(e) => setGateDraft((p) => ({ ...p, houseGate: e.target.value }))} />
+                  <Input placeholder="e.g. #5678" className="h-9 text-sm" value={gateDraft.houseGate} onChange={(e) => updateGateDraft({ houseGate: e.target.value })} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">{t("Padlock Code")}</p>
-                  <Input placeholder="e.g. 0000" className="h-9 text-sm" value={gateDraft.padlock} onChange={(e) => setGateDraft((p) => ({ ...p, padlock: e.target.value }))} />
+                  <Input placeholder="e.g. 0000" className="h-9 text-sm" value={gateDraft.padlock} onChange={(e) => updateGateDraft({ padlock: e.target.value })} />
                 </div>
                 <div>
                   <p className="text-xs text-[#64748B] uppercase mb-1">{t("Gated Subdivision Entrance")}</p>
-                  <Select value={gateDraft.subdivisionEntrance} onValueChange={(v) => setGateDraft((p) => ({ ...p, subdivisionEntrance: v }))}>
+                  <Select value={gateDraft.subdivisionEntrance} onValueChange={(v) => updateGateDraft({ subdivisionEntrance: v })}>
                     <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">{t("No gated subdivision")}</SelectItem>
@@ -606,9 +648,14 @@ export default function CustomerDetail() {
               </div>
               <div>
                 <p className="text-xs text-[#64748B] uppercase mb-1">{t("Access Notes")}</p>
-                <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} value={gateDraft.notes} onChange={(e) => setGateDraft((p) => ({ ...p, notes: e.target.value }))} />
+                <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} value={gateDraft.notes} onChange={(e) => updateGateDraft({ notes: e.target.value })} />
               </div>
-              <Button size="sm" variant="outline" className="w-full h-8 border-[#E2E8F0]" onClick={handleSaveGateCodes}>{t("Save Access Info")}</Button>
+              <Button size="sm" variant="outline" className="w-full h-8 border-[#E2E8F0]" disabled={savingGateCodes} onClick={handleSaveGateCodes}>
+                {savingGateCodes ? t("Saving...") : t("Save Access Info")}
+              </Button>
+              {gateCodesSavedAt && (
+                <p className="text-xs text-[#16A34A] flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {t("Saved")}</p>
+              )}
             </CardContent>
           </Card>
         </div>

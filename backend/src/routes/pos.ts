@@ -145,7 +145,7 @@ export default async function posRoutes(app: FastifyInstance) {
       total: number;
       note?: string | null;
       payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[];
-      items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null }[];
+      items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null; taxable: boolean }[];
     };
   }>("/checkout", async (req, reply) => {
     const { customerId, subtotal, tax, total, note, payments, items } = req.body;
@@ -235,8 +235,8 @@ export default async function posRoutes(app: FastifyInstance) {
 
         for (const item of items) {
           await tx`
-            insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount, serial_number)
-            values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty}, ${item.serialNumber ?? null})
+            insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount, serial_number, taxable)
+            values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty}, ${item.serialNumber ?? null}, ${item.taxable})
           `;
           // Non-stock/custom items (id null) and services never touch inventory. Client request
           // 2026-09-02: stock is allowed to go negative (out-of-stock sales, returns as negative

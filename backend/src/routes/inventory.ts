@@ -4,11 +4,13 @@ import { withQuickbooksConnection, getChartOfAccounts } from "../lib/quickbooks.
 
 type Location = { id: string; type: string };
 type Stock = { item_id: string; location_id: string; quantity: number };
-type Item = { id: string; reorder_threshold: number; name?: string; category?: string };
+type Item = { id: string; reorder_threshold: number; name?: string; category?: string; is_inventory?: boolean };
 
 // Labor/service SKUs (client's 67 "service-N" SKUs, category "Labor"; older demo items use
 // "Services") aren't stocked, so they must never show as Out/Low or land on the reorder list.
-const isNonStockCategory = (category?: string) => category === "Labor" || category === "Services";
+// Client screenshots 2026-10-06: generalized to a real per-item `is_inventory` flag (ServiceWorks'
+// "Inventory Type: Inventory / Non-Inventory") instead of only those two hardcoded category names.
+const isNonStock = (item: Item) => item.is_inventory === false || item.category === "Labor" || item.category === "Services";
 
 export default async function inventoryRoutes(app: FastifyInstance) {
   app.get("/summary", async (req) => {
@@ -38,7 +40,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
         const storeQty = itemStock.filter((s) => storeLocationIds.has(s.location_id)).reduce((sum, s) => sum + s.quantity, 0);
         const vehicleQty = itemStock.filter((s) => !storeLocationIds.has(s.location_id)).reduce((sum, s) => sum + s.quantity, 0);
         const total = storeQty + vehicleQty;
-        const status = isNonStockCategory(item.category) ? "In Stock" : total === 0 ? "Out" : total <= item.reorder_threshold ? "Low" : "In Stock";
+        const status = isNonStock(item) ? "In Stock" : total === 0 ? "Out" : total <= item.reorder_threshold ? "Low" : "In Stock";
         return { ...item, storeQty, vehicleQty, total, status };
       });
 
@@ -49,7 +51,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   app.get("/low-stock", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const [itemsRaw, stockRaw] = await Promise.all([
-        tx`select id, name, reorder_threshold from inventory_items where category not in ('Labor', 'Services')`,
+        tx`select id, name, reorder_threshold from inventory_items where is_inventory = true and category not in ('Labor', 'Services')`,
         tx`select item_id, quantity from inventory_stock`,
       ]);
       const items = itemsRaw as unknown as Item[];
@@ -83,16 +85,17 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       subcategory?: string | null;
       subSubcategory?: string | null;
       subSubSubcategory?: string | null;
+      isInventory?: boolean;
     };
   }>("/items", async (req) => {
-    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold, subcategory, subSubcategory, subSubSubcategory } = req.body;
+    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold, subcategory, subSubcategory, subSubSubcategory, isInventory } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         insert into inventory_items
-          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold, subcategory, sub_subcategory, sub_sub_subcategory)
+          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold, subcategory, sub_subcategory, sub_sub_subcategory, is_inventory)
         values
-          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0}, ${subcategory ?? null}, ${subSubcategory ?? null}, ${subSubSubcategory ?? null})
+          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0}, ${subcategory ?? null}, ${subSubcategory ?? null}, ${subSubSubcategory ?? null}, ${isInventory ?? true})
         returning *
       `;
       return row;
@@ -135,13 +138,14 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       subcategory?: string | null;
       subSubcategory?: string | null;
       subSubSubcategory?: string | null;
+      isInventory?: boolean;
     };
   }>("/items/:id", async (req) => {
     const { id } = req.params;
     const {
       name, sku, category, unitCost, price, shortDescription, longDescription,
       department, subDepartment, manufacturer, barcode, defaultDistributor, unit, taxable, reorderThreshold,
-      storeQuantity, subcategory, subSubcategory, subSubSubcategory,
+      storeQuantity, subcategory, subSubcategory, subSubSubcategory, isInventory,
     } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
@@ -152,7 +156,8 @@ export default async function inventoryRoutes(app: FastifyInstance) {
           department = ${department}, sub_department = ${subDepartment}, manufacturer = ${manufacturer},
           barcode = ${barcode}, default_distributor = ${defaultDistributor}, unit = ${unit}, taxable = ${taxable},
           reorder_threshold = ${reorderThreshold ?? 0}, subcategory = ${subcategory ?? null},
-          sub_subcategory = ${subSubcategory ?? null}, sub_sub_subcategory = ${subSubSubcategory ?? null}
+          sub_subcategory = ${subSubcategory ?? null}, sub_sub_subcategory = ${subSubSubcategory ?? null},
+          is_inventory = ${isInventory ?? true}
         where id = ${id}
         returning *
       `;

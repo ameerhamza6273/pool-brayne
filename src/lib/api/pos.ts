@@ -40,6 +40,6 @@ export const posApi = {
     total: number;
     note?: string | null;
     payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[];
-    items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null }[];
+    items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null; taxable: boolean }[];
   }) => api.post<{ id: string }>("/api/pos/checkout", data),
 };

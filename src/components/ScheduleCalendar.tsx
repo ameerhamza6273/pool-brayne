@@ -60,10 +60,11 @@ type SizeKey = "panel" | "other" | "grid";
 const DEFAULT_SIZES: Record<SizeKey, number> = { panel: 720, other: 150, grid: 560 };
 const ESTIMATE_COLOR = "#6366F1";
 
+// Client doc 2026-10-05: Booked -> Scheduled, Dispatched -> En Route (display only).
 const STAGE_CHIPS = [
   { id: "lead", label: "Lead" },
-  { id: "booked", label: "Booked" },
-  { id: "dispatched", label: "Dispatched" },
+  { id: "booked", label: "Scheduled" },
+  { id: "dispatched", label: "En Route" },
   { id: "in_progress", label: "In Progress" },
   { id: "completed", label: "Completed" },
 ];

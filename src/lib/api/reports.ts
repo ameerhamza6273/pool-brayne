@@ -1,8 +1,17 @@
 import { api } from "@/lib/apiClient";
 
-export type ItemMovementRow = { name: string; sku: string; qty: number; movement_type: string };
+export type ItemMovementRow = {
+  item: string; description: string | null; sku: string; category: string; location: string | null;
+  movement_date: string; ref_id: string | null; ref_type: "pos" | "job" | "writeoff";
+  cost: number; price: number | null; qty: number; total_cost: number; total_price: number | null;
+  movement_type: string;
+};
 export type DepositRow = { number: string; issue_date: string; down_payment: number; customers: { name: string } | null };
-export type InvoiceDueRow = { customer_id: string; customer_name: string; total_due: number; invoice_count: number };
+export type InvoiceDueRow = {
+  customer_id: string; customer_name: string; account_number: string | null;
+  bucket_0_30: number; bucket_31_60: number; bucket_61_90: number; bucket_90_plus: number;
+  total_due: number; invoice_count: number;
+};
 export type CustomerReminder = {
   id: string;
   customer_id: string;
@@ -28,6 +37,9 @@ export const reportsApi = {
     api.post<CustomerReminder>("/api/reports/reminders", data),
 
   markReminderDone: (id: string) => api.patch<CustomerReminder>(`/api/reports/reminders/${id}/mark-done`, {}),
+
+  updateReminder: (id: string, data: { label?: string; frequencyMonths?: number; nextDue?: string }) =>
+    api.patch<CustomerReminder>(`/api/reports/reminders/${id}`, data),
 
   deleteReminder: (id: string) => api.del(`/api/reports/reminders/${id}`),
 

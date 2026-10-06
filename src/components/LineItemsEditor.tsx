@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2, GripVertical, Percent } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,7 @@ import type { ItemWithStock } from "@/lib/api/inventory";
 
 export type DraftLineItem = LineItemInput;
 
-const emptyLine = (): DraftLineItem => ({ description: "", sku: "", itemType: "material", quantity: 1, cost: 0, rate: 0, notes: "" });
+const emptyLine = (): DraftLineItem => ({ description: "", sku: "", itemType: "material", quantity: 1, cost: 0, rate: 0, notes: "", taxable: true });
 
 export function newDraftLineItem() {
   return emptyLine();
@@ -56,7 +56,7 @@ export default function LineItemsEditor({
     // Client sample estimate PDF (2026-09-06): line items show a subtitle under the description
     // with model/part detail (e.g. "260K BTU Natural Gas, Versaflo, Copper Hx... — JNDJXIQ260NK")
     // -- pre-fill it from the inventory item's long description, still freely editable.
-    update(index, { description: picked.name, sku: picked.sku, cost: picked.unit_cost, rate: picked.price ?? picked.unit_cost, notes: picked.long_description ?? "" });
+    update(index, { description: picked.name, sku: picked.sku, cost: picked.unit_cost, rate: picked.price ?? picked.unit_cost, notes: picked.long_description ?? "", taxable: picked.taxable });
   };
 
   const addLine = () => onChange([...items, emptyLine()]);
@@ -86,11 +86,14 @@ export default function LineItemsEditor({
                   <GripVertical className="w-4 h-4" />
                 </span>
               )}
-              <Select value={li.itemType ?? "material"} onValueChange={(v) => update(idx, { itemType: v as "material" | "labor" })}>
-                <SelectTrigger className="h-8 w-28 text-xs"><SelectValue /></SelectTrigger>
+              {/* Client text + xlsx 2026-10-06: 3rd category "Maintenance" for weekly maintenance
+                  priority chemical SKUs, alongside Material/Labor. */}
+              <Select value={li.itemType ?? "material"} onValueChange={(v) => update(idx, { itemType: v as "material" | "labor" | "maintenance", taxable: v !== "labor" })}>
+                <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="material">{t("Material")}</SelectItem>
                   <SelectItem value="labor">{t("Labor")}</SelectItem>
+                  <SelectItem value="maintenance">{t("Maintenance")}</SelectItem>
                 </SelectContent>
               </Select>
               {inventoryItems.length > 0 && (
@@ -107,7 +110,7 @@ export default function LineItemsEditor({
                     // 67 imported labor SKUs are category "Labor" (not "Services"), so they never
                     // showed under Labor -- isLaborCategory covers both.
                     options={inventoryItems
-                      .filter((inv) => (li.itemType === "labor" ? isLaborCategory(inv.category) : !isLaborCategory(inv.category)))
+                      .filter((inv) => li.itemType === "maintenance" ? inv.maintenance_priority : li.itemType === "labor" ? isLaborCategory(inv.category) : !isLaborCategory(inv.category))
                       .filter((inv) => filterOf(idx).category === "All" || inv.category === filterOf(idx).category)
                       .filter((inv) => filterOf(idx).manufacturer === "All" || inv.manufacturer === filterOf(idx).manufacturer)
                       .map((inv) => ({
@@ -121,12 +124,25 @@ export default function LineItemsEditor({
                   />
                 </div>
               )}
+              {/* Client video 2026-10-06: "I'm going to need [a tax yes/no icon] for individual
+                  SKUs" -- was purely item_type-driven (labor untaxed, material taxed) before; a
+                  real per-line override, defaulting to that same rule. */}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className={`h-8 gap-1 text-xs shrink-0 px-2 ${(li.taxable ?? li.itemType !== "labor") ? "border-[#E2E8F0] text-[#0891B2]" : "border-[#F59E0B] text-[#F59E0B]"}`}
+                onClick={() => update(idx, { taxable: !(li.taxable ?? li.itemType !== "labor") })}
+                title={t("Tax this line item?")}
+              >
+                <Percent className="w-3.5 h-3.5" /> {(li.taxable ?? li.itemType !== "labor") ? t("Taxable") : t("Tax-exempt")}
+              </Button>
               <Button type="button" size="icon" variant="ghost" className="h-8 w-8 text-[#DC2626] shrink-0" onClick={() => removeLine(idx)}>
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
             {inventoryItems.length > 0 && (() => {
-              const pool = inventoryItems.filter((inv) => (li.itemType === "labor" ? isLaborCategory(inv.category) : !isLaborCategory(inv.category)));
+              const pool = inventoryItems.filter((inv) => li.itemType === "maintenance" ? inv.maintenance_priority : li.itemType === "labor" ? isLaborCategory(inv.category) : !isLaborCategory(inv.category));
               const cats = Array.from(new Set(pool.map((inv) => inv.category).filter(Boolean))).sort();
               const mans = Array.from(new Set(pool.filter((inv) => filterOf(idx).category === "All" || inv.category === filterOf(idx).category).map((inv) => inv.manufacturer).filter((m): m is string => Boolean(m)))).sort();
               return (

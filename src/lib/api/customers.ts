@@ -60,9 +60,9 @@ export const customersApi = {
       phone: string | null;
       email: string | null;
       address: string | null;
-      equipment: Record<string, string>;
+      equipment: Record<string, unknown>;
       gateCodes: Record<string, string>;
-      knownIssues: string[];
+      knownIssues: (string | { text: string; photoUrl: string | null })[];
     }>,
   ) => api.patch<Customer>(`/api/customers/${customerId}`, data),
 

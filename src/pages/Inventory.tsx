@@ -109,7 +109,7 @@ export default function Inventory() {
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
     barcode: "", defaultDistributor: "", unit: "", taxable: true, reorderThreshold: "", storeQuantity: "",
-    subcategory: "", subSubcategory: "", subSubSubcategory: "",
+    subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true,
   });
   const [categoryTaxonomy, setCategoryTaxonomy] = useState<CategoryTaxonomyRow[]>([]);
   // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
@@ -140,7 +140,7 @@ export default function Inventory() {
   const [newProduct, setNewProduct] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "",
-    subcategory: "", subSubcategory: "", subSubSubcategory: "",
+    subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true,
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
   // QA sweep 2026-09-30: this used to be a client-guessed, user-editable "PO Number" field
@@ -221,8 +221,9 @@ export default function Inventory() {
       subcategory: newProduct.subcategory || null,
       subSubcategory: newProduct.subSubcategory || null,
       subSubSubcategory: newProduct.subSubSubcategory || null,
+      isInventory: newProduct.isInventory,
     });
-    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "" });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true });
     setAddOpen(false);
     loadInventory();
   };
@@ -268,6 +269,7 @@ export default function Inventory() {
       subcategory: item.subcategory ?? "",
       subSubcategory: item.sub_subcategory ?? "",
       subSubSubcategory: item.sub_sub_subcategory ?? "",
+      isInventory: item.is_inventory,
     });
   };
 
@@ -293,6 +295,7 @@ export default function Inventory() {
       subcategory: editProductDraft.subcategory || null,
       subSubcategory: editProductDraft.subSubcategory || null,
       subSubSubcategory: editProductDraft.subSubSubcategory || null,
+      isInventory: editProductDraft.isInventory,
     });
     setEditProductItem(null);
     loadInventory();
@@ -668,6 +671,20 @@ export default function Inventory() {
                   <Input className="mt-1" type="number" placeholder="0" value={newProduct.reorderThreshold} onChange={(e) => setNewProduct((p) => ({ ...p, reorderThreshold: e.target.value }))} />
                   <p className="text-xs text-[#64748B] mt-1">{t('Shows as "Low Stock" once total quantity drops to this number or below.')}</p>
                 </div>
+                {/* Client screenshots 2026-10-06 (ServiceWorks): "Inventory Type" -- Inventory vs
+                    Non-Inventory, independent of category. Labor/Shipping/Misc items are examples
+                    of Non-Inventory (never stocked, never shown as Out/Low, no reorder). */}
+                <div>
+                  <Label>{t("Inventory Type")}</Label>
+                  <Select value={newProduct.isInventory ? "inventory" : "non-inventory"} onValueChange={(v) => setNewProduct((p) => ({ ...p, isInventory: v === "inventory" }))}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inventory">{t("Inventory")}</SelectItem>
+                      <SelectItem value="non-inventory">{t("Non-Inventory")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-[#64748B] mt-1">{t("Non-Inventory items (labor, shipping, misc fees) are never stocked and never show as Out or Low.")}</p>
+                </div>
                 <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>{t("Save Product")}</Button>
               </div>
             </DialogContent>
@@ -802,7 +819,7 @@ export default function Inventory() {
                       <td className="text-right py-3 px-4 text-[#0F172A]">${p.unit_cost.toFixed(2)}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{p.price !== null ? `$${p.price.toFixed(2)}` : "—"}</td>
                       <td className="text-center py-3 px-4">
-                        {isLaborCategory(p.category) ? (
+                        {p.is_inventory === false || isLaborCategory(p.category) ? (
                           <Badge className="bg-[#7C3AED]/10 text-[#7C3AED] text-[10px] px-1.5 py-0">{t("Non-inventory")}</Badge>
                         ) : (
                           <Badge className={`${statusColors[p.status]} text-[10px] px-1.5 py-0`}>{t(p.status)}</Badge>
@@ -897,7 +914,9 @@ export default function Inventory() {
                       <td className="py-3 px-4 font-medium text-[#0F172A] cursor-pointer" onClick={() => openEditSupplier(s)}>{s.name}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{(s as Supplier & { address: string | null }).address}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{s.contact}</td>
-                      <td className="py-3 px-4 text-[#64748B] text-sm">{s.phone}</td>
+                      <td className="py-3 px-4 text-[#64748B] text-sm">
+                        {s.phone ? <a href={`tel:${s.phone}`} className="text-[#0891B2] hover:underline" onClick={(e) => e.stopPropagation()}>{s.phone}</a> : "—"}
+                      </td>
                       <td className="text-right py-3 px-4"><Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{s.lead_time}</Badge></td>
                       <td className="text-right py-3 px-4">
                         <button className="text-xs text-[#0891B2] font-medium hover:underline mr-3" onClick={() => openSupplierLocations(s)}>{t("Locations")}</button>
@@ -1471,6 +1490,16 @@ export default function Inventory() {
               <div><Label>{t("Category")}</Label><Input className="mt-1" list="inventory-categories" value={editProductDraft.category} onChange={(e) => setEditProductDraft((p) => ({ ...p, category: e.target.value }))} /></div>
             )}
             <div><Label>{t("Unit")}</Label><Input className="mt-1" placeholder="ea" value={editProductDraft.unit} onChange={(e) => setEditProductDraft((p) => ({ ...p, unit: e.target.value }))} /></div>
+            <div>
+              <Label>{t("Inventory Type")}</Label>
+              <Select value={editProductDraft.isInventory ? "inventory" : "non-inventory"} onValueChange={(v) => setEditProductDraft((p) => ({ ...p, isInventory: v === "inventory" }))}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="inventory">{t("Inventory")}</SelectItem>
+                  <SelectItem value="non-inventory">{t("Non-Inventory")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>{t("Cost (internal)")}</Label><Input className="mt-1" type="number" value={editProductDraft.unitCost} onChange={(e) => setEditProductDraft((p) => ({ ...p, unitCost: e.target.value }))} /></div>
               <div><Label>{t("Price (customer-facing)")}</Label><Input className="mt-1" type="number" value={editProductDraft.price} onChange={(e) => setEditProductDraft((p) => ({ ...p, price: e.target.value }))} /></div>

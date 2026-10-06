@@ -93,9 +93,11 @@ export default async function customersRoutes(app: FastifyInstance) {
       phone?: string | null;
       email?: string | null;
       address?: string | null;
-      equipment?: Record<string, string>;
+      equipment?: Record<string, unknown>;
       gateCodes?: Record<string, string>;
-      knownIssues?: string[];
+      // Migration 2026-10-06: known_issues is now jsonb (was text[]) so each entry can carry an
+      // optional photo alongside its text -- a plain string entry still means "no photo".
+      knownIssues?: (string | { text: string; photoUrl: string | null })[];
     };
   }>("/:id", async (req) => {
     const { id } = req.params;
@@ -113,9 +115,9 @@ export default async function customersRoutes(app: FastifyInstance) {
       if (phone !== undefined) fields.phone = phone;
       if (email !== undefined) fields.email = email;
       if (address !== undefined) fields.address = address;
-      if (equipment !== undefined) fields.equipment = tx.json(equipment);
+      if (equipment !== undefined) fields.equipment = tx.json(equipment as Parameters<typeof tx.json>[0]);
       if (gateCodes !== undefined) fields.gate_codes = tx.json(gateCodes);
-      if (knownIssues !== undefined) fields.known_issues = knownIssues;
+      if (knownIssues !== undefined) fields.known_issues = tx.json(knownIssues as Parameters<typeof tx.json>[0]);
       const [row] = await tx`update customers set ${tx(fields)} where id = ${id} returning *`;
       return row;
     });

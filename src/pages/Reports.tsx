@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { useSearchParams } from "react-router-dom";
-import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt, Search, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,8 @@ import { reportsApi, type ItemMovementRow, type DepositRow, type InvoiceDueRow, 
 import { posApi, type SalesReport } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
 import { useLanguage } from "@/lib/language-context";
+import { matchesQuery } from "@/lib/search";
+import { toCsv, downloadCsv } from "@/lib/csv";
 
 // Client request 2026-09-02 ("Need a reports section"): item movement, customer deposits,
 // invoices total-due per customer, recurring reminder-job types, inventory valuation, plus the
@@ -61,7 +63,11 @@ function SortTh({ label, sortKey, active, dir, onClick, align = "left" }: {
 
 export default function Reports() {
   const { t } = useLanguage();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // Client doc 2026-10-05: "Need a SEARCH bar function -- search for item number, sku number,
+  // description, etc..." on Item Movement.
+  const [movementQuery, setMovementQuery] = useState("");
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
     return tab && reportTabs.includes(tab) ? tab : "sales-tax";
@@ -99,6 +105,8 @@ export default function Reports() {
 
   const [reminderOpen, setReminderOpen] = useState(false);
   const [newReminder, setNewReminder] = useState({ customerId: "", label: "", frequencyMonths: "", nextDue: "" });
+  // Client video call 2026-10-05: scroll "other reminders" by date range instead of opening every customer.
+  const [remindersRange, setRemindersRange] = useState<"30" | "60" | "90" | "all">("all");
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -152,10 +160,26 @@ export default function Reports() {
   const today = localKey(new Date());
   const totalValuation = valuation.reduce((s, v) => s + Number(v.value), 0);
 
-  const movementSort = useSort(movement, (m, key) => (m as unknown as Record<string, string | number | null>)[key]);
+  const movementFiltered = movement.filter((m) => matchesQuery(movementQuery, [m.item, m.sku, m.description, m.category]));
+  const movementSort = useSort(movementFiltered, (m, key) => (m as unknown as Record<string, string | number | null>)[key]);
+  const movementRefLabel = (m: ItemMovementRow) => (m.ref_type === "job" ? `JOB-${(m.ref_id ?? "").slice(0, 8).toUpperCase()}` : m.ref_type === "pos" ? `POS-${(m.ref_id ?? "").slice(0, 8).toUpperCase()}` : "—");
+  const openMovementRef = (m: ItemMovementRow) => {
+    if (m.ref_type === "job" && m.ref_id) navigate(`/jobs/${m.ref_id}`);
+  };
+  const exportMovementCsv = () => {
+    const rows = movementSort.sorted.map((m) => ({
+      Item: m.item, Description: m.description ?? "", Location: m.location ?? "", "Invoice Date": m.movement_date,
+      "Invoice #": movementRefLabel(m), Category: m.category, Cost: m.cost, Price: m.price ?? "", Quantity: m.qty,
+      "Total Cost": m.total_cost, "Total Price": m.total_price ?? "",
+    }));
+    downloadCsv(`item-movement-${start}-to-${end}.csv`, toCsv(rows, ["Item", "Description", "Location", "Invoice Date", "Invoice #", "Category", "Cost", "Price", "Quantity", "Total Cost", "Total Price"]));
+  };
   const depositsSort = useSort(deposits, (d, key) => key === "customer" ? d.customers?.name ?? null : (d as unknown as Record<string, string | number | null>)[key]);
   const invoicesDueSort = useSort(invoicesDue, (r, key) => (r as unknown as Record<string, string | number | null>)[key]);
-  const remindersSort = useSort(reminders, (r, key) => key === "customer" ? r.customers?.name ?? null : (r as unknown as Record<string, string | number | null>)[key]);
+  const remindersFiltered = remindersRange === "all"
+    ? reminders
+    : reminders.filter((r) => r.next_due <= localKey(new Date(Date.now() + Number(remindersRange) * 86400000)));
+  const remindersSort = useSort(remindersFiltered, (r, key) => key === "customer" ? r.customers?.name ?? null : (r as unknown as Record<string, string | number | null>)[key]);
   const valuationSort = useSort(valuation, (v, key) => (v as unknown as Record<string, string | number | null>)[key]);
 
   // Client request 2026-09-04: this report rendered all 2,600+ inventory items unpaginated.
@@ -203,7 +227,7 @@ export default function Reports() {
           <TabsTrigger value="sales-tax" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Receipt className="w-4 h-4" /> {t("Sales Tax")}</TabsTrigger>
           <TabsTrigger value="movement" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Package className="w-4 h-4" /> {t("Item Movement")}</TabsTrigger>
           <TabsTrigger value="deposits" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><DollarSign className="w-4 h-4" /> {t("Deposits")}</TabsTrigger>
-          <TabsTrigger value="due" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><FileText className="w-4 h-4" /> {t("Invoices Due")}</TabsTrigger>
+          <TabsTrigger value="due" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><FileText className="w-4 h-4" /> {t("Accounts Outstanding")}</TabsTrigger>
           <TabsTrigger value="reminders" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Bell className="w-4 h-4" /> {t("Reminders")}</TabsTrigger>
           <TabsTrigger value="valuation" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Warehouse className="w-4 h-4" /> {t("Inventory Valuation")}</TabsTrigger>
         </TabsList>
@@ -218,28 +242,57 @@ export default function Reports() {
           </div>
         </TabsContent>
 
-        <TabsContent value="movement" className="mt-4">
+        <TabsContent value="movement" className="mt-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+              <Input value={movementQuery} onChange={(e) => setMovementQuery(e.target.value)} placeholder={t("Search item #, SKU, description...")} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+            </div>
+            <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={exportMovementCsv}>
+              <Download className="w-4 h-4" /> {t("Export")}
+            </Button>
+          </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <SortTh label={t("Product")} sortKey="name" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
-                    <SortTh label="SKU" sortKey="sku" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
-                    <SortTh label={t("Movement Type")} sortKey="movement_type" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Item")} sortKey="item" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Description")} sortKey="description" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Location")} sortKey="location" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Invoice Date")} sortKey="movement_date" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Invoice #")} sortKey="ref_id" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Category")} sortKey="category" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} />
+                    <SortTh label={t("Cost")} sortKey="cost" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} align="right" />
+                    <SortTh label={t("Price")} sortKey="price" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} align="right" />
                     <SortTh label={t("Qty")} sortKey="qty" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} align="right" />
+                    <SortTh label={t("Total Cost")} sortKey="total_cost" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} align="right" />
+                    <SortTh label={t("Total Price")} sortKey="total_price" active={movementSort.sortKey} dir={movementSort.sortDir} onClick={movementSort.toggleSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>
                   {movementSort.sorted.map((m, i) => (
                     <tr key={i} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{m.name}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{m.sku}</td>
-                      <td className="py-3 px-4 text-[#64748B]">{m.movement_type}</td>
+                      <td className="py-3 px-4 font-medium text-[#0F172A]">{m.item}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{m.description}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{m.location ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{m.movement_date}</td>
+                      <td className="py-3 px-4">
+                        {m.ref_type === "job" ? (
+                          <button className="text-[#0891B2] hover:underline" onClick={() => openMovementRef(m)}>{movementRefLabel(m)}</button>
+                        ) : (
+                          <span className="text-[#64748B]">{movementRefLabel(m)}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-[#64748B]">{t(m.category)}</td>
+                      <td className="text-right py-3 px-4 text-[#64748B]">${Number(m.cost).toFixed(2)}</td>
+                      <td className="text-right py-3 px-4 text-[#64748B]">{m.price != null ? `$${Number(m.price).toFixed(2)}` : "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{m.qty}</td>
+                      <td className="text-right py-3 px-4 text-[#64748B]">${Number(m.total_cost).toFixed(2)}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A] font-medium">{m.total_price != null ? `$${Number(m.total_price).toFixed(2)}` : "—"}</td>
                     </tr>
                   ))}
-                  {movement.length === 0 && <tr><td colSpan={4} className="py-8 text-center text-[#64748B]">{t("No movement in this date range")}</td></tr>}
+                  {movementFiltered.length === 0 && <tr><td colSpan={11} className="py-8 text-center text-[#64748B]">{t("No movement in this date range")}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -280,20 +333,30 @@ export default function Reports() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <SortTh label={t("Customer")} sortKey="customer_name" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} />
-                    <SortTh label={t("Open Invoices")} sortKey="invoice_count" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
-                    <SortTh label={t("Total Due")} sortKey="total_due" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
+                    <SortTh label={t("Customer Name")} sortKey="customer_name" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} />
+                    <SortTh label={t("Account #")} sortKey="account_number" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} />
+                    <SortTh label={t("0-30 Days")} sortKey="bucket_0_30" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
+                    <SortTh label={t("31-60 Days")} sortKey="bucket_31_60" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
+                    <SortTh label={t("61-90 Days")} sortKey="bucket_61_90" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
+                    <SortTh label={t("90+ Days")} sortKey="bucket_90_plus" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
+                    <SortTh label={t("Total")} sortKey="total_due" active={invoicesDueSort.sortKey} dir={invoicesDueSort.sortDir} onClick={invoicesDueSort.toggleSort} align="right" />
                   </tr>
                 </thead>
                 <tbody>
                   {invoicesDueSort.sorted.map((r) => (
                     <tr key={r.customer_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
-                      <td className="py-3 px-4 font-medium text-[#0F172A]">{r.customer_name}</td>
-                      <td className="text-right py-3 px-4 text-[#0F172A]">{r.invoice_count}</td>
+                      <td className="py-3 px-4 font-medium">
+                        <button className="text-[#0891B2] hover:underline" onClick={() => navigate(`/customers/${r.customer_id}`)}>{r.customer_name}</button>
+                      </td>
+                      <td className="py-3 px-4 text-[#64748B]">{r.account_number ?? "—"}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">${Number(r.bucket_0_30).toFixed(2)}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">${Number(r.bucket_31_60).toFixed(2)}</td>
+                      <td className="text-right py-3 px-4 text-[#0F172A]">${Number(r.bucket_61_90).toFixed(2)}</td>
+                      <td className={`text-right py-3 px-4 ${Number(r.bucket_90_plus) > 0 ? "text-[#DC2626] font-medium" : "text-[#0F172A]"}`}>${Number(r.bucket_90_plus).toFixed(2)}</td>
                       <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${Number(r.total_due).toFixed(2)}</td>
                     </tr>
                   ))}
-                  {invoicesDue.length === 0 && <tr><td colSpan={3} className="py-8 text-center text-[#64748B]">{t("No customers with open invoices")}</td></tr>}
+                  {invoicesDue.length === 0 && <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{t("No customers with open invoices")}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -301,7 +364,17 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="reminders" className="mt-4 space-y-3">
-          <div className="flex justify-end">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex h-10 rounded-md border border-[#E2E8F0] bg-white overflow-hidden text-xs font-medium">
+              {(["30", "60", "90", "all"] as const).map((r) => {
+                const active = remindersRange === r;
+                return (
+                  <button key={r} onClick={() => setRemindersRange(r)} className={`px-3 border-l first:border-l-0 border-[#E2E8F0] ${active ? "bg-[#0891B2] text-white" : "text-[#0F172A] hover:bg-[#F8FAFC]"}`}>
+                    {r === "all" ? t("All") : `${r} ${t("days")}`}
+                  </button>
+                );
+              })}
+            </div>
             <Dialog open={reminderOpen} onOpenChange={setReminderOpen}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("Add Reminder Type")}</Button>
@@ -361,7 +434,9 @@ export default function Reports() {
                       </tr>
                     );
                   })}
-                  {reminders.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{t("No reminder types set up yet")}</td></tr>}
+                  {remindersFiltered.length === 0 && (
+                    <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{reminders.length === 0 ? t("No reminder types set up yet") : t("No reminders due in this range")}</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>

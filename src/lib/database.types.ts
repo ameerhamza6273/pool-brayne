@@ -213,7 +213,7 @@ export type Database = {
           gate_codes: Json
           household_id: string | null
           id: string
-          known_issues: string[]
+          known_issues: Json
           last_contact: string | null
           last_name: string | null
           last_service: string | null
@@ -239,7 +239,7 @@ export type Database = {
           gate_codes?: Json
           household_id?: string | null
           id?: string
-          known_issues?: string[]
+          known_issues?: Json
           last_contact?: string | null
           last_name?: string | null
           last_service?: string | null
@@ -265,7 +265,7 @@ export type Database = {
           gate_codes?: Json
           household_id?: string | null
           id?: string
-          known_issues?: string[]
+          known_issues?: Json
           last_contact?: string | null
           last_name?: string | null
           last_service?: string | null
@@ -379,8 +379,10 @@ export type Database = {
           default_distributor: string | null
           department: string | null
           id: string
+          is_inventory: boolean
           item_number: number | null
           long_description: string | null
+          maintenance_priority: boolean
           manufacturer: string | null
           name: string
           pos_enabled: boolean
@@ -405,6 +407,7 @@ export type Database = {
           default_distributor?: string | null
           department?: string | null
           id?: string
+          is_inventory?: boolean
           item_number?: number | null
           long_description?: string | null
           manufacturer?: string | null
@@ -431,6 +434,7 @@ export type Database = {
           default_distributor?: string | null
           department?: string | null
           id?: string
+          is_inventory?: boolean
           item_number?: number | null
           long_description?: string | null
           manufacturer?: string | null
@@ -591,11 +595,13 @@ export type Database = {
           id: string
           invoice_id: string
           item_type: string
+          job_id: string | null
           notes: string | null
           quantity: number
           rate: number
           sku: string | null
           sort_order: number
+          taxable: boolean
           tenant_id: string
         }
         Insert: {
@@ -605,11 +611,13 @@ export type Database = {
           id?: string
           invoice_id: string
           item_type?: string
+          job_id?: string | null
           notes?: string | null
           quantity?: number
           rate?: number
           sku?: string | null
           sort_order?: number
+          taxable?: boolean
           tenant_id: string
         }
         Update: {
@@ -619,11 +627,13 @@ export type Database = {
           id?: string
           invoice_id?: string
           item_type?: string
+          job_id?: string | null
           notes?: string | null
           quantity?: number
           rate?: number
           sku?: string | null
           sort_order?: number
+          taxable?: boolean
           tenant_id?: string
         }
         Relationships: [
@@ -657,6 +667,7 @@ export type Database = {
           number: string
           paid_date: string | null
           payment_method: string | null
+          payment_token: string
           qbo_invoice_id: string | null
           status: string
           tenant_id: string
@@ -676,6 +687,7 @@ export type Database = {
           number: string
           paid_date?: string | null
           payment_method?: string | null
+          payment_token?: string
           qbo_invoice_id?: string | null
           status?: string
           tenant_id: string
@@ -695,6 +707,7 @@ export type Database = {
           number?: string
           paid_date?: string | null
           payment_method?: string | null
+          payment_token?: string
           qbo_invoice_id?: string | null
           status?: string
           tenant_id?: string
@@ -795,6 +808,7 @@ export type Database = {
           rate: number
           sku: string | null
           sort_order: number
+          taxable: boolean
           tenant_id: string
         }
         Insert: {
@@ -809,6 +823,7 @@ export type Database = {
           rate?: number
           sku?: string | null
           sort_order?: number
+          taxable?: boolean
           tenant_id: string
         }
         Update: {
@@ -823,6 +838,7 @@ export type Database = {
           rate?: number
           sku?: string | null
           sort_order?: number
+          taxable?: boolean
           tenant_id?: string
         }
         Relationships: []
@@ -1272,6 +1288,7 @@ export type Database = {
           item_id: string | null
           order_id: string
           quantity: number
+          taxable: boolean
           tenant_id: string
           unit_price: number
         }
@@ -1282,6 +1299,7 @@ export type Database = {
           item_id?: string | null
           order_id: string
           quantity?: number
+          taxable?: boolean
           tenant_id: string
           unit_price?: number
         }
@@ -1292,6 +1310,7 @@ export type Database = {
           item_id?: string | null
           order_id?: string
           quantity?: number
+          taxable?: boolean
           tenant_id?: string
           unit_price?: number
         }

@@ -4,7 +4,7 @@ import {
   ArrowLeft, MapPin, Clock, User, Wrench, FileText, Camera,
   Plus, CheckCircle2, Circle, Send, Signature, Truck, DollarSign,
   Phone, MessageSquare, Mail, UserX, AlertCircle, Lock, ExternalLink,
-  Barcode, Receipt, Info, Languages, RotateCw, Copy, Ban, X, Trash2,
+  Barcode, Receipt, Info, Languages, RotateCw, Copy, Ban, X, Trash2, MoreHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -31,6 +32,7 @@ import { recurringJobsApi } from "@/lib/api/recurringJobs";
 import { jobsApi, type JobPartUsed, type JobLineItem, type JobAttachment, type JobCrewMember, type JobForm } from "@/lib/api/jobs";
 import { invoicingApi } from "@/lib/api/invoicing";
 import { customersApi } from "@/lib/api/customers";
+import { jobStatusDisplayLabel } from "@/lib/data";
 import { profilesApi } from "@/lib/api/profiles";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
@@ -46,10 +48,21 @@ type JobRow = Database["public"]["Tables"]["jobs"]["Row"] & {
   profiles: { name: string; avatar: string | null } | null;
 };
 
+type CustomerNoteRow = Database["public"]["Tables"]["customer_notes"]["Row"];
+type EquipmentItem = { equip: string; model: string; serial: string };
+type KnownIssueItem = string | { text: string; photoUrl: string | null };
+const issueText = (item: KnownIssueItem): string => (typeof item === "string" ? item : item.text);
+const issuePhoto = (item: KnownIssueItem): string | null => (typeof item === "string" ? null : item.photoUrl);
+
+// Client doc 2026-10-05: "change verbiage in drop-down menu: Booked -> Scheduled, Dispatched ->
+// En Route". Display-only -- `status`/`stage` (what actually gets written to jobs.status/.stage)
+// stay "Booked"/"Dispatched" so old and newly-moved jobs keep one consistent stored value; only
+// `label` (what the dropdown shows) changes. See jobStatusDisplayLabel in lib/data.ts for the
+// same rename applied anywhere else a raw job.status reaches the screen as text.
 const realStatuses = [
   { status: "Lead", stage: "lead", label: "Lead", color: "#6366F1" },
-  { status: "Booked", stage: "booked", label: "Booked", color: "#0891B2" },
-  { status: "Dispatched", stage: "dispatched", label: "Dispatched", color: "#F59E0B" },
+  { status: "Booked", stage: "booked", label: "Scheduled", color: "#0891B2" },
+  { status: "Dispatched", stage: "dispatched", label: "En Route", color: "#F59E0B" },
   { status: "In Progress", stage: "in_progress", label: "In Progress", color: "#3B82F6" },
   { status: "Completed", stage: "completed", label: "Completed", color: "#16A34A" },
 ] as const;
@@ -93,9 +106,9 @@ function TranslationPanel({
 }
 
 const timelineSteps = [
-  { id: "booked", label: "Booked", icon: Circle },
-  { id: "en_route", label: "En route", icon: Truck },
-  { id: "arrived", label: "Arrived", icon: MapPin },
+  { id: "booked", label: "Scheduled", icon: Circle },
+  { id: "en_route", label: "En Route", icon: Truck },
+  { id: "arrived", label: "In Progress", icon: MapPin },
   { id: "completed", label: "Completed", icon: CheckCircle2 },
 ];
 
@@ -116,8 +129,13 @@ export default function JobDetail() {
   const navigate = useNavigate();
   const { lists: configLists } = useConfigLists();
   const [job, setJob] = useState<JobRow | null>(null);
-  const [knownIssues, setKnownIssues] = useState<string[]>([]);
+  const [knownIssues, setKnownIssues] = useState<KnownIssueItem[]>([]);
   const [newKnownIssue, setNewKnownIssue] = useState("");
+  // Client doc 2026-10-05: "Model & Serial" tab -- real per-customer equipment list (name/model/
+  // serial), replacing 3 hardcoded demo rows. Stored as `items` inside customers.equipment jsonb.
+  const [customerEquipment, setCustomerEquipment] = useState<Record<string, unknown>>({});
+  const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([]);
+  const [newEquipment, setNewEquipment] = useState({ equip: "", model: "", serial: "" });
   const [descEditing, setDescEditing] = useState(false);
   const [descDraft, setDescDraft] = useState("");
   // Client SMS 2026-09-21: "a way to convert a job to a recurring job or vice versa".
@@ -149,6 +167,13 @@ export default function JobDetail() {
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  // Client doc 2026-10-05 ("Job Notes - not saving, not able to view, not able to edit"): the
+  // note always went to the customer record (by design, same as Field.tsx), but this card never
+  // showed what had already been saved -- typing a note, clicking Save, and watching the box go
+  // blank with no confirmation and nothing displayed looks exactly like "did nothing" even though
+  // it worked. Shows the customer's recent notes here too, and confirms the save explicitly.
+  const [recentCustomerNotes, setRecentCustomerNotes] = useState<CustomerNoteRow[]>([]);
+  const [noteSavedAt, setNoteSavedAt] = useState<number | null>(null);
   const [partsUsed, setPartsUsed] = useState<JobPartUsed[]>([]);
   const { lang, setLang, t } = useLanguage();
   const { states: trStates, translateDebounced } = useTranslator();
@@ -215,11 +240,42 @@ export default function JobDetail() {
     await customersApi.update(job.customer_id, { knownIssues: next });
   };
 
-  const removeKnownIssue = async (issue: string) => {
+  const removeKnownIssue = async (index: number) => {
     if (!job?.customer_id) return;
-    const next = knownIssues.filter((i) => i !== issue);
+    const next = knownIssues.filter((_, i) => i !== index);
     setKnownIssues(next);
     await customersApi.update(job.customer_id, { knownIssues: next });
+  };
+
+  // Client doc 2026-10-05: "Known Issue -- would like a place to upload photos". Converts that
+  // one entry from a plain string into { text, photoUrl } (migration 20261006090000 made the
+  // column jsonb for exactly this); every other entry keeps whatever shape it already had.
+  const uploadKnownIssuePhoto = async (index: number, file: File) => {
+    if (!job?.customer_id || !tenantId) return;
+    const path = `${tenantId}/customers/${job.customer_id}/known-issue-${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+    if (error) throw error;
+    const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+    const next = knownIssues.map((item, i) => (i === index ? { text: issueText(item), photoUrl: data.publicUrl } : item));
+    setKnownIssues(next);
+    await customersApi.update(job.customer_id, { knownIssues: next });
+  };
+
+  const addEquipmentItem = async () => {
+    if (!job?.customer_id || !newEquipment.equip.trim()) return;
+    const next = [...equipmentItems, { ...newEquipment, equip: newEquipment.equip.trim() }];
+    setEquipmentItems(next);
+    setNewEquipment({ equip: "", model: "", serial: "" });
+    // equipment is a full-replace jsonb column (see backend customers.ts) -- merge in `items`
+    // alongside whatever pump/heater/filter/salt values CustomerDetail's Edit dialog already set.
+    await customersApi.update(job.customer_id, { equipment: { ...customerEquipment, items: next } });
+  };
+
+  const removeEquipmentItem = async (index: number) => {
+    if (!job?.customer_id) return;
+    const next = equipmentItems.filter((_, i) => i !== index);
+    setEquipmentItems(next);
+    await customersApi.update(job.customer_id, { equipment: { ...customerEquipment, items: next } });
   };
 
   const handleAttachLibraryDocument = async (doc: LibraryDocument) => {
@@ -341,9 +397,19 @@ export default function JobDetail() {
   // Client video 2026-09-29: "Known Issue" tab was decorative mock text with no save. Lives on
   // the customer (property), not the job, so every job at that address shows the same list --
   // visible to all technicians, matching the tab's own description text.
+  // Client doc 2026-10-05: "Model & Serial" tab showed the same 3 fake demo entries on every job
+  // -- also moved to the customer/property record (same reasoning as Known Issue), under a new
+  // `items` array inside the existing `customers.equipment` jsonb (additive, doesn't disturb the
+  // existing pump/heater/filter/salt text fields CustomerDetail.tsx's Edit dialog already uses).
   useEffect(() => {
     if (!job?.customer_id) return;
-    customersApi.detail(job.customer_id).then((d) => setKnownIssues(d.customer.known_issues ?? []));
+    customersApi.detail(job.customer_id).then((data) => {
+      setRecentCustomerNotes(data.notes ?? []);
+      setKnownIssues(Array.isArray(data.customer.known_issues) ? (data.customer.known_issues as KnownIssueItem[]) : []);
+      const equipment = (data.customer.equipment ?? {}) as Record<string, unknown>;
+      setCustomerEquipment(equipment);
+      setEquipmentItems(Array.isArray(equipment.items) ? (equipment.items as EquipmentItem[]) : []);
+    });
   }, [job?.customer_id]);
 
   const openLineItemsEditor = () => {
@@ -368,6 +434,7 @@ export default function JobDetail() {
   // When user types a note, translate to the OTHER language in real time
   const handleNoteChange = (val: string) => {
     setNoteText(val);
+    setNoteSavedAt(null);
     const target: "en" | "es" = lang === "en" ? "es" : "en";
     translateDebounced(val, lang, target);
   };
@@ -499,9 +566,11 @@ export default function JobDetail() {
   const handleSaveNote = async () => {
     if (!job || !noteText.trim()) return;
     setSavingNote(true);
-    await customersApi.addNote(job.customer_id, { text: noteText.trim(), author: job.profiles?.name ?? "Technician" });
+    const saved = await customersApi.addNote(job.customer_id, { text: noteText.trim(), author: job.profiles?.name ?? "Technician" });
+    setRecentCustomerNotes((prev) => [saved, ...prev]);
     setSavingNote(false);
     setNoteText("");
+    setNoteSavedAt(Date.now());
   };
 
   // Client PDF 2026-09-18: "allow us to select the forms needed for the job. Not automatically
@@ -517,6 +586,12 @@ export default function JobDetail() {
 
   // Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted into the job."
   const missingRequiredTemplates = applicableTemplates.filter((t) => t.required && !pastForms.some((f) => f.template_id === t.id));
+
+  // Client doc 2026-10-05: "Labor sku is still adding sales tax -- need to remove that." This
+  // card taxed job.amount in full (materials + labor); Estimates/Invoices already exclude labor
+  // (see Architecture > Labor vs materials), this one just never got the same treatment.
+  const jobMaterialsTotal = jobLineItems.reduce((sum, li) => sum + (li.item_type === "labor" ? 0 : li.amount), 0);
+  const jobTax = jobMaterialsTotal * 0.0825;
 
   const handleMarkComplete = async () => {
     if (!job) return;
@@ -541,7 +616,11 @@ export default function JobDetail() {
           issueDate,
           dueDate: dueDate.toISOString().slice(0, 10),
           amount: job.amount,
-          status: "Sent",
+          // Client doc 2026-10-05: "screen pops up that says INVOICE (sent) -- does this mean the
+          // invoice has been automatically sent to customer?" No -- nothing is actually emailed/
+          // texted (SendGrid/Twilio aren't connected, see Integrations). "Sent" claimed otherwise;
+          // "Draft" is honest about what actually happened.
+          status: "Draft",
           lineItems: jobLineItems.length > 0
             ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes }))
             : undefined,
@@ -581,85 +660,10 @@ export default function JobDetail() {
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.id.slice(0, 8).toUpperCase()}</h1>
             <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type, configLists.job_types)}>{t(job.type)}</Badge>
-            <Badge className={`${statusBadge(job.status, configLists.job_statuses)} text-[10px] px-1.5 py-0`}>{job.status}</Badge>
+            <Badge className={`${statusBadge(job.status, configLists.job_statuses)} text-[10px] px-1.5 py-0`}>{t(jobStatusDisplayLabel(job.status))}</Badge>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]"
-            onClick={() => setRescheduleOpen(!rescheduleOpen)}
-          >
-            <RotateCw className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("Reschedule")}</span>
-          </Button>
-          <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0] hover:bg-[#F8FAFC]" onClick={() => navigate("/jobs")}>
-            <Copy className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("Clone Job")}</span>
-          </Button>
-          <Dialog open={deleteOpen} onOpenChange={(open) => { if (!open && !isDeleting) { setDeleteOpen(false); setDeleteError(""); } }}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#DC2626] hover:bg-[#FEF2F2]" onClick={() => setDeleteOpen(true)}>
-                <Trash2 className="w-4 h-4" />
-                <span className="hidden sm:inline">{t("Delete")}</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader><DialogTitle>{t("Delete Job Permanently?")}</DialogTitle></DialogHeader>
-              <div className="space-y-3 pt-1 text-sm">
-                <p className="text-[#475569]">{t("Are you sure you want to permanently delete this job? This action cannot be undone.")}</p>
-                {deleteError && <p className="rounded-md bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] p-2.5 text-xs">{t(deleteError)}</p>}
-                <div className="flex justify-end gap-2 pt-1">
-                  <Button variant="outline" disabled={isDeleting} onClick={() => { setDeleteOpen(false); setDeleteError(""); }}>{t("Cancel")}</Button>
-                  <Button className="bg-[#DC2626] hover:bg-[#B91C1C] text-white" disabled={isDeleting} onClick={handleDeleteJob}>
-                    <Trash2 className="w-4 h-4 mr-1.5" />{isDeleting ? t("Deleting...") : t("Delete Permanently")}
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-          {job.stage === "completed" && job.status !== "Written Off" && (
-            <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#64748B]">
-                  <Ban className="w-4 h-4" />
-                  <span className="hidden sm:inline">{t("Write Off")}</span>
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader><DialogTitle>{t("Write Off Job (Bad Debt)")}</DialogTitle></DialogHeader>
-                <div className="space-y-3 pt-2">
-                  <p className="text-sm text-[#64748B]">{t("This marks this job as uncollectible bad debt (e.g. customer refuses to pay). This can't be undone from here.")}</p>
-                  <Textarea placeholder={t("Reason (e.g. customer unreachable, bankruptcy, disputed...)")} value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} rows={3} />
-                  <Button className="w-full bg-[#DC2626] hover:bg-[#B91C1C] text-white" onClick={handleWriteOff} disabled={writingOff || !writeOffReason.trim()}>
-                    {writingOff ? t("Writing off...") : t("Confirm Write-Off")}
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          )}
-          {job.recurring_job_id ? (
-            <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => setOneTimeOpen(true)}>
-              <RefreshCw className="w-4 h-4" />
-              <span className="hidden sm:inline">{t("Make one-time")}</span>
-            </Button>
-          ) : (
-            <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => setMakeRecurringOpen(true)}>
-              <RefreshCw className="w-4 h-4" />
-              <span className="hidden sm:inline">{t("Make Recurring")}</span>
-            </Button>
-          )}
-          {job.converted_to_estimate_id ? (
-            <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={() => navigate(`/invoicing/estimates/${job.converted_to_estimate_id}`)}>
-              <span className="hidden sm:inline">{t("View Estimate")}</span>
-              <span className="sm:hidden">{t("Estimate")}</span>
-            </Button>
-          ) : (
-            <Button variant="outline" className="gap-2 h-9 border-[#E2E8F0]" onClick={handleConvertToEstimate} disabled={convertingToEstimate}>
-              <span className="hidden sm:inline">{convertingToEstimate ? t("Converting...") : t("Convert to Estimate")}</span>
-              <span className="sm:hidden">{t("To Estimate")}</span>
-            </Button>
-          )}
           {job.status !== "Written Off" && (
             <Button
               className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-9"
@@ -679,8 +683,82 @@ export default function JobDetail() {
               <span className="sm:hidden">{t("Complete")}</span>
             </Button>
           )}
+          {/* Client feedback 2026-10-05: 6+ equal-weight buttons in a row either overflowed the
+              page horizontally, or (once wrapped) stacked one-per-line and looked unprofessional.
+              Only the primary CTA stays a button; everything else lives in one "More" menu. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="h-9 w-9 p-0 border-[#E2E8F0] shrink-0">
+                <MoreHorizontal className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => setRescheduleOpen(true)}>
+                <RotateCw className="w-4 h-4 mr-2" /> {t("Reschedule")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate("/jobs")}>
+                <Copy className="w-4 h-4 mr-2" /> {t("Clone Job")}
+              </DropdownMenuItem>
+              {job.recurring_job_id ? (
+                <DropdownMenuItem onClick={() => setOneTimeOpen(true)}>
+                  <RefreshCw className="w-4 h-4 mr-2" /> {t("Make one-time")}
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => setMakeRecurringOpen(true)}>
+                  <RefreshCw className="w-4 h-4 mr-2" /> {t("Make Recurring")}
+                </DropdownMenuItem>
+              )}
+              {job.converted_to_estimate_id ? (
+                <DropdownMenuItem onClick={() => navigate(`/invoicing/estimates/${job.converted_to_estimate_id}`)}>
+                  {t("View Estimate")}
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={handleConvertToEstimate} disabled={convertingToEstimate}>
+                  {convertingToEstimate ? t("Converting...") : t("Convert to Estimate")}
+                </DropdownMenuItem>
+              )}
+              {job.stage === "completed" && job.status !== "Written Off" && (
+                <DropdownMenuItem onClick={() => setWriteOffOpen(true)}>
+                  <Ban className="w-4 h-4 mr-2" /> {t("Write Off")}
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem className="text-[#DC2626] focus:text-[#DC2626]" onClick={() => setDeleteOpen(true)}>
+                <Trash2 className="w-4 h-4 mr-2" /> {t("Delete")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
+
+      <Dialog open={deleteOpen} onOpenChange={(open) => { if (!open && !isDeleting) { setDeleteOpen(false); setDeleteError(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{t("Delete Job Permanently?")}</DialogTitle></DialogHeader>
+          <div className="space-y-3 pt-1 text-sm">
+            <p className="text-[#475569]">{t("Are you sure you want to permanently delete this job? This action cannot be undone.")}</p>
+            {deleteError && <p className="rounded-md bg-[#FEF2F2] border border-[#FECACA] text-[#B91C1C] p-2.5 text-xs">{t(deleteError)}</p>}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" disabled={isDeleting} onClick={() => { setDeleteOpen(false); setDeleteError(""); }}>{t("Cancel")}</Button>
+              <Button className="bg-[#DC2626] hover:bg-[#B91C1C] text-white" disabled={isDeleting} onClick={handleDeleteJob}>
+                <Trash2 className="w-4 h-4 mr-1.5" />{isDeleting ? t("Deleting...") : t("Delete Permanently")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {job.stage === "completed" && job.status !== "Written Off" && (
+        <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader><DialogTitle>{t("Write Off Job (Bad Debt)")}</DialogTitle></DialogHeader>
+            <div className="space-y-3 pt-2">
+              <p className="text-sm text-[#64748B]">{t("This marks this job as uncollectible bad debt (e.g. customer refuses to pay). This can't be undone from here.")}</p>
+              <Textarea placeholder={t("Reason (e.g. customer unreachable, bankruptcy, disputed...)")} value={writeOffReason} onChange={(e) => setWriteOffReason(e.target.value)} rows={3} />
+              <Button className="w-full bg-[#DC2626] hover:bg-[#B91C1C] text-white" onClick={handleWriteOff} disabled={writingOff || !writeOffReason.trim()}>
+                {writingOff ? t("Writing off...") : t("Confirm Write-Off")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
 
@@ -814,7 +892,7 @@ export default function JobDetail() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:items-start">
         {/* Main column */}
         <div className="lg:col-span-2 space-y-4">
           {/* Job Details */}
@@ -1081,12 +1159,23 @@ export default function JobDetail() {
                   <div className="space-y-2">
                     {knownIssues.length === 0 && <p className="text-xs text-[#64748B]">{t("No known issues yet.")}</p>}
                     {knownIssues.map((issue, i) => (
-                      <div key={i} className="flex items-center gap-2 p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                        <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0" />
-                        <span className="text-sm text-[#0F172A] flex-1">{t(issue)}</span>
-                        <button className="p-1 rounded text-[#DC2626] hover:bg-[#DC2626]/10 shrink-0" title={t("Remove")} onClick={() => removeKnownIssue(issue)}>
-                          <X className="w-3.5 h-3.5" />
-                        </button>
+                      <div key={i} className="p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0" />
+                          <span className="text-sm text-[#0F172A] flex-1">{t(issueText(issue))}</span>
+                          <label className="p-1 rounded text-[#64748B] hover:bg-[#F1F5F9] shrink-0 cursor-pointer" title={t("Attach photo")}>
+                            <Camera className="w-3.5 h-3.5" />
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadKnownIssuePhoto(i, f); e.target.value = ""; }} />
+                          </label>
+                          <button className="p-1 rounded text-[#DC2626] hover:bg-[#DC2626]/10 shrink-0" title={t("Remove")} onClick={() => removeKnownIssue(i)}>
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {issuePhoto(issue) && (
+                          <a href={issuePhoto(issue) as string} target="_blank" rel="noreferrer">
+                            <img src={issuePhoto(issue) as string} alt="" className="h-16 w-16 object-cover rounded-md border border-[#E2E8F0]" />
+                          </a>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1172,25 +1261,34 @@ export default function JobDetail() {
                   ))}
                 </TabsContent>
 
-                {/* Model & Serial */}
+                {/* Model & Serial -- client doc 2026-10-05: this was 3 hardcoded demo rows on
+                    every job ("need blank, these should be specific to individual customer") and
+                    "Add Equipment" had no handler. Real now, same property-level pattern as Known
+                    Issue (every job at that address shows the same list). */}
                 <TabsContent value="model_serial" className="mt-4 space-y-3">
+                  <p className="text-xs text-[#94A3B8]">{t("Equipment on file for this property. Visible to all technicians.")}</p>
                   <div className="space-y-2">
-                    {[
-                      { equip: "Pump", model: "Hayward Super Pump SP1515", serial: "SP1515-2023-0892" },
-                      { equip: "Filter", model: "Pentair Clean & Clear 200", serial: "CC200-2022-4471" },
-                      { equip: "Heater", model: "Raypak 266K BTU", serial: "RP-266-2024-0123" },
-                    ].map((item) => (
-                      <div key={item.equip} className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                    {equipmentItems.length === 0 && <p className="text-xs text-[#64748B]">{t("No equipment on file yet.")}</p>}
+                    {equipmentItems.map((item, i) => (
+                      <div key={i} className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] relative">
+                        <button className="absolute top-2 right-2 text-[#94A3B8] hover:text-[#DC2626]" onClick={() => removeEquipmentItem(i)}>
+                          <X className="w-3.5 h-3.5" />
+                        </button>
                         <div className="flex items-center gap-2 mb-1">
                           <Barcode className="w-4 h-4 text-[#0891B2]" />
                           <span className="text-sm font-semibold text-[#0F172A]">{item.equip}</span>
                         </div>
-                        <p className="text-xs text-[#64748B]">{t("Model:")} <span className="text-[#0F172A] font-medium">{item.model}</span></p>
-                        <p className="text-xs text-[#64748B]">{t("Serial:")} <span className="text-[#0F172A] font-mono">{item.serial}</span></p>
+                        {item.model && <p className="text-xs text-[#64748B]">{t("Model:")} <span className="text-[#0F172A] font-medium">{item.model}</span></p>}
+                        {item.serial && <p className="text-xs text-[#64748B]">{t("Serial:")} <span className="text-[#0F172A] font-mono">{item.serial}</span></p>}
                       </div>
                     ))}
                   </div>
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <Input placeholder={t("Equipment (e.g. Pump)")} value={newEquipment.equip} onChange={(e) => setNewEquipment((p) => ({ ...p, equip: e.target.value }))} className="h-9 text-sm" />
+                    <Input placeholder={t("Model")} value={newEquipment.model} onChange={(e) => setNewEquipment((p) => ({ ...p, model: e.target.value }))} className="h-9 text-sm" />
+                    <Input placeholder={t("Serial #")} value={newEquipment.serial} onChange={(e) => setNewEquipment((p) => ({ ...p, serial: e.target.value }))} className="h-9 text-sm" />
+                  </div>
+                  <Button variant="outline" size="sm" className="gap-2" disabled={!newEquipment.equip.trim()} onClick={addEquipmentItem}>
                     <Plus className="w-4 h-4" /> {t("Add Equipment")}
                   </Button>
                 </TabsContent>
@@ -1278,11 +1376,11 @@ export default function JobDetail() {
                   </div>
                   <div className="flex items-center justify-between py-3">
                     <span className="text-sm text-[#64748B]">{t("Tax (8.25%)")}</span>
-                    <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
+                    <span className="text-sm text-[#0F172A]">${jobTax.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
                     <span className="text-base font-semibold text-[#0F172A]">{t("Total")}</span>
-                    <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
+                    <span className="text-base font-bold text-[#0891B2]">${(job.amount + jobTax).toFixed(2)}</span>
                   </div>
                 </div>
               ) : (
@@ -1462,6 +1560,20 @@ export default function JobDetail() {
                 </Button>
                 </>
               )}
+              {noteSavedAt && !noteText.trim() && (
+                <p className="text-xs text-[#16A34A] flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {t("Saved to customer record")}</p>
+              )}
+              {recentCustomerNotes.length > 0 && (
+                <div className="pt-2 border-t border-[#F1F5F9] space-y-2">
+                  <p className="text-xs font-semibold text-[#64748B] uppercase">{t("Recent Notes on This Customer")}</p>
+                  {recentCustomerNotes.slice(0, 3).map((n) => (
+                    <div key={n.id} className="text-xs text-[#64748B] bg-[#F8FAFC] rounded-md p-2">
+                      <p className="text-[#0F172A]">{n.text}</p>
+                      <p className="mt-0.5">{n.author ?? t("Technician")} · {new Date(n.created_at).toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -1481,8 +1593,11 @@ export default function JobDetail() {
           </Card>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-4">
+        {/* Sidebar -- client feedback 2026-10-05: "right side part scrolls with the whole page,
+            it should scroll on its own" -- a long main column (many line items, long notes, many
+            content-category tabs) pushed Update Status / Quick Actions off-screen with no way
+            back without scrolling all the way up. Sticky + its own scroll keeps it reachable. */}
+        <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           {/* Status Timeline */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
@@ -1584,14 +1699,20 @@ export default function JobDetail() {
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Quick Actions")}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-2">
-              <Button
-                variant="outline"
-                className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]"
-                disabled={!job.customers?.phone}
-                onClick={() => job.customers?.phone && (window.location.href = `tel:${job.customers.phone}`)}
-              >
-                <Phone className="w-4 h-4 text-[#0891B2]" /> {t("Call Customer")}
-              </Button>
+              {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension
+                  detects real `tel:` links, not JS button handlers -- a plain onClick with
+                  `window.location.href` was invisible to it. */}
+              {job.customers?.phone ? (
+                <Button variant="outline" asChild className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]">
+                  <a href={`tel:${job.customers.phone}`}>
+                    <Phone className="w-4 h-4 text-[#0891B2]" /> {t("Call Customer")}
+                  </a>
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]" disabled>
+                  <Phone className="w-4 h-4 text-[#0891B2]" /> {t("Call Customer")}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]"

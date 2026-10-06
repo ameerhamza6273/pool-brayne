@@ -21,10 +21,13 @@ export const settingsApi = {
     zip: string | null;
     invoiceBusinessName: string;
     payrollWeekStartDay: number;
+    logoUrl: string | null;
   }>("/api/settings"),
 
   saveCompany: (data: { name: string; phone: string; address: string; city: string; state: string; zip: string; invoiceBusinessName: string }) =>
     api.patch("/api/settings/company", data),
+
+  saveLogo: (logoUrl: string | null) => api.patch("/api/settings/company/logo", { logoUrl }),
 
   savePayrollWeekStart: (payrollWeekStartDay: number) => api.patch("/api/settings/payroll", { payrollWeekStartDay }),
 

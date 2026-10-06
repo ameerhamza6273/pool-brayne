@@ -51,6 +51,7 @@ export default function InvoiceDetail() {
   const [job, setJob] = useState<InvoiceDetailBundle["job"]>(null);
   const [photos, setPhotos] = useState<InvoiceDetailBundle["photos"]>([]);
   const [serviceNotes, setServiceNotes] = useState<InvoiceDetailBundle["serviceNotes"]>([]);
+  const [bulkJobs, setBulkJobs] = useState<InvoiceDetailBundle["bulkJobs"]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [payOpen, setPayOpen] = useState(false);
   const [qboSyncing, setQboSyncing] = useState(false);
@@ -58,6 +59,11 @@ export default function InvoiceDetail() {
   const [writeOffOpen, setWriteOffOpen] = useState(false);
   const [writeOffReason, setWriteOffReason] = useState("");
   const [writingOff, setWritingOff] = useState(false);
+  // Client video 2026-10-06: "Send via Email" was decorative (no handler). Real now -- emails the
+  // customer a link to the new public invoice/pay page (PublicInvoice.tsx). Fails with a clear
+  // message (not a silent no-op) until the server's SMTP password is configured.
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [sendEmailResult, setSendEmailResult] = useState<string | null>(null);
   // 2026-09-25: Documents on invoices -- same section as Jobs / Estimates (upload, attach from Library,
   // rename, delete). Staff-only: hidden on the printed / PDF invoice.
   const { tenantId } = useAuth();
@@ -111,6 +117,7 @@ export default function InvoiceDetail() {
       setJob(bundle.job ?? null);
       setPhotos(bundle.photos ?? []);
       setServiceNotes(bundle.serviceNotes ?? []);
+      setBulkJobs(bundle.bulkJobs ?? []);
     } catch {
       setInvoice(null);
     }
@@ -134,7 +141,7 @@ export default function InvoiceDetail() {
     );
   }
 
-  const items: { description: string; sku?: string | null; item_type?: string; notes?: string | null; quantity: number; rate: number; cost?: number; amount: number }[] =
+  const items: { description: string; sku?: string | null; item_type?: string; notes?: string | null; quantity: number; rate: number; cost?: number; amount: number; taxable?: boolean }[] =
     lineItems.length > 0
       ? lineItems
       : [{ description: `${invoice.status === "Draft" ? "Service" : "Weekly Maintenance"} - ${invoice.customers?.name ?? ""}`, quantity: 1, rate: invoice.amount, amount: invoice.amount }];
@@ -142,11 +149,29 @@ export default function InvoiceDetail() {
   // Client sample estimate PDF (2026-09-06): Parts & Materials / Labor as separate subtotal lines.
   const materialsSubtotal = items.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const laborSubtotal = items.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
-  const tax = materialsSubtotal * 0.0825;
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
+  // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
+  const taxableSubtotal = items.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
+  const tax = taxableSubtotal * 0.0825;
   const total = subtotal + tax;
   const downPayment = invoice.down_payment ?? 0;
   const remainingBalance = total - downPayment;
+
+  // Client doc 2026-10-05 (sample bulk-invoice PDF): a combined invoice shows a full breakdown
+  // PER JOB (that job's own line items, sub-total, tax, job total) instead of one "Breakdown of
+  // Services" for the whole invoice. bulkJobs is only populated for a combined invoice (2+ jobs
+  // contributed real line items); a normal single-job invoice renders exactly as before.
+  const isBulk = bulkJobs.length > 1;
+  const jobBreakdowns = isBulk
+    ? bulkJobs.map((bj) => {
+        const jobItems = items.filter((li) => (li as LineItem).job_id === bj.id);
+        const jobMaterials = jobItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
+        const jobLabor = jobItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
+        const jobTaxable = jobItems.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
+        const jobTax = jobTaxable * 0.0825;
+        return { job: bj, items: jobItems, subtotal: jobMaterials + jobLabor, tax: jobTax, jobTotal: jobMaterials + jobLabor + jobTax };
+      })
+    : [];
   const totalCost = items.reduce((sum, li) => sum + (li.cost ?? 0) * li.quantity, 0);
   const jobDescription = invoice.job_description || job?.description || null;
   // customers.address is one free-text string ("street, city, ST, zip") -- street on line 1, rest on line 2.
@@ -162,6 +187,19 @@ export default function InvoiceDetail() {
     await invoicingApi.collectPayment(id, method, opaqueData);
     setPayOpen(false);
     loadInvoice();
+  };
+
+  const handleSendEmail = async () => {
+    if (!id) return;
+    setSendingEmail(true);
+    setSendEmailResult(null);
+    try {
+      await invoicingApi.sendInvoiceEmail(id);
+      setSendEmailResult("sent");
+    } catch (err) {
+      setSendEmailResult(err instanceof Error ? err.message : "Failed to send");
+    }
+    setSendingEmail(false);
   };
 
   // Client PDF 2026-09-06: "A way to Write off a job – (bad debt)".
@@ -257,13 +295,15 @@ export default function InvoiceDetail() {
       </div>
 
       {/* Action Bar */}
-      <div className="flex flex-wrap gap-2 print:hidden">
-        <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]">
-          <Mail className="w-4 h-4 text-[#0891B2]" /> {t("Send via Email")}
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={handleSendEmail} disabled={sendingEmail}>
+          <Mail className="w-4 h-4 text-[#0891B2]" /> {sendingEmail ? t("Sending...") : t("Send via Email")}
         </Button>
-        <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]">
-          <MessageSquare className="w-4 h-4 text-[#0891B2]" /> {t("Send via SMS")}
+        <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#94A3B8]" disabled title={t("Needs a Twilio account — not connected yet")}>
+          <MessageSquare className="w-4 h-4" /> {t("Send via SMS")}
         </Button>
+        {sendEmailResult === "sent" && <span className="text-xs text-[#16A34A]">{t("Email sent")}</span>}
+        {sendEmailResult && sendEmailResult !== "sent" && <span className="text-xs text-[#DC2626]">{t(sendEmailResult)}</span>}
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={() => window.print()}>
           <Download className="w-4 h-4 text-[#0891B2]" /> {t("Download PDF")}
         </Button>
@@ -306,7 +346,7 @@ export default function InvoiceDetail() {
               <div className="rounded-lg border border-white/30 bg-white/10 p-3 space-y-0.5">
                 <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{t("Client Details")}</p>
                 <p>{t("Name")}: {invoice.customers?.name ?? "—"}</p>
-                <p>{t("Phone #")}: {invoice.customers?.phone || "—"}</p>
+                <p>{t("Phone #")}: {invoice.customers?.phone ? <a href={`tel:${invoice.customers.phone}`} className="hover:underline">{invoice.customers.phone}</a> : "—"}</p>
                 <p>{t("Invoice #")}: {invoice.number}</p>
                 <p>{t("Date of Request")}: {fmtDate(job?.created_at ?? invoice.issue_date)}</p>
                 <p>{t("Date of Service")}: {job ? fmtDate(job.completed_at ?? job.scheduled_date) : "—"}</p>
@@ -338,6 +378,54 @@ export default function InvoiceDetail() {
             </div>
           )}
 
+          {isBulk ? (
+            // Client doc 2026-10-05 (sample bulk-invoice PDF): one section per combined job --
+            // that job's own line items, then its own Sub total / Tax / Job Total, matching their
+            // old software's combined-invoice layout exactly.
+            jobBreakdowns.map(({ job: bj, items: jobItems, tax: jobTax, jobTotal }) => (
+              <div key={bj.id} className="rounded-xl border border-[#E2E8F0] bg-white p-4 mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-bold text-[#0F172A]">{t(bj.type)}</p>
+                  <p className="text-xs text-[#64748B]">{fmtDate(bj.scheduled_date)}</p>
+                </div>
+                {bj.description && <p className="text-xs text-[#64748B] mb-2 whitespace-pre-wrap">{bj.description}</p>}
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC] text-[#64748B]">
+                      <th className="text-left py-2 pr-2 font-medium">{t("Description")}</th>
+                      <th className="text-right py-2 font-medium">{t("Qty")}</th>
+                      <th className="text-right py-2 font-medium pl-3">{t("Unit Price")}</th>
+                      <th className="text-right py-2 font-medium pl-3">{t("Amount")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {laborFirst(jobItems).map((li, idx: number) => (
+                      <tr key={idx} className="border-b border-[#E2E8F0] align-top">
+                        <td className="py-2 text-[#0F172A]">
+                          {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
+                          {li.description}
+                          {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
+                          {(li.taxable ?? li.item_type !== "labor") !== (li.item_type !== "labor") && (
+                            <Badge className="ml-2 bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{(li.taxable ?? li.item_type !== "labor") ? t("Taxable") : t("Tax-exempt")}</Badge>
+                          )}
+                        </td>
+                        <td className="text-right py-2 text-[#64748B]">{li.quantity}</td>
+                        <td className="text-right py-2 pl-3 text-[#64748B]">${li.rate.toFixed(2)}</td>
+                        <td className="text-right py-2 pl-3 font-medium text-[#0F172A]">${li.amount.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="flex justify-end mt-2">
+                  <div className="text-xs text-[#0F172A] space-y-0.5 w-56">
+                    <p className="flex justify-between"><span className="text-[#64748B]">{t("Tax")}</span> ${jobTax.toFixed(2)}</p>
+                    <p className="flex justify-between font-bold"><span>{t("Job Total")}</span> ${jobTotal.toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <>
           {/* Job Description + Trip Details (job photos) */}
           {(jobDescription || photos.length > 0) && (
             <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 mb-3 space-y-3">
@@ -397,6 +485,9 @@ export default function InvoiceDetail() {
                       {li.sku && <span className="text-[#64748B]">{li.sku} — </span>}
                       {li.description}
                       {li.item_type === "labor" && <Badge className="ml-2 bg-[#F59E0B]/10 text-[#F59E0B] text-[10px] px-1.5 py-0">{t("Labor")}</Badge>}
+                      {(li.taxable ?? li.item_type !== "labor") !== (li.item_type !== "labor") && (
+                        <Badge className="ml-2 bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{(li.taxable ?? li.item_type !== "labor") ? t("Taxable") : t("Tax-exempt")}</Badge>
+                      )}
                       {li.notes && <p className="text-[11px] text-[#94A3B8] whitespace-pre-wrap">{li.notes}</p>}
                     </td>
                     <td className="text-right py-2 text-[#64748B]">{li.quantity}</td>
@@ -407,6 +498,8 @@ export default function InvoiceDetail() {
               </tbody>
             </table>
           </div>
+            </>
+          )}
 
           <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-4 text-xs text-[#0F172A] space-y-1.5 sm:ml-auto sm:w-72">
             <p>{t("Tax")}: ${tax.toFixed(2)}</p>

@@ -52,8 +52,10 @@ export default function PublicEstimate() {
   const subtotal = lineItems.length > 0 ? lineItems.reduce((s, li) => s + li.amount, 0) : 0;
   const materialsSubtotal = lineItems.filter((li) => li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
   const laborSubtotal = lineItems.filter((li) => li.item_type === "labor").reduce((s, li) => s + li.amount, 0);
-  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
-  const tax = materialsSubtotal * 0.0825;
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
+  // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
+  const taxableSubtotal = lineItems.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
+  const tax = taxableSubtotal * 0.0825;
   const total = subtotal + tax;
   const remainingBalance = total - (estimate.down_payment ?? 0);
   const alreadyResponded = estimate.status === "Accepted" || estimate.status === "Declined";

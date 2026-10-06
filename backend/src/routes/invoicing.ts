@@ -4,15 +4,23 @@ import { withTenantContext } from "../db.js";
 import { withQuickbooksConnection, pushInvoice } from "../lib/quickbooks.js";
 import { syncCustomerToQuickbooks } from "./customers.js";
 import { chargeOpaqueData } from "../lib/authorizenet.js";
+import { notifyBusinessOfPayment, isMailerConfigured, sendMail } from "../lib/mailer.js";
+
+const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "http://localhost:5175";
 
 type LineItemInput = {
   description: string;
   sku?: string | null;
-  itemType?: "material" | "labor";
+  itemType?: "material" | "labor" | "maintenance";
   quantity: number;
   cost?: number;
   rate: number;
   notes?: string | null;
+  jobId?: string | null;
+  // Client video 2026-10-06: "I'm going to need [a tax yes/no icon] for individual SKUs" -- was
+  // purely derived from item_type (labor untaxed, material taxed) before; now a real per-line
+  // override, defaulting to that same rule when not explicitly set.
+  taxable?: boolean;
 };
 
 // Shared by /invoices and /invoices/estimates — both header tables gained the same
@@ -21,9 +29,10 @@ async function insertInvoiceLineItems(tx: postgres.TransactionSql, invoiceId: st
   if (!lineItems || lineItems.length === 0) return;
   for (const [sortIdx, li] of lineItems.entries()) {
     const amount = li.quantity * li.rate;
+    const taxable = li.taxable ?? li.itemType !== "labor";
     await tx`
-      insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
-      values (${tenantId}, ${invoiceId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null}, ${sortIdx})
+      insert into invoice_line_items (tenant_id, invoice_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order, job_id, taxable)
+      values (${tenantId}, ${invoiceId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null}, ${sortIdx}, ${li.jobId ?? null}, ${taxable})
     `;
   }
 }
@@ -32,9 +41,10 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
   if (!lineItems || lineItems.length === 0) return;
   for (const [sortIdx, li] of lineItems.entries()) {
     const amount = li.quantity * li.rate;
+    const taxable = li.taxable ?? li.itemType !== "labor";
     await tx`
-      insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order)
-      values (${tenantId}, ${estimateId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null}, ${sortIdx})
+      insert into estimate_line_items (tenant_id, estimate_id, description, sku, item_type, quantity, cost, rate, amount, notes, sort_order, taxable)
+      values (${tenantId}, ${estimateId}, ${li.description}, ${li.sku ?? null}, ${li.itemType ?? "material"}, ${li.quantity}, ${li.cost ?? 0}, ${li.rate}, ${amount}, ${li.notes ?? null}, ${sortIdx}, ${taxable})
     `;
   }
 }
@@ -46,19 +56,23 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
 // function had ALSO drifted from that rule -- it taxed the whole subtotal including labor, so any
 // invoice with labor line items would be OVERCHARGED on card payment. Fixed to match the one true
 // formula every other total in the app already uses.
-function taxedTotal(lineItems: { amount: number; item_type?: string | null }[], fallbackAmount: number): number {
+// Client video 2026-10-06: tax is now driven by each line's real `taxable` flag (manually
+// overridable per SKU) instead of the item_type rule alone -- `item_type` only used as a fallback
+// for any pre-migration row that somehow has neither set.
+export function taxedTotal(lineItems: { amount: number; item_type?: string | null; taxable?: boolean | null }[], fallbackAmount: number): number {
   if (lineItems.length === 0) return Math.round(fallbackAmount * 1.0825 * 100) / 100;
-  const materials = lineItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
-  const labor = lineItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
+  const isTaxable = (li: { item_type?: string | null; taxable?: boolean | null }) => li.taxable ?? li.item_type !== "labor";
+  const taxableAmount = lineItems.filter(isTaxable).reduce((sum, li) => sum + li.amount, 0);
+  const exemptAmount = lineItems.filter((li) => !isTaxable(li)).reduce((sum, li) => sum + li.amount, 0);
   // Floating-point multiplication (e.g. 8.25% tax) can land a cent or two off a clean decimal --
   // round to the cent so every surface that displays this shows the same, correctly-formatted number.
-  return Math.round((materials * 1.0825 + labor) * 100) / 100;
+  return Math.round((taxableAmount * 1.0825 + exemptAmount) * 100) / 100;
 }
 
 async function computeInvoiceTotal(tx: postgres.TransactionSql, invoiceId: string) {
   const [invoiceRow] = await tx`select * from invoices where id = ${invoiceId} limit 1`;
   const invoice = invoiceRow as unknown as { id: string; customer_id: string; amount: number };
-  const lineItems = (await tx`select amount, item_type from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number; item_type: string | null }[];
+  const lineItems = (await tx`select amount, item_type, taxable from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number; item_type: string | null; taxable: boolean }[];
   return { invoice, total: taxedTotal(lineItems, invoice.amount) };
 }
 
@@ -95,8 +109,8 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         order by i.issue_date desc
       `) as unknown as { id: string; amount: number }[];
       const lineItemRows = (await tx`
-        select invoice_id, amount, item_type from invoice_line_items where invoice_id = any(${invoices.map((i) => i.id)})
-      `) as unknown as { invoice_id: string; amount: number; item_type: string | null }[];
+        select invoice_id, amount, item_type, taxable from invoice_line_items where invoice_id = any(${invoices.map((i) => i.id)})
+      `) as unknown as { invoice_id: string; amount: number; item_type: string | null; taxable: boolean }[];
       return invoices.map((i) => ({ ...i, total: taxedTotal(lineItemRows.filter((li) => li.invoice_id === i.id), i.amount) }));
     });
   });
@@ -111,7 +125,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   app.get<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     const result = await withTenantContext(req.userId, async (tx) => {
-      const [invoiceRows, lineItems, tenantRows, jobRows, photoRows, noteRows] = await Promise.all([
+      const [invoiceRows, lineItems, tenantRows, jobRows, photoRows, noteRows, bulkJobRows] = await Promise.all([
         tx`
           select i.*, jsonb_build_object('name', c.name, 'address', c.address, 'phone', c.phone) as customers
           from invoices i left join customers c on c.id = i.customer_id
@@ -142,6 +156,16 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           where i.id = ${id} and n.created_at::date = coalesce(j.completed_at::date, j.scheduled_date)
           order by n.created_at
         `,
+        // Client doc 2026-10-05: a combined/bulk invoice has no single i.job_id (it spans several
+        // jobs) -- its line_items.job_id groups them back into the real jobs that made it up, so
+        // the document can render a full per-job breakdown instead of one flattened description.
+        // Empty for every normal invoice (job_id null on all its line items).
+        tx`
+          select j.id, j.type, j.description, j.scheduled_date, j.tech_notes
+          from jobs j
+          where j.id in (select distinct job_id from invoice_line_items where invoice_id = ${id} and job_id is not null)
+          order by j.scheduled_date
+        `,
       ]);
       return {
         invoice: invoiceRows[0] ?? null,
@@ -150,6 +174,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         job: jobRows[0] ?? null,
         photos: photoRows,
         serviceNotes: noteRows,
+        bulkJobs: bulkJobRows,
       };
     });
     if (!result.invoice) {
@@ -187,6 +212,75 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client doc 2026-10-05 ("Combine Completed Jobs" bulk invoice, sample PDF from their old
+  // software): one combined invoice should show each job's own real line items (sub-total, tax,
+  // job total), not a single flattened "job type -- date" line per job. Line-item composition
+  // moves server-side (vs. the old client-built flat version) so it's atomic and can't drift from
+  // what's actually on each job; a job with no real line items still falls back to one flat line
+  // from its own amount, same as before, so nothing silently disappears.
+  app.post<{
+    Body: { customerId: string; jobIds: string[]; number: string; issueDate: string };
+  }>("/bulk", async (req) => {
+    const { customerId, jobIds, number, issueDate } = req.body;
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      const jobs = (await tx`select * from jobs where id = any(${jobIds})`) as unknown as { id: string; type: string; scheduled_date: string | null; created_at: string; amount: number }[];
+      const allLineItems: LineItemInput[] = [];
+      for (const job of jobs) {
+        const jobLines = (await tx`select * from job_line_items where job_id = ${job.id} order by sort_order`) as unknown as {
+          description: string; sku: string | null; item_type: string; quantity: number; cost: number; rate: number; notes: string | null;
+        }[];
+        if (jobLines.length > 0) {
+          for (const li of jobLines) {
+            allLineItems.push({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes, jobId: job.id });
+          }
+        } else {
+          allLineItems.push({ description: `${job.type} — ${job.scheduled_date ?? job.created_at.slice(0, 10)}`, quantity: 1, rate: job.amount, jobId: job.id });
+        }
+      }
+      const amount = allLineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0);
+      const [row] = await tx`
+        insert into invoices (tenant_id, customer_id, number, issue_date, amount, status)
+        values (${tenant.id}, ${customerId}, ${number}, ${issueDate}, ${amount}, 'Draft')
+        returning *
+      `;
+      await insertInvoiceLineItems(tx, row.id, tenant.id, allLineItems);
+      return row;
+    });
+  });
+
+  // Client video 2026-10-06: "Send via Email" button on an invoice — was decorative, no handler.
+  // Builds the customer-facing pay link from the invoice's own payment_token (see public.ts) and
+  // emails it via the Office 365 SMTP account the client provided. Returns a clear 400 (not a
+  // silent no-op) while SMTP_PASSWORD is still missing, so the button's error state is honest.
+  app.post<{ Params: { id: string } }>("/:id/send-email", async (req, reply) => {
+    const { id } = req.params;
+    if (!isMailerConfigured()) {
+      reply.code(400).send({ error: "Email isn't set up yet — ask for the SMTP password." });
+      return;
+    }
+    return withTenantContext(req.userId, async (tx) => {
+      const { total } = await computeInvoiceTotal(tx, id);
+      const [row] = await tx`
+        select i.number, i.payment_token, c.name as customer_name, c.email as customer_email,
+          coalesce(t.invoice_business_name, t.name) as business_name
+        from invoices i join customers c on c.id = i.customer_id join tenants t on t.id = i.tenant_id
+        where i.id = ${id} limit 1
+      `;
+      if (!row?.customer_email) {
+        reply.code(400).send({ error: "This customer has no email address on file." });
+        return;
+      }
+      const url = `${PUBLIC_APP_URL}/invoice/${row.payment_token}`;
+      await sendMail({
+        to: row.customer_email,
+        subject: `Invoice ${row.number} from ${row.business_name} — $${total.toFixed(2)}`,
+        html: `<p>Hi ${row.customer_name},</p><p>Your invoice ${row.number} for <strong>$${total.toFixed(2)}</strong> is ready. You can view it and pay online here:</p><p><a href="${url}">${url}</a></p><p>Thank you!<br/>${row.business_name}</p>`,
+      });
+      return { sent: true };
+    });
+  });
+
   // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
   // `opaqueData` is the tokenized-on-the-client payment nonce, never a raw card number. ACH/
   // Check stay simulated (no real bank-transfer/check processor is wired up).
@@ -211,7 +305,12 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         }
         providerTransactionId = result.transactionId;
       }
-      return recordPayment(tx, invoice, total, method, providerTransactionId);
+      const updated = await recordPayment(tx, invoice, total, method, providerTransactionId);
+      const [withCustomer] = await tx`
+        select i.number, c.name as customer_name from invoices i join customers c on c.id = i.customer_id where i.id = ${id} limit 1
+      `;
+      if (withCustomer) void notifyBusinessOfPayment({ invoiceNumber: withCustomer.number, customerName: withCustomer.customer_name, amount: total });
+      return updated;
     });
   });
 
@@ -291,8 +390,8 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         order by e.issue_date desc
       `) as unknown as { id: string; amount: number }[];
       const lineItemRows = (await tx`
-        select estimate_id, amount, item_type from estimate_line_items where estimate_id = any(${estimates.map((e) => e.id)})
-      `) as unknown as { estimate_id: string; amount: number; item_type: string | null }[];
+        select estimate_id, amount, item_type, taxable from estimate_line_items where estimate_id = any(${estimates.map((e) => e.id)})
+      `) as unknown as { estimate_id: string; amount: number; item_type: string | null; taxable: boolean }[];
       return estimates.map((e) => ({ ...e, total: taxedTotal(lineItemRows.filter((li) => li.estimate_id === e.id), e.amount) }));
     });
   });
@@ -316,6 +415,35 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       return;
     }
     return result;
+  });
+
+  // Client video 2026-10-06: "Send via Email" on an estimate — same pattern as the invoice one
+  // above, using the estimate's existing approval_token (built 2026-09-08) for the link.
+  app.post<{ Params: { id: string } }>("/estimates/:id/send-email", async (req, reply) => {
+    const { id } = req.params;
+    if (!isMailerConfigured()) {
+      reply.code(400).send({ error: "Email isn't set up yet — ask for the SMTP password." });
+      return;
+    }
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`
+        select e.number, e.amount, e.approval_token, c.name as customer_name, c.email as customer_email,
+          coalesce(t.invoice_business_name, t.name) as business_name
+        from estimates e join customers c on c.id = e.customer_id join tenants t on t.id = e.tenant_id
+        where e.id = ${id} limit 1
+      `;
+      if (!row?.customer_email) {
+        reply.code(400).send({ error: "This customer has no email address on file." });
+        return;
+      }
+      const url = `${PUBLIC_APP_URL}/estimate/${row.approval_token}`;
+      await sendMail({
+        to: row.customer_email,
+        subject: `Estimate ${row.number} from ${row.business_name} — please review`,
+        html: `<p>Hi ${row.customer_name},</p><p>Your estimate ${row.number} is ready for review. You can view and approve it here:</p><p><a href="${url}">${url}</a></p><p>Thank you!<br/>${row.business_name}</p>`,
+      });
+      return { sent: true };
+    });
   });
 
   // Client PDF 2026-09-05: "Need to be able to edit an estimate once created and saves" —
@@ -532,6 +660,16 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           values (${tenant.id}, ${job.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes}, ${sortIdx})
         `;
       }
+      // Client doc 2026-10-05: "In estimate: once converted to job -- pictures do not transfer,
+      // nor are visible" (Estimate's Trip Photos / Documents live in estimate_attachments, Job's
+      // in job_attachments -- converting never copied them across). Estimate's untitled "Trip
+      // Photos" have no label; the Job page only has somewhere to show photos under the Before/
+      // After Photos tab, so an unlabeled photo lands there (still visible) rather than vanishing.
+      await tx`
+        insert into job_attachments (tenant_id, job_id, type, url, label, filename)
+        select tenant_id, ${job.id}, type, url, coalesce(label, case when type = 'photo' then 'before' else null end), filename
+        from estimate_attachments where estimate_id = ${id}
+      `;
       await tx`update estimates set status = 'Converted', converted_job_id = ${job.id} where id = ${id}`;
       return { jobId: job.id };
     });

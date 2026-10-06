@@ -249,8 +249,14 @@ GPS; PoolBrayne's trucks use a different, API-less consumer tracker — see Inte
   API** (confirmed via their marketing site + client's own login, which was never used to
   authenticate — see safety rules). Fleet page just links out to `platform.gps7000.com`; no live
   position data flows into the app.
-- **Not connected yet** (client hasn't provided accounts): Twilio (SMS), Stripe (unused — client
-  confirmed Authorize.net is the real processor, not Stripe), SendGrid (email), Gusto/ADP
+- **Email (Office 365 SMTP)** — client provided server/port/user/SSL 2026-10-06
+  (`smtp.office365.com:587`, `Service@poolsupplyatlanta.com`); real sending (`backend/src/lib/mailer.ts`,
+  used by Invoice/Estimate "Send via Email" and the payment-notification email) is fully built and only
+  needs `SMTP_PASSWORD` set in `backend/.env` locally and in Railway's env vars for production —
+  no code change needed once it's added. `PUBLIC_APP_URL` (also in `backend/.env`) must point at the
+  real production frontend URL on Railway before links in those emails are correct in production.
+- **Not connected yet** (client hasn't provided accounts): Twilio (SMS — texting a pay/view link),
+  Stripe (unused — client confirmed Authorize.net is the real processor, not Stripe), Gusto/ADP
   (payroll export).
 
 ## Feature completeness
@@ -275,7 +281,6 @@ activity, not a stored table), Settings > Team (real add/edit/delete staff via S
 API).
 
 **Deliberately out of scope / not built:**
-- Global search bar (topbar input still does nothing).
 - "Dispatch nearest available tech" — decorative text only, no real geo logic.
 - JobDetail's 10 content-category tabs (Trip Details, Documents-beyond-what's-built, Customer Not
   Available, etc.) — would need several new schema tables, flagged as a bigger scope item.
@@ -304,19 +309,21 @@ vendor, different payment processor).
 2. **`QBO_REDIRECT_URI`** still `localhost:4000` — update env var + Intuit app config before
    QuickBooks connect works in production.
 3. **QuickBooks production keys**, **Authorize.net production merchant account**, **Twilio/
-   SendGrid/Gusto accounts** — all pending the client providing their own credentials/signups
-   (Claude cannot create accounts on the client's behalf — see safety rules). SendGrid (or
-   equivalent) specifically blocks **PO vendor email notifications** (client asked for
-   Pending/Sent/Received status emails 2026-09-11) — status vocabulary and everything else about
-   PO line items is built, only the actual email send is waiting on this.
+   Gusto accounts** — all pending the client providing their own credentials/signups (Claude
+   cannot create accounts on the client's behalf — see safety rules). Email itself is no longer
+   blocked on SendGrid — the client's own Office 365 SMTP is wired up (2026-10-06, see
+   Integrations status) and only needs its password — but **PO vendor email notifications**
+   specifically (client asked for Pending/Sent/Received status emails 2026-09-11) haven't been
+   built to use it yet; status vocabulary and everything else about PO line items is built, only
+   the actual email send is waiting on this.
 4. **Legacy customer import** — 3629 imported rows have a best-effort Residential/Commercial
    guess (keyword heuristic); some may be misclassified and need manual correction via the Edit
    Customer dialog.
 5. **Resale/pluggable-integrations framework** — client interested, scope not yet confirmed with
    them (see Feature completeness above).
-6. **Global search bar**, **dispatch-nearest-tech logic**, **QuickBooks two-way sync** (currently
-   push-only), **JobDetail's remaining content-category tabs** — known, deliberately deferred
-   gaps, no client urgency currently attached.
+6. **Dispatch-nearest-tech logic**, **QuickBooks two-way sync** (currently push-only),
+   **JobDetail's remaining content-category tabs** — known, deliberately deferred gaps, no client
+   urgency currently attached. (Global search bar was built 2026-10-06, see Architecture.)
 7. Empty leftover Railway project (`content-commitment`) in the developer's old trial workspace —
    its service was deleted 2026-09-10, but Railway's UI has no self-service "delete whole
    project" button, so a serviceless shell remains (costs nothing, safe to ignore).
@@ -760,3 +767,201 @@ history was condensed into the structural sections above on 2026-09-10.)*
   correctly showing "Not Connected" (the status itself was already fixed by the real OAuth flow updating that column — only the description text was
   stale demo-seed leftover) — now computed client-side from the real connected state instead of trusted from that column, so it can't drift out of
   sync again. `npm run build` clean in both `/` and `/backend`. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-05 (client video call, batch 1 of a multi-message feedback review)** — dev is relaying client feedback one message at a time this
+  session, explicitly asking which items are real bugs/our mistakes vs. already-built-but-unseen vs. genuinely new asks, and to avoid regressing
+  anything working while fixing them (see `[[feedback_no_regressions]]` memory). Item 1: "other reminders" (customer-level Service Reminders) had
+  no aggregated view — client didn't know **Reports › Reminders already lists every customer's reminders in one table** (pre-existing); added the
+  missing piece, a 30/60/90/All quick date-range filter above it (`Reports.tsx`, filters by `next_due`). Item 2: Map's "Daily Route by Technician"
+  legend was read-only; client wanted to click a tech to hide their pins when stops overlap, then bring them back — made each legend row (and
+  Unassigned) clickable (`hiddenMapTechIds` state in `Jobs.tsx`, skipped in the pin/route draw effect; hidden tech shown dimmed+struck-through but
+  stays in the list so it can be re-enabled, independent of the existing top Technician filter). Both verified live on local dev against real prod
+  data (logged in as the seeded demo owner account): 30-day filter correctly dropped a 2027 reminder while keeping near-term ones; toggling Roni
+  Eduardo off/on the map correctly hid/restored exactly their 7 pins while Jeremiah Patterson's stayed; Schedule tab spot-checked afterward, no
+  regression. `npm run build` clean. A 3rd item (a screenshot from a short video) wasn't sent with enough content to act on yet. **Not yet pushed**
+  — pending the rest of this feedback batch + the user's go-ahead.
+- **2026-10-05 (batch 2 — two client docs "CRM - jobs.invoices" + "CRM REPORTS SCREEN", several SMS, a bulk-invoice PDF sample + ~16 reference
+  screenshots from the client's old ServiceWorks software)** — dev relayed everything one piece at a time, asking which items are real bugs vs.
+  already-built vs. new asks, and to verify live rather than guess (see `[[feedback_no_regressions]]`). **Found and fixed the real root cause behind
+  several unrelated "this button does nothing" reports**: `catchUpOccurrences()` (added 2026-09-30 to self-heal stalled recurring series) ran one
+  extra DB query per active recurring series on every single `GET /api/jobs` / `/api/jobs/mine/active` call — 74 series meant 74+ sequential
+  round-trips to the Supabase pooler, confirmed live at ~10-15s per request. Batched into one query (`backend/src/routes/recurringJobs.ts`) — same
+  pages now load in ~2s. This alone explains why "Mark En Route" and "+ Add Known Issue" looked broken (both worked, just took 10+ seconds with zero
+  loading feedback on the button) — confirmed both live, no code bug in either. Also fixed for real: Job page's own line-items tax card was taxing
+  the full job amount including labor (`JobDetail.tsx`, now excludes `item_type === "labor"` same as Estimates/Invoices); Job Notes and Customer ›
+  Gate Codes "Save Access Info" both actually saved but gave zero feedback and never showed what was already saved -- both now show a save
+  confirmation, Job Notes also lists the customer's recent notes inline. UI polish from a dev-annotated screenshot taken mid-session: Job page's
+  6-button header row either overflowed the page horizontally or stacked one-per-line once wrapped -- only the primary CTA (Mark Complete & Generate
+  Invoice) stays a button, everything else (Reschedule/Clone Job/Make one-time/Convert to Estimate/Write Off/Delete) moved into one "⋯ More" dropdown
+  (new pattern, reusable for Estimate/Invoice headers if they ever grow this many actions); the right-side status panel is now `sticky` with its own
+  scroll (was scrolling away with a long main column, making Update Status unreachable without scrolling back up) -- verified live, both hold up.
+  `npm run build` clean in both `/` and `/backend` throughout. **Still queued from this same batch, not started**: status-dropdown verbiage renames
+  (Booked→Scheduled, Dispatched→En Route, Arrived→In Progress), Model & Serial's default-equipment bug, Known Issue photo upload + Estimate→Job
+  carry-over, the Bulk Invoice "Combine Completed Jobs" empty-results report (worth re-testing now that the perf fix landed), and two big builds with
+  reference material now fully decoded: a detailed per-job Bulk Invoice PDF (client sent their old system's exact sample) and Reports › Item
+  Movement + Invoices Due→"Accounts Outstanding" aging-report redesigns (see CLIENT_REQUESTS.md #8 for full specs extracted from the screenshots).
+  Separately, client asked for a full top-header nav redesign (replacing or supplementing the left sidebar) — flagged to the client as a genuinely
+  large restructure before starting, awaiting their answer. **Not yet pushed** — batch still in progress, pending the user's go-ahead per this repo's
+  push policy.
+- **2026-10-06 (batch 2 continued — "complete everything")** — finished every remaining item from the 2026-10-05 docs/screenshots. **Status verbiage**
+  (Booked→Scheduled, Dispatched→En Route, Status Timeline Arrived→In Progress) changed everywhere it displays as text (`JobDetail.tsx` realStatuses/
+  timelineSteps, `Jobs.tsx` stages, `ScheduleCalendar.tsx` STAGE_CHIPS) via a new `jobStatusDisplayLabel()` helper (`lib/data.ts`) for the one spot
+  (`job.status` on the title badge) that reads a raw stored value — the actual `status`/`stage` strings written to the DB are untouched (still
+  "Booked"/"Dispatched"), so old and newly-moved jobs never diverge into two different stored values for what's really the same stage. **Model &
+  Serial** tab's 3 hardcoded demo rows replaced with a real per-property equipment list (Equipment/Model/Serial #, add/remove), same pattern as Known
+  Issue. **Known Issue** gained photo attach/replace per entry (migration `20261006090000`: `customers.known_issues` converted from `text[]` to
+  `jsonb` so an entry can be a plain string **or** `{text, photoUrl}` — existing entries migrate automatically via `to_jsonb()`, both shapes render
+  correctly) and now carries over on Estimate→Job conversion (`invoicing.ts` convert-to-job route copies `estimate_attachments` into
+  `job_attachments`, unlabeled photos land on Before/After since that's the only place Job has to show them). **Bulk Invoice** rebuilt properly:
+  migration `20261006100000` adds `invoice_line_items.job_id` so a combined invoice's lines can be grouped back into the jobs that made them up; new
+  `POST /api/invoices/bulk` route composes the invoice server-side from each job's **real** `job_line_items` (falls back to one flat line only if a
+  job genuinely has none) instead of the old client-side one-flattened-line-per-job version; `GET /api/invoices/:id` now also returns `bulkJobs`
+  (the distinct jobs behind a combined invoice); `InvoiceDetail.tsx` renders one full "Breakdown of Services" section per job (its own line items +
+  sub-total + tax + job total) when `bulkJobs.length > 1`, else renders exactly as before (no regression for normal invoices) — verified live
+  end-to-end: created 2 real test jobs with real line items ($150 + $80), called the new endpoint, confirmed every number down to the tax/job-total/
+  grand-total matched by hand, then cleaned up the test jobs/invoices via the established `_tmp-*.ts` script pattern. Investigated and **closed, no
+  code change needed**: "Combine Completed Jobs" showing 0 results — correct behavior (only un-invoiced completed jobs qualify, and completing a job
+  almost always auto-invoices it immediately, so there's rarely anything left to combine); confirmed by reading the query and live-testing. Two small
+  honesty/clarity fixes matching the 2026-09-30 QA sweep philosophy: the "Customer Photos" panel on a Schedule job popup relabeled "Customer's Photos
+  on File (not uploaded to this job)" (client read it as an auto-upload; it's actually just the existing saved reference photos, same as before);
+  auto-created invoices (`JobDetail.tsx` + `Field.tsx`, on job completion) now default to **Draft** instead of **Sent** — "Sent" was a lie, nothing is
+  actually emailed/texted since SendGrid/Twilio aren't connected, and the client asked exactly this question ("does Sent mean it was automatically
+  sent?"). Declined to build: mouse-wheel-scroll-changes-value on custom comboboxes (native `<select>` behavior vs. our SearchableSelect component,
+  not a bug — forcing scroll-to-change on a searchable list risks accidental selection changes while scrolling). `npm run build` clean in both `/`
+  and `/backend` throughout this entire batch. **Not yet pushed** — pending the user's go-ahead per this repo's push policy; only the top-header nav
+  redesign remains, blocked on the client's answer to the scope question already sent.
+- **2026-10-06 (2 more videos)** — one video was a tour of their old ServiceWorks software's Settings/Estimation/Invoice template config (not a bug
+  report, kept as reference material, no action). Two real items: (1) "we're not able to drag and drop jobs and move them on different orders" on
+  **Dispatch Board** + a Thanksgiving example (consolidate a week's recurring jobs into 2 days, asking permanent-vs-temporary) — traced this to
+  Dispatch Board never having had an orderable per-tech job list at all (only drag-to-assign-a-job-to-a-tech); the actual drag-reorder + exact
+  "permanent or temporary" prompt the client described has existed since 2026-09-25 on **Schedule › day view**'s Route order dialog, confirmed still
+  working live. Rather than duplicate that whole feature on Dispatch Board, each tech row there now links straight to it ("X jobs today — reorder in
+  Schedule"). (2) "Admin view... just reversed back to the dashboard, doesn't really do anything... always have it present... toggle back and forth...
+  highlighted" — the existing "Admin View" button on Technician Field (`Field.tsx`) only ever navigated away to `/dashboard`; replaced with a real
+  in-place **Tech View / Admin View** toggle (Tech View = `jobsApi.mine()`, this login's own jobs, the prior default; Admin View = `jobsApi.list()`,
+  every job — same source the desktop Jobs page uses) visible to everyone on that page, not gated to admins-previewing like the old button was. Added
+  the same Tech View / Admin View toggle to the desktop Jobs & Dispatch page too (next to the Technician filter — Admin View resets Technician + Job
+  Type to All, Tech View returns to the signed-in user, matching the existing 2026-09-25 default). Verified live both ways on both pages. `npm run
+  build` clean. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, Office 365 email video)** — client confirmed SMTP server/port/user/SSL (`smtp.office365.com:587`,
+  `Service@poolsupplyatlanta.com`) but the password is still pending, so built everything that doesn't need it yet. New
+  `backend/src/lib/mailer.ts` (nodemailer): `sendMail()`/`notifyBusinessOfPayment()` both throw/no-op with an honest "Email isn't set up yet — ask for
+  the SMTP password" instead of pretending to send — real sending starts the moment `SMTP_PASSWORD` is added to the environment, no further code
+  change needed. Invoices had no public customer-facing page at all (only Estimates did) — added `invoices.payment_token` (migration
+  `20261006110000`, mirrors `estimates.approval_token`), `GET/POST /api/public/invoices/:token` (view + Authorize.net Accept.js pay, same no-login
+  pattern as `public.ts`'s estimate routes), and `src/pages/PublicInvoice.tsx` at `/invoice/:token`. Wired real "Send via Email" on both
+  InvoiceDetail.tsx and EstimateDetail.tsx (`POST /api/invoices/:id/send-email` and `/api/invoices/estimates/:id/send-email`) — EstimateDetail's old
+  `mailto:` "Email Customer" fallback and its "no automatic email delivery yet" disclaimer are gone, replaced with the real send + inline
+  success/error state. "Send via SMS" on both pages is now honestly disabled ("Needs a Twilio account — not connected yet") instead of a silent dead
+  button. A successful invoice payment (both the existing authenticated Collect Payment flow and the new public pay page) now emails
+  `NOTIFY_EMAIL` (defaults to the SMTP account itself, no separate tenant field exists yet) — best-effort, never blocks a real payment. Exported
+  `taxedTotal` from `invoicing.ts` for reuse in `public.ts` so the public invoice total always matches the authenticated one exactly. Verified live on
+  local dev against real prod data: public invoice page renders a real invoice's line items/totals correctly (confirmed via curl too), both "Send via
+  Email" buttons show the exact honest error with no password configured, "Send via SMS" renders disabled. Could not test an actual card charge
+  (Accept.js needs HTTPS, not available on localhost — same known limitation as Collect Payment). `npm run build` clean in both `/` and `/backend`.
+  **Not yet pushed** — pending the user's go-ahead. Sent the dev a short SMS draft asking the client for the SMTP password + a Twilio account.
+- **2026-10-06 (same day, follow-up — client's "Notification Preference" video + 3 screenshots of their old ServiceWorks config)** — the
+  screenshots show exactly 6 notification toggles ON there: Approved Estimation, Tech Enroute, Invoice Email, Custom Estimation Email, Trip
+  Complete, Tech Arrival. Invoice Email / Custom Estimation Email map to the "Send via Email" buttons just built above (manual by design — see
+  that entry's reasoning about not auto-sending an unreviewed Draft invoice). Built the 3 that are genuinely new and automatic: **Tech Enroute**,
+  **Tech Arrival**, **Trip Complete** are now real customer emails (`mailer.ts`'s new `notifyCustomerOfJobEvent()`), fired from the one generic
+  `PATCH /api/jobs/:id` route (`backend/src/routes/jobs.ts`) that both JobDetail.tsx and Field.tsx already funnel every status change through —
+  keyed off `en_route_at`/`arrived_at` being set or `stage === "completed"` being in the request body, so it fires regardless of which page
+  triggered it, skips silently if the job's customer has no email on file, and never blocks the job update itself (best-effort, same pattern as
+  the payment notification). **Approved Estimation** — client's own words, "that's kind of an important one" — now also sends a real email to
+  the business (`notifyBusinessOfEstimateApproval()`, wired into `public.ts`'s existing estimate-approval route) alongside the pre-existing in-
+  app Notifications-bell alert. All of this shares the same SMTP-password gate as the rest of today's email work — built and wired now, silently
+  no-ops until the password exists. Verified the job-status trigger live against a real job (toggled `en_route_at` via the real authenticated API,
+  got a clean 200, reverted it back to null) — did not live-test the estimate-approval email since that route changes a real estimate's status,
+  not something to do against live client data; the code is a direct mirror of the already-verified payment-notification pattern. `npm run build`
+  clean in `/backend`. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, Dialpad video + 5 screenshots of their actual Dialpad admin panel)** — client was confused navigating Dialpad's own
+  Integrations page (Salesforce/Slack/Zoom/etc., all pre-built named connectors, none of them "a custom CRM"), asking what to pick. The
+  screenshots revealed the real answer and it's much simpler than the 2026-10-02 entry assumed (that one guessed a Dialpad API key + webhooks
+  would be needed): Dialpad's **CTI Chrome Extension** is already **Enabled** on their account (confirmed in the screenshots, matches the
+  client's own "that's already enabled that we use"), and its "Configure Chrome CTI" page has a **Customized Domains** section — add this
+  CRM's domain there and the extension auto-detects phone numbers on our pages and adds click-to-call, no API key or backend integration
+  needed at all. **Found and fixed a real gap that would have silently defeated this**: every "Call"/phone-number control in the app
+  (Customers list icon, CustomerDetail's Call button, JobDetail's Call Customer button) was a `<button onClick={() => window.location.href =
+  'tel:...'}>`  — works fine on a real click, but has no `href` in the DOM, so a CTI extension scanning the page for `tel:` links (which is how
+  these generally work) would never see it. Directory.tsx already did this right (real `<a href="tel:...">`); converted the other three to
+  match (`asChild` + an anchor inside the existing `Button`, same look, same click behavior), and added real `tel:` links to two places that
+  had none before (Inventory's Vendors tab phone column, Invoice/Estimate "Client Details" phone line). Updated the existing Settings ›
+  Integrations Dialpad card's description (a single-row DB update, not a migration — it's seed-style copy, not schema) to explain the real
+  path instead of "needs an API key". Verified live: Customers list and CustomerDetail both now render real `a[href="tel:...]"` elements
+  (checked via DOM query against real production data). `npm run build` clean in `/`. Logged the exact 2-step action (Domain Name
+  `pool-brayne.vercel.app`, Service Name `clearpoolcrm`, under Office › Integrations › CTI Chrome Extension › Options › Manage Settings) in
+  CLIENT_REQUESTS.md #11 for the client to do themselves — this is entirely a Dialpad-admin-panel action, nothing left for us to build for
+  click-to-call itself. Call **logging** into the CRM (a history of calls made/received, not just dialing) would still need Dialpad's real API
+  and a key, kept as a separate, smaller, lower-priority follow-up. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, "Other Reminders" video + 5 screenshots)** — two real gaps, one deliberate non-build. (1) CustomerDetail's "Other
+  Reminders" card only had Mark Done / Delete, no way to view or correct what was actually saved ("need to be a way to see or click on it here to
+  see what this other reminder is") — clicking a reminder row now reopens the existing Add-Reminder dialog pre-filled and editable (new backend
+  `PATCH /api/reports/reminders/:id`, `reportsApi.updateReminder`); same fix applied to the new tab below since both use the identical dialog
+  pattern. (2) "I would add another tab between estimates and tasks and put other reminders right here" — Invoicing.tsx now has an **Other
+  Reminders** tab in exactly that position (`order-2`, between Estimates and Tasks), reusing Reports › Reminders' same data/30-60-90-All filter/
+  Add dialog, plus a real `tel:` Call link per row ("we have to call these people and remind them about their future jobs"). (3) Declined to
+  literally do "get rid of leads here and make it other reminders" on the Pipeline board — the client's own very next sentence in the same video
+  gave the concrete, non-destructive alternative actually built in (2), and deleting/renaming the Pipeline's real "Lead" stage (sales leads before
+  they become a job) is a bigger, more destructive change than one line implied; confirmed 0 real jobs currently sit in Lead status in production
+  (low risk either way) but left it alone and logged the reasoning in CLIENT_REQUESTS.md for the client to weigh in on if they actually want it
+  gone. Verified both fixes live against real production data (Aaron Baldwin's "Salt Cell Cleaning" reminder, both from CustomerDetail and the new
+  Invoicing tab) — edit dialog opens correctly pre-filled in both places, closed without saving to avoid mutating real data. `npm run build` clean
+  in both `/` and `/backend`. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, "per-line sales tax" video)** — tax was purely derived from `item_type` (labor untaxed, material taxed at 8.25%, see
+  Architecture > Labor vs materials); client wants a manual per-SKU override on top of that default, on POS, Estimates, and Invoices alike. Added
+  a real `taxable boolean` column to `estimate_line_items`, `invoice_line_items`, and `pos_order_items` (migration `20261006120000`, backfilled
+  from the existing item_type/catalog rule so nothing changes until someone flips the new toggle). POS already computed its real tax from a
+  per-cart-item `taxable` flag (sourced from `inventory_items.taxable`) — it just had no UI to override it; added a **Taxable / Tax-exempt**
+  toggle next to "Return this item" on each cart line (the existing whole-sale Tax checkbox from 2026-09-30 is unchanged, per the client's "leave
+  this one here for the subtotal"). Estimates/Invoices needed the bigger lift: `LineItemsEditor.tsx` (shared by both) gained the same toggle per
+  line, defaulting to the Material/Labor rule but fully overridable, synced when switching a line's Material/Labor type or picking from
+  inventory; `taxedTotal()` (backend/invoicing.ts, used by every total/charge) and the matching client-side calcs in EstimateDetail.tsx,
+  InvoiceDetail.tsx (incl. its per-job bulk-invoice breakdown), PublicEstimate.tsx and PublicInvoice.tsx all now sum by real `taxable` instead of
+  the item_type rule alone; the printed document flags a line with a small badge only when its tax doesn't match the type default, so a normal
+  estimate looks unchanged. Verified live: POS cart's new toggle flips a real item between Taxable/Tax-exempt on local dev. `npm run build` clean
+  in both `/` and `/backend`. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, "top search not working" video + screenshot)** — the topbar search box (`AppShell.tsx`) was pure decoration since it
+  was first built — no `value`/`onChange` at all, confirmed via the client's own screenshot (typed "john", nothing happened) and the file's own
+  "Deliberately out of scope" note. Built it for real: new `GET /api/search?q=` (`backend/src/routes/search.ts`) searches customers (name/phone/
+  address/email), jobs (description/type/customer name), estimates and invoices (number/customer name) in parallel, capped at 5 each; the topbar
+  input is now debounced (300ms, min 2 chars) and shows a grouped dropdown underneath, click a result to go straight to that record, closes on
+  Escape or a click outside. Verified live on real production data exactly reproducing the client's own example: typing "john" returns "John
+  Certusi" and other matching customers plus a "Weekly Maintenance — JOHN Mccollum" job, clicking a customer result navigates to their detail page.
+  `npm run build` clean in both `/` and `/backend`. **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, "map doubled up customers" video)** — "today's date is doubling up all the customers on the recurrence... I go to the
+  next day, it does not double up" traced to a real, confirmed production bug: `catchUpOccurrences()` (2026-09-30, self-heals a stalled recurring
+  series by generating any overdue occurrence on the next `GET /api/jobs`/`mine/active` call) checked "does this occurrence already exist" then
+  inserted if not, as two separate statements with no locking -- a classic check-then-act race. Two requests landing close together (two tabs, or
+  two components on the same page both loading jobs) could both pass the check before either committed, each creating a real `jobs` row for the
+  same series+date. Confirmed directly on prod: 19 duplicate pairs, every one on today or yesterday (exactly where catch-up actually runs; future
+  dates stay pure projections and can't race). Fixed at both levels: migration `20261006130000` adds a partial unique index on
+  `(recurring_job_id, scheduled_date)` and safely removes the newer row of each existing duplicate pair first (same safety rule
+  `DELETE /api/jobs/:id` already uses -- skips and logs any pair with a real invoice/estimate/parts link instead of deleting it); `generateOccurrence()`
+  (backend/src/routes/recurringJobs.ts) now inserts with `on conflict do nothing` against that index, so the loser of any future race is a harmless
+  no-op instead of a duplicate row. Verified: 0 duplicate pairs remain, index confirmed present. `npm run build` clean in `/backend`. **Not yet
+  pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, "Non-Inventory items" text + ServiceWorks screenshots)** — client's example: "labor, shipping and miscellaneous items are
+  examples of non-inventory items", shown via ServiceWorks' "Inventory Type: Inventory / Non-Inventory" dropdown on their Add Item form. We already
+  treated category="Labor"/"Services" as non-stocked (`isNonStockCategory`, backend/src/routes/inventory.ts) but only those two literal category
+  names qualified -- a "Shipping Fee" or "Disposal Fee" SKU in any other category still got tracked as real stock. Generalized: new
+  `inventory_items.is_inventory boolean` column (migration `20261006140000`, backfilled false for existing Labor/Services items so nothing changes
+  for anyone until they touch the new field), a real **Inventory Type** dropdown (Inventory / Non-Inventory) on both Add Product and Edit Product
+  in Inventory.tsx, and the Catalog list's "Non-inventory" badge / Low-Stock report / Out-Low status calc all now check `is_inventory` first
+  (category-based labor/services check kept as a fallback, so nothing already relying on it changes). A received small xlsx
+  ("CRM.LINEITEMS.3RDCATEGORY.xlsx", a short "MAINTENANCE LINE ITEMS" list of chemical SKUs) came in in the same batch with no instruction attached
+  to it yet -- noted, not acted on; ask the client what it's for before building anything from it. `npm run build` clean in both `/` and `/backend`.
+  **Not yet pushed** — pending the user's go-ahead.
+- **2026-10-06 (same day, follow-up: the xlsx's instruction arrived + "profile Save Changes / Upload Logo not functional")** — the file from the
+  prior entry turned out to have its instruction after all: a 3rd line-item category "Maintenance" (alongside Material/Labor) on Job/Estimate/
+  Invoice line items, pre-populated with the client's weekly-maintenance priority chemical SKUs. All 8 SKU codes in the file matched real catalog
+  items by direct lookup (the file's other 6 "PSA - Maintenance..." lines don't match any real SKU/name here, so only the real ones were tagged).
+  New `inventory_items.maintenance_priority boolean` (migration `20261006150000`) flags those 8 items; `LineItemsEditor.tsx` (shared by Job/
+  Estimate/Invoice) got a 3rd Material/Labor/**Maintenance** option whose inventory picker filters by that flag instead of the labor/material
+  category split. Separately: "under profile the Save Changes is not functional. The upload logo is not Functional" -- Save Changes (Settings >
+  Company) actually did save (confirmed via network request, real 200), it just gave zero visual feedback either way, which reads as "broken" --
+  now shows Saving.../Saved/an error state. Upload Logo had no handler at all and `tenants` had no column for it (the tracked gap since the
+  2026-09-30 QA sweep) -- now a real file picker, uploads to the `job-attachments` bucket (same pattern as every other upload in the app), saves
+  the URL to a new `tenants.logo_url` column (migration `20261006160000`), and displays the real logo in place of the initials avatar once set.
+  Verified live: Save Changes' "Saved" confirmation observed appearing ~1.7s after click (needed a tight polling loop to catch it inside its 3s
+  display window -- a naive single delayed check kept missing it, not a product bug). `npm run build` clean in both `/` and `/backend`. **Not yet
+  pushed** — pending the user's go-ahead.

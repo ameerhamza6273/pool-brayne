@@ -17,11 +17,16 @@ export type EstimateAttachment ={ id: string; estimate_id: string; url: string; 
 export type LineItemInput = {
   description: string;
   sku?: string | null;
-  itemType?: "material" | "labor";
+  // Client video 2026-10-06: 3rd category "Maintenance" alongside Material/Labor, for weekly
+  // maintenance priority chemical SKUs.
+  itemType?: "material" | "labor" | "maintenance";
   quantity: number;
   cost?: number;
   rate: number;
   notes?: string | null;
+  // Client video 2026-10-06: per-line tax override (Y/N icon), defaults to the item_type rule
+  // (labor untaxed, material taxed) when left unset.
+  taxable?: boolean;
 };
 
 export type EstimateTemplate = { id: string; name: string; line_items: LineItemInput[] };
@@ -32,8 +37,20 @@ export type PublicEstimate = {
     status: string; down_payment: number; approved_at: string | null;
     customers: { name: string; address: string | null; phone: string | null } | null;
   };
-  lineItems: { description: string; sku: string | null; item_type: string; quantity: number; rate: number; amount: number; notes: string | null }[];
+  lineItems: { description: string; sku: string | null; item_type: string; quantity: number; rate: number; amount: number; notes: string | null; taxable?: boolean }[];
   business: Business | null;
+};
+
+// Client video 2026-10-06: public, no-login invoice view/pay page — same shape as PublicEstimate.
+export type PublicInvoice = {
+  invoice: {
+    id: string; number: string; issue_date: string; due_date: string | null; status: string;
+    down_payment: number; paid_date: string | null;
+    customers: { name: string; address: string | null; phone: string | null } | null;
+  };
+  lineItems: { description: string; sku: string | null; item_type: string; quantity: number; rate: number; amount: number; notes: string | null; taxable?: boolean }[];
+  business: Business | null;
+  total: number;
 };
 
 type Business = {
@@ -54,6 +71,9 @@ export type InvoiceDetailBundle = {
   job: { scheduled_date: string | null; created_at: string; completed_at: string | null; description: string | null; tech_notes: string | null; type: string } | null;
   photos: { id: string; url: string; label: string | null }[];
   serviceNotes: { text: string; author: string | null; created_at: string }[];
+  // Client doc 2026-10-05: a combined/bulk invoice has no single job (invoice.job_id is null) --
+  // these are the real jobs its line items (grouped by line.job_id) came from, oldest first.
+  bulkJobs: { id: string; type: string; description: string | null; scheduled_date: string | null; tech_notes: string | null }[];
 };
 
 export const invoicingApi = {
@@ -76,6 +96,11 @@ export const invoicingApi = {
     jobDescription?: string | null;
     lineItems?: LineItemInput[];
   }) => api.post<Invoice>("/api/invoices", data),
+
+  // Client doc 2026-10-05: bulk/"Combine Completed Jobs" invoices now copy each job's real line
+  // items server-side (grouped by job_id) instead of one flattened line per job client-side.
+  createBulk: (data: { customerId: string; jobIds: string[]; number: string; issueDate: string }) =>
+    api.post<Invoice>("/api/invoices/bulk", data),
 
   collectPayment: (id: string, method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }) =>
     api.patch<Invoice>(`/api/invoices/${id}/collect-payment`, { method, opaqueData }),
@@ -155,4 +180,14 @@ export const invoicingApi = {
   publicEstimate: (token: string) => api.get<PublicEstimate>(`/api/public/estimates/${token}`),
   respondToEstimate: (token: string, decision: "Accepted" | "Declined") =>
     api.post<{ id: string; status: string; approved_at: string | null }>(`/api/public/estimates/${token}/respond`, { decision }),
+
+  // Public "pay this invoice" link, same no-login pattern as the estimate approval link above.
+  publicInvoice: (token: string) => api.get<PublicInvoice>(`/api/public/invoices/${token}`),
+  payInvoicePublic: (token: string, opaqueData: { dataDescriptor: string; dataValue: string }) =>
+    api.post<Invoice>(`/api/public/invoices/${token}/pay`, { opaqueData }),
+
+  // Client video 2026-10-06: real "Send via Email" — fails with a clear message (not a silent
+  // no-op) until the SMTP password is configured on the server.
+  sendInvoiceEmail: (id: string) => api.post<{ sent: true }>(`/api/invoices/${id}/send-email`, {}),
+  sendEstimateEmail: (id: string) => api.post<{ sent: true }>(`/api/invoices/estimates/${id}/send-email`, {}),
 };

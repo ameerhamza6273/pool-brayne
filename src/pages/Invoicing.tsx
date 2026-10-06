@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Layers, ClipboardList, Camera, X, Pencil } from "lucide-react";
+import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertTriangle, FileText, ArrowRight, Copy, Layers, ClipboardList, Camera, X, Pencil, Bell, Phone, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { matchesQuery } from "@/lib/search";
@@ -11,6 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { invoicingApi, type Estimate, type EstimateTemplate } from "@/lib/api/invoicing";
+import { reportsApi, type CustomerReminder } from "@/lib/api/reports";
+import ReminderLabelSelect from "@/components/ReminderLabelSelect";
 import { customersApi } from "@/lib/api/customers";
 import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { settingsApi } from "@/lib/api/settings";
@@ -81,7 +83,7 @@ export default function Invoicing() {
   const [searchParams] = useSearchParams();
   // Client SMS 2026-09-09: Vendor Bills moved out of this page to Inventory > Vendor Tools
   // (under Purchase Orders) -- "vendor-bills" is no longer a tab here.
-  const validTabs = ["all", "estimates", "tasks", "recurring", "payments"];
+  const validTabs = ["all", "estimates", "other-reminders", "tasks", "recurring", "payments"];
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
     return tab && validTabs.includes(tab) ? tab : "all";
@@ -112,6 +114,17 @@ export default function Invoicing() {
   const [newTaskPhotos, setNewTaskPhotos] = useState<string[]>([]);
   const [taskPhotoUploading, setTaskPhotoUploading] = useState(false);
 
+  // Client video 2026-10-06: "I would add another tab between estimates and tasks and put other
+  // reminders right here" -- same customer_reminders data Reports > Reminders already shows, now
+  // also here where staff work day-to-day; "other reminders will be the same thing as leads...
+  // we have to call these people" -- each row gets a real tel: Call link.
+  const [reminders, setReminders] = useState<CustomerReminder[]>([]);
+  const [remindersRange, setRemindersRange] = useState<"30" | "60" | "90" | "all">("all");
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
+  const [reminderDraft, setReminderDraft] = useState({ customerId: "", label: "", frequencyMonths: "", nextDue: "" });
+  const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
   useEffect(() => {
     const tab = searchParams.get("tab");
     if (tab && validTabs.includes(tab)) setActiveTab(tab);
@@ -120,7 +133,7 @@ export default function Invoicing() {
 
   const loadInvoicing = useCallback(async () => {
     setIsLoading(true);
-    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, inventoryData, tasksData, techsData, templatesData] = await Promise.all([
+    const [invoicesData, recurringData, paymentsData, customersData, settingsData, estimatesData, inventoryData, tasksData, techsData, templatesData, remindersData] = await Promise.all([
       invoicingApi.list(),
       invoicingApi.recurringBilling(),
       invoicingApi.payments(),
@@ -131,6 +144,7 @@ export default function Invoicing() {
       tasksApi.list(),
       profilesApi.list(),
       invoicingApi.estimateTemplates(),
+      reportsApi.reminders(),
     ]);
     setInvoices((invoicesData ?? []) as Invoice[]);
     setRecurringBilling((recurringData ?? []) as RecurringBilling[]);
@@ -142,6 +156,7 @@ export default function Invoicing() {
     setTasks(tasksData ?? []);
     setTechs((techsData ?? []).map((t) => ({ id: t.id, name: t.name })));
     setEstimateTemplates(templatesData ?? []);
+    setReminders(remindersData ?? []);
     setIsLoading(false);
   }, []);
 
@@ -222,6 +237,49 @@ export default function Invoicing() {
     setNewEstimate({ customerId: "", issueDate: "", expiryDate: "", amount: "", downPayment: "50", jobDescription: "" });
     setNewEstimateLines([]);
     setNewEstimateOpen(false);
+    loadInvoicing();
+  };
+
+  const remindersFiltered = remindersRange === "all"
+    ? reminders
+    : reminders.filter((r) => r.next_due <= localKey(new Date(Date.now() + Number(remindersRange) * 86400000)));
+
+  const handleSaveReminder = async () => {
+    if (!reminderDraft.label || !reminderDraft.frequencyMonths || !reminderDraft.nextDue) return;
+    if (editingReminderId) {
+      await reportsApi.updateReminder(editingReminderId, {
+        label: reminderDraft.label,
+        frequencyMonths: parseInt(reminderDraft.frequencyMonths, 10),
+        nextDue: reminderDraft.nextDue,
+      });
+    } else {
+      if (!reminderDraft.customerId) return;
+      await reportsApi.addReminder({
+        customerId: reminderDraft.customerId,
+        label: reminderDraft.label,
+        frequencyMonths: parseInt(reminderDraft.frequencyMonths, 10),
+        nextDue: reminderDraft.nextDue,
+      });
+    }
+    setReminderDraft({ customerId: "", label: "", frequencyMonths: "", nextDue: "" });
+    setEditingReminderId(null);
+    setReminderOpen(false);
+    loadInvoicing();
+  };
+
+  const handleOpenReminderEdit = (r: CustomerReminder) => {
+    setEditingReminderId(r.id);
+    setReminderDraft({ customerId: r.customer_id, label: r.label, frequencyMonths: String(r.frequency_months), nextDue: r.next_due });
+    setReminderOpen(true);
+  };
+
+  const handleMarkReminderDone = async (id: string) => {
+    await reportsApi.markReminderDone(id);
+    loadInvoicing();
+  };
+
+  const handleDeleteReminder = async (id: string) => {
+    await reportsApi.deleteReminder(id);
     loadInvoicing();
   };
 
@@ -356,18 +414,11 @@ export default function Invoicing() {
     const selectedJobs = bulkJobs.filter((j) => bulkSelected.has(j.id));
     if (!bulkForm.customerId || selectedJobs.length === 0) return;
     const number = `INV-${bulkForm.end.replace(/-/g, "")}-${String(invoices.length + 1).padStart(3, "0")}`;
-    const invoice = await invoicingApi.create({
+    const invoice = await invoicingApi.createBulk({
       customerId: bulkForm.customerId,
+      jobIds: selectedJobs.map((j) => j.id),
       number,
       issueDate: bulkForm.end,
-      dueDate: null,
-      amount: 0,
-      status: "Draft",
-      lineItems: selectedJobs.map((j) => ({
-        description: `${j.type} — ${j.scheduled_date ?? j.created_at.slice(0, 10)}`,
-        quantity: 1,
-        rate: j.amount,
-      })),
     });
     setBulkForm({ customerId: "", start: "", end: "" });
     setBulkOpen(false);
@@ -795,16 +846,22 @@ export default function Invoicing() {
           <TabsTrigger value="estimates" className="order-1 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Copy className="w-4 h-4" /> {t("Estimates")}
           </TabsTrigger>
-          <TabsTrigger value="tasks" className="order-2 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+          {/* Client video 2026-10-06: "I would add another tab between estimates and tasks and
+              put other reminders right here" -- same customer_reminders data as Reports >
+              Reminders / CustomerDetail's Other Reminders card, surfaced where staff already work. */}
+          <TabsTrigger value="other-reminders" className="order-2 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+            <Bell className="w-4 h-4" /> {t("Other Reminders")}
+          </TabsTrigger>
+          <TabsTrigger value="tasks" className="order-3 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <ClipboardList className="w-4 h-4" /> {t("Tasks")}
           </TabsTrigger>
-          <TabsTrigger value="recurring" className="order-3 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+          <TabsTrigger value="recurring" className="order-4 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Repeat className="w-4 h-4" /> {t("Recurring")}
           </TabsTrigger>
-          <TabsTrigger value="all" className="order-4 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+          <TabsTrigger value="all" className="order-5 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <FileText className="w-4 h-4" /> {t("Customer Invoices")}
           </TabsTrigger>
-          <TabsTrigger value="payments" className="order-5 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
+          <TabsTrigger value="payments" className="order-6 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <CreditCard className="w-4 h-4" /> {t("Payments")}
           </TabsTrigger>
         </TabsList>
@@ -905,6 +962,87 @@ export default function Invoicing() {
                 </tbody>
               </table>
             </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="other-reminders" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex border border-[#E2E8F0] rounded-lg overflow-hidden text-sm">
+              {(["30", "60", "90", "all"] as const).map((r) => {
+                const active = remindersRange === r;
+                return (
+                  <button key={r} onClick={() => setRemindersRange(r)} className={`px-3 py-1.5 border-l first:border-l-0 border-[#E2E8F0] ${active ? "bg-[#0891B2] text-white" : "text-[#0F172A] hover:bg-[#F8FAFC]"}`}>
+                    {r === "all" ? t("All") : `${r} ${t("days")}`}
+                  </button>
+                );
+              })}
+            </div>
+            <Dialog open={reminderOpen} onOpenChange={(open) => { setReminderOpen(open); if (!open) { setEditingReminderId(null); setReminderDraft({ customerId: "", label: "", frequencyMonths: "", nextDue: "" }); } }}>
+              <DialogTrigger asChild>
+                <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("Add Reminder Type")}</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{editingReminderId ? t("Edit Reminder") : t("Add Reminder Type")}</DialogTitle></DialogHeader>
+                <div className="space-y-4 pt-2">
+                  {!editingReminderId && (
+                    <div>
+                      <label className="text-sm font-medium text-[#0F172A]">{t("Customer")}</label>
+                      <SearchableSelect value={reminderDraft.customerId} onChange={(v) => setReminderDraft((p) => ({ ...p, customerId: v }))} placeholder={t("Select customer")} searchPlaceholder={t("Search customers...")} options={customerOptions} showSublabelWhenSelected />
+                    </div>
+                  )}
+                  <div><label className="text-sm font-medium text-[#0F172A]">{t("Label")}</label><ReminderLabelSelect value={reminderDraft.label} onChange={(label) => setReminderDraft((p) => ({ ...p, label }))} /></div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><label className="text-sm font-medium text-[#0F172A]">{t("Frequency (months)")}</label><Input type="number" className="mt-1" placeholder="e.g. 4" value={reminderDraft.frequencyMonths} onChange={(e) => setReminderDraft((p) => ({ ...p, frequencyMonths: e.target.value }))} /></div>
+                    <div><label className="text-sm font-medium text-[#0F172A]">{t("Next Due")}</label><Input type="date" className="mt-1" value={reminderDraft.nextDue} onChange={(e) => setReminderDraft((p) => ({ ...p, nextDue: e.target.value }))} /></div>
+                  </div>
+                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveReminder}>{t("Save")}</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <tr>
+                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Customer")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Reminder Type")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Frequency")}</th>
+                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Next Due")}</th>
+                  <th className="text-right py-3 px-4 font-medium text-[#64748B]">{t("Actions")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {remindersFiltered.map((r) => {
+                  const overdue = new Date(r.next_due) <= new Date();
+                  return (
+                    <tr key={r.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => handleOpenReminderEdit(r)}>
+                      <td className="py-3 px-4 text-[#0F172A] font-medium">{r.customers?.name ?? "—"}</td>
+                      <td className="py-3 px-4 text-[#0F172A]">{r.label}</td>
+                      <td className="py-3 px-4 text-[#64748B]">{t("every")} {r.frequency_months}{t("mo")}</td>
+                      <td className={`py-3 px-4 ${overdue ? "text-[#DC2626] font-medium" : "text-[#64748B]"}`}>{r.next_due}{overdue ? ` · ${t("overdue")}` : ""}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex items-center justify-end gap-1">
+                          {r.customers?.phone && (
+                            <a href={`tel:${r.customers.phone}`} onClick={(e) => e.stopPropagation()} className="p-1.5 rounded hover:bg-[#F1F5F9] text-[#0891B2]" title={t("Call")}>
+                              <Phone className="w-4 h-4" />
+                            </a>
+                          )}
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleMarkReminderDone(r.id); }} title={t("Mark Serviced")}>
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleDeleteReminder(r.id); }} title={t("Delete")}>
+                            <Trash2 className="w-3.5 h-3.5 text-[#DC2626]" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {remindersFiltered.length === 0 && (
+                  <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{reminders.length === 0 ? t("No reminder types set up yet") : t("No reminders due in this range")}</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </TabsContent>
 

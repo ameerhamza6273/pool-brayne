@@ -74,6 +74,7 @@ export const inventoryApi = {
     subcategory?: string | null;
     subSubcategory?: string | null;
     subSubSubcategory?: string | null;
+    isInventory?: boolean;
   }) => api.post<InventoryItem>("/api/inventory/items", data),
 
   updatePricing: (itemId: string, unitCost: number, price: number | null) =>
@@ -103,6 +104,7 @@ export const inventoryApi = {
       subcategory?: string | null;
       subSubcategory?: string | null;
       subSubSubcategory?: string | null;
+      isInventory?: boolean;
     },
   ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
 

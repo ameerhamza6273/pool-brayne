@@ -305,13 +305,21 @@ export default function Customers() {
                     <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${c.lifetime_value.toLocaleString()}</td>
                     <td className="text-center py-3 px-4">
                       <div className="flex items-center justify-center gap-1">
-                        <button
-                          className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2] disabled:opacity-30"
-                          disabled={!c.phone}
-                          onClick={(e) => { e.stopPropagation(); if (c.phone) window.location.href = `tel:${c.phone}`; }}
-                        >
-                          <Phone className="w-4 h-4" />
-                        </button>
+                        {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call
+                            extension detects real `tel:` links, not JS button handlers. */}
+                        {c.phone ? (
+                          <a
+                            href={`tel:${c.phone}`}
+                            className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        ) : (
+                          <button className="p-1.5 rounded text-[#0891B2] opacity-30" disabled>
+                            <Phone className="w-4 h-4" />
+                          </button>
+                        )}
                         <button
                           className="p-1.5 rounded hover:bg-[#F8FAFC] text-[#0891B2] disabled:opacity-30"
                           disabled={!c.phone}
