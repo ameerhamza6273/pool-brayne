@@ -969,3 +969,18 @@ history was condensed into the structural sections above on 2026-09-10.)*
   Other Reminders tab, per-line sales tax, global search, the recurring-job map-duplication fix, Inventory Type, the Maintenance line-item
   category, and the Settings Save Changes/Upload Logo fixes). Confirmed live: Vercel deployment `125b2af` Ready/Production, Railway backend
   redeployed and Active (`Server listening` in its deploy logs) — both picked up the push automatically, no manual redeploy needed.
+- **2026-10-06 (full live QA pass on pool-brayne.vercel.app, before texting the client)** — every item from today's pushed batch re-verified
+  directly on production (not local dev): global search (typed "john" on the real topbar, got real Customers/Jobs results, click-through
+  navigated correctly), Invoicing > Other Reminders tab (real data, Edit Reminder dialog opens pre-filled), Inventory > Edit Product's
+  "Inventory Type" field present, Dialpad `tel:` links on Inventory > Vendors (5 real numbers) and the Customers list (48 real links), POS's
+  per-line Taxable/Tax-exempt toggle (added a real item to cart, toggled it, cleared the cart after — never checked out), the new Material/
+  Labor/**Maintenance** line-item type on a real "New Estimate" dialog (picking Maintenance correctly filtered the inventory picker down to
+  the client's priority SKUs: 005Tabs/005FirstAid/005Clarifier/etc. — closed without saving), Settings > Company's Save Changes "Saved"
+  confirmation (real save, confirmed appearing ~1.1s after click) and the Upload Logo file input (real `<input type=file>`, not clicked
+  through to avoid uploading a throwaway test image), the new public `/invoice/:token` pay page (real invoice, correct totals, no login),
+  "Send via Email" showing its honest SMTP-not-configured error on a real invoice, and Jobs > Map showing 19/19 stops across 4 techs with
+  zero duplicate customer names (matches the Dashboard's own "Today's Route" list exactly) -- the exact symptom from the "doubled up
+  customers" bug report, confirmed gone. Not independently re-tested (same reasoning as when each was built, nothing new): actual email/SMS
+  sending (still blocked on the SMTP password / no Twilio account), a real card charge (Accept.js needs a live purchase, not safe to fire for
+  a test), and the job-status auto-email triggers (would require mutating a real job's `en_route_at`/stage). Everything else: live, working,
+  ready for the client to be told about.
