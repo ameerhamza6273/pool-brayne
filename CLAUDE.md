@@ -965,3 +965,7 @@ history was condensed into the structural sections above on 2026-09-10.)*
   Verified live: Save Changes' "Saved" confirmation observed appearing ~1.7s after click (needed a tight polling loop to catch it inside its 3s
   display window -- a naive single delayed check kept missing it, not a product bug). `npm run build` clean in both `/` and `/backend`. **Not yet
   pushed** — pending the user's go-ahead.
+- **2026-10-06 (pushed 125b2af)** — with the user's go-ahead, committed and pushed this entire day's batch (email infra, Dialpad click-to-call,
+  Other Reminders tab, per-line sales tax, global search, the recurring-job map-duplication fix, Inventory Type, the Maintenance line-item
+  category, and the Settings Save Changes/Upload Logo fixes). Confirmed live: Vercel deployment `125b2af` Ready/Production, Railway backend
+  redeployed and Active (`Server listening` in its deploy logs) — both picked up the push automatically, no manual redeploy needed.
