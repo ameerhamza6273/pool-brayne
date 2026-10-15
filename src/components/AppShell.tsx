@@ -10,12 +10,17 @@ import { useLanguage } from "@/lib/language-context";
 import NotificationsPanel from "@/components/NotificationsPanel";
 import LanguageToggle from "@/components/LanguageToggle";
 import { searchApi, type GlobalSearchResult } from "@/lib/api/search";
+import { cn } from "@/lib/utils";
 
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import {
+  NavigationMenu, NavigationMenuList, NavigationMenuItem, NavigationMenuTrigger,
+  NavigationMenuContent, NavigationMenuLink, navigationMenuTriggerStyle,
+} from "@/components/ui/navigation-menu";
 
 type NavLink = { path: string; label: string; icon: typeof LayoutDashboard };
 type NavGroup = { label: string; icon: typeof LayoutDashboard; items: NavLink[] };
@@ -148,6 +153,19 @@ export default function AppShell() {
     setGlobalResults(null);
     navigate(path);
   };
+  // Client feedback 2026-10-15: "keep them both" -- top header nav added alongside the left
+  // sidebar (not replacing it), with the sidebar logo doubling as a collapse toggle. Persisted so
+  // it survives a reload.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("sidebar-collapsed") === "1"; } catch { return false; }
+  });
+  const toggleSidebarCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("sidebar-collapsed", next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  };
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   // Groups default open ("(collapsible fields)" per the client's spec — collapsible, not
   // collapsed-by-default).
@@ -177,19 +195,52 @@ export default function AppShell() {
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex">
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex flex-col w-64 bg-[#0C2A3A] text-white fixed h-screen z-40 print:hidden">
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-[#0891B2] flex items-center justify-center">
+      <aside
+        className={cn(
+          "hidden lg:flex flex-col bg-[#0C2A3A] text-white fixed h-screen z-40 print:hidden transition-[width] duration-150",
+          sidebarCollapsed ? "w-16" : "w-64"
+        )}
+      >
+        <div className={cn("border-b border-white/10", sidebarCollapsed ? "p-3" : "p-6")}>
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            title={sidebarCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
+            className={cn("flex items-center gap-3 w-full rounded-lg hover:bg-white/5 transition-colors", sidebarCollapsed ? "justify-center py-1" : "")}
+          >
+            <div className="w-10 h-10 rounded-lg bg-[#0891B2] flex items-center justify-center shrink-0">
               <Droplets className="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h1 className="font-bold text-lg tracking-tight">Clear Pool CRM</h1>
-              <p className="text-[10px] text-white/50 uppercase tracking-wider">Powered by Brayne AI</p>
-            </div>
-          </div>
+            {!sidebarCollapsed && (
+              <div className="text-left min-w-0">
+                <h1 className="font-bold text-lg tracking-tight truncate">Clear Pool CRM</h1>
+                <p className="text-[10px] text-white/50 uppercase tracking-wider truncate">Powered by Brayne AI</p>
+              </div>
+            )}
+          </button>
         </div>
 
+        {sidebarCollapsed ? (
+          <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto sidebar-scroll flex flex-col items-center">
+            {visibleFlatNavLinks.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  title={t(item.label)}
+                  className={cn(
+                    "flex items-center justify-center w-10 h-10 rounded-lg transition-colors",
+                    active ? "bg-[#0891B2]/20 text-[#67E8F9]" : "text-white/70 hover:text-white hover:bg-white/5"
+                  )}
+                >
+                  <Icon className="w-5 h-5 shrink-0" />
+                </Link>
+              );
+            })}
+          </nav>
+        ) : (
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto sidebar-scroll">
           {visibleNavSections.map((entry) => {
             if (!isGroup(entry)) {
@@ -246,20 +297,29 @@ export default function AppShell() {
             );
           })}
         </nav>
+        )}
 
-        <div className="p-4 border-t border-white/10">
+        <div className={cn("border-t border-white/10", sidebarCollapsed ? "p-2 flex justify-center" : "p-4")}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors text-left">
-                <Avatar className="w-8 h-8 border border-white/20">
-                  <AvatarFallback className="bg-[#0891B2] text-white text-xs">{user?.avatar || "BR"}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{user?.company || "Bryan's Pool Co"}</p>
-                  <p className="text-xs text-white/50">{user?.tenantId || "Tenant 001"}</p>
-                </div>
-                <ChevronDown className="w-4 h-4 text-white/50" />
-              </button>
+              {sidebarCollapsed ? (
+                <button title={user?.company || "Bryan's Pool Co"} className="rounded-lg hover:bg-white/5 transition-colors p-1">
+                  <Avatar className="w-8 h-8 border border-white/20">
+                    <AvatarFallback className="bg-[#0891B2] text-white text-xs">{user?.avatar || "BR"}</AvatarFallback>
+                  </Avatar>
+                </button>
+              ) : (
+                <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/5 transition-colors text-left">
+                  <Avatar className="w-8 h-8 border border-white/20">
+                    <AvatarFallback className="bg-[#0891B2] text-white text-xs">{user?.avatar || "BR"}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{user?.company || "Bryan's Pool Co"}</p>
+                    <p className="text-xs text-white/50">{user?.tenantId || "Tenant 001"}</p>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-white/50" />
+                </button>
+              )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               {!fieldOnly && <DropdownMenuItem onClick={() => navigate("/settings")}>{t("Company Settings")}</DropdownMenuItem>}
@@ -275,9 +335,90 @@ export default function AppShell() {
           flex item past the viewport, dragging the whole page (sidebar included) into a
           horizontal scroll -- min-w-0 lets it shrink so page-internal tables scroll within their
           own overflow-x-auto instead of blowing out the layout. */}
-      <div className="flex-1 lg:ml-64 print:ml-0 flex flex-col min-h-screen min-w-0">
-        {/* Desktop Top Bar */}
-        <header className="hidden lg:flex items-center gap-4 px-6 py-3 bg-white border-b border-[#E2E8F0] sticky top-0 z-30 print:hidden">
+      <div className={cn("flex-1 print:ml-0 flex flex-col min-h-screen min-w-0 transition-[margin] duration-150", sidebarCollapsed ? "lg:ml-16" : "lg:ml-64")}>
+        {/* Desktop Top Header Nav — client feedback 2026-10-15: "keep them both... add the top
+            header" (sidebar stays as-is, this is additive). Its own full-width row (not merged
+            into the search bar's row below): at this app's laptop-width breakpoint (lg: 1024px+)
+            10 nav items + search + notifications + avatar genuinely don't fit on one line without
+            squeezing something unreadable, and giving nav its own row also matches the client's
+            own ServiceWorks reference screenshot (a dedicated horizontal bar, not sharing a row
+            with search). Mirrors the same navSections the sidebar uses (single source of truth)
+            via a hover-opening dropdown per group. */}
+        <nav className="hidden lg:flex items-center px-6 h-11 bg-[#0C2A3A] border-b border-white/10 sticky top-0 z-30 print:hidden">
+          {/* Fix 2026-10-15: Root's bounding box spans the ENTIRE list (it wraps all 10 items), so
+              Radix's shared Viewport -- which positions the open dropdown relative to Root, not to
+              the hovered trigger -- always rendered the panel flush under the leftmost item no
+              matter which trigger was actually hovered. Invisible on a short 2-3 item demo nav
+              (Root is narrow enough that "under Root" looks like "under any item"), broken on a
+              wide one like ours. `viewport={false}` (added to ui/navigation-menu.tsx) opts out of
+              the shared panel so each Content positions itself relative to its own Item instead --
+              i.e. directly under the trigger that opened it. */}
+          <NavigationMenu viewport={false} className="flex-none">
+            <NavigationMenuList>
+              {visibleNavSections.map((entry) => {
+                if (!isGroup(entry)) {
+                  const active = isActive(entry.path);
+                  return (
+                    <NavigationMenuItem key={entry.path}>
+                      <Link
+                        to={entry.path}
+                        className={cn(
+                          navigationMenuTriggerStyle(),
+                          "h-8 bg-transparent text-sm text-white/70 hover:bg-white/10 hover:text-white focus:bg-white/10 focus:text-white",
+                          active && "bg-[#0891B2]/20 text-[#67E8F9]"
+                        )}
+                      >
+                        {t(entry.label)}
+                      </Link>
+                    </NavigationMenuItem>
+                  );
+                }
+                const groupActive = isGroupActive(entry);
+                return (
+                  <NavigationMenuItem key={entry.label} className="relative">
+                    <NavigationMenuTrigger
+                      className={cn(
+                        "h-8 bg-transparent text-sm text-white/70 hover:bg-white/10 hover:text-white focus:bg-white/10 focus:text-white data-[state=open]:bg-white/10 data-[state=open]:text-white",
+                        groupActive && "text-[#67E8F9]"
+                      )}
+                    >
+                      {t(entry.label)}
+                    </NavigationMenuTrigger>
+                    <NavigationMenuContent className="z-40 mt-[35px] overflow-hidden rounded-md border border-[#E2E8F0] bg-white shadow-lg">
+                      <ul className="grid w-[180px] gap-1 p-2">
+                        {entry.items.map((item) => {
+                          const Icon = item.icon;
+                          const active = isActive(item.path);
+                          return (
+                            <li key={item.path}>
+                              <NavigationMenuLink asChild>
+                                <Link
+                                  to={item.path}
+                                  className={cn(
+                                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                                    active ? "bg-[#0891B2]/10 text-[#0891B2] font-medium" : "text-[#0F172A] hover:bg-[#F8FAFC]"
+                                  )}
+                                >
+                                  <Icon className="w-4 h-4 shrink-0" />
+                                  {t(item.label)}
+                                </Link>
+                              </NavigationMenuLink>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </NavigationMenuContent>
+                  </NavigationMenuItem>
+                );
+              })}
+            </NavigationMenuList>
+          </NavigationMenu>
+        </nav>
+
+        {/* Desktop Top Bar — z-20 (below the nav row's z-30 and its dropdown's z-40) so an open
+            top-header dropdown always renders above this search bar instead of fighting it for
+            stacking order. */}
+        <header className="hidden lg:flex items-center gap-4 px-6 py-3 bg-white border-b border-[#E2E8F0] sticky top-11 z-20 print:hidden">
           <div className="flex-1 max-w-md relative" ref={globalSearchRef}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
             <Input

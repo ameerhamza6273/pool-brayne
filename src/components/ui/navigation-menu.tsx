@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils';
 
 const NavigationMenu = React.forwardRef<
   React.ElementRef<typeof NavigationMenuPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof NavigationMenuPrimitive.Root>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof NavigationMenuPrimitive.Root> & { viewport?: boolean }
+>(({ className, children, viewport = true, ...props }, ref) => (
   <NavigationMenuPrimitive.Root
     ref={ref}
     className={cn(
@@ -18,7 +18,14 @@ const NavigationMenu = React.forwardRef<
     {...props}
   >
     {children}
-    <NavigationMenuViewport />
+    {/* Fix 2026-10-15: the shared Viewport positions the open dropdown panel relative to Root's
+        OWN bounding box (which spans the full nav list, since Root wraps the whole List), not
+        the hovered trigger -- invisible on a short 2-3 item demo nav (Root is narrow enough that
+        "under Root" roughly equals "under any item"), but on a wide nav (ours has 10 items) every
+        dropdown rendered flush under the leftmost item regardless of which trigger was hovered.
+        Opting out (viewport=false) lets each Content position itself relative to its own Item
+        instead, so it always opens directly under the trigger that opened it. */}
+    {viewport && <NavigationMenuViewport />}
   </NavigationMenuPrimitive.Root>
 ));
 NavigationMenu.displayName = NavigationMenuPrimitive.Root.displayName;
@@ -69,7 +76,12 @@ const NavigationMenuContent = React.forwardRef<
   <NavigationMenuPrimitive.Content
     ref={ref}
     className={cn(
-      'left-0 top-0 w-full data-[motion^=from-]:animate-in data-[motion^=to-]:animate-out data-[motion^=from-]:fade-in data-[motion^=to-]:fade-out data-[motion=from-end]:slide-in-from-right-52 data-[motion=from-start]:slide-in-from-left-52 data-[motion=to-end]:slide-out-to-right-52 data-[motion=to-start]:slide-out-to-left-52 md:absolute md:w-auto ',
+      // The data-[motion=...] slide classes below only make sense with a shared Viewport (they
+      // slide based on index position relative to the previously-open item); with viewport=false
+      // each Content opens independently under its own trigger, so we use a plain state-based
+      // fade+zoom instead (same convention as ui/dropdown-menu.tsx) rather than a slide that has
+      // no meaningful "from" direction per item.
+      'left-0 top-0 w-full data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 md:absolute md:w-auto',
       className
     )}
     {...props}
