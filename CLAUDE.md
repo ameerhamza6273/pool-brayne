@@ -250,11 +250,13 @@ GPS; PoolBrayne's trucks use a different, API-less consumer tracker — see Inte
   authenticate — see safety rules). Fleet page just links out to `platform.gps7000.com`; no live
   position data flows into the app.
 - **Email (Office 365 SMTP)** — client provided server/port/user/SSL 2026-10-06
-  (`smtp.office365.com:587`, `Service@poolsupplyatlanta.com`); real sending (`backend/src/lib/mailer.ts`,
-  used by Invoice/Estimate "Send via Email" and the payment-notification email) is fully built and only
-  needs `SMTP_PASSWORD` set in `backend/.env` locally and in Railway's env vars for production —
-  no code change needed once it's added. `PUBLIC_APP_URL` (also in `backend/.env`) must point at the
-  real production frontend URL on Railway before links in those emails are correct in production.
+  (`smtp.office365.com:587`, `Service@poolsupplyatlanta.com`) and the password 2026-10-15 (video +
+  screenshot); real sending (`backend/src/lib/mailer.ts`, used by Invoice/Estimate "Send via Email"
+  and the payment-notification email) is now genuinely live — confirmed locally via
+  `isMailerConfigured()`, not a real send. `SMTP_PASSWORD` is set in local `backend/.env` and was
+  added to Railway's production env vars by the dev on 2026-10-15 (`SMTP_USER` must also exist there).
+  `PUBLIC_APP_URL` (also in `backend/.env`) must point at the real production frontend URL on
+  Railway before links in those emails are correct in production.
 - **Not connected yet** (client hasn't provided accounts): Twilio (SMS — texting a pay/view link),
   Stripe (unused — client confirmed Authorize.net is the real processor, not Stripe), Gusto/ADP
   (payroll export).
@@ -312,9 +314,9 @@ vendor, different payment processor).
    QuickBooks connect works in production.
 3. **QuickBooks production keys**, **Authorize.net production merchant account**, **Twilio/
    Gusto accounts** — all pending the client providing their own credentials/signups (Claude
-   cannot create accounts on the client's behalf — see safety rules). Email itself is no longer
-   blocked on SendGrid — the client's own Office 365 SMTP is wired up (2026-10-06, see
-   Integrations status) and only needs its password — but **PO vendor email notifications**
+   cannot create accounts on the client's behalf — see safety rules). Email itself is genuinely
+   live now — the client's own Office 365 SMTP is wired up with its password (2026-10-15, see
+   Integrations status) — but **PO vendor email notifications**
    specifically (client asked for Pending/Sent/Received status emails 2026-09-11) haven't been
    built to use it yet; status vocabulary and everything else about PO line items is built, only
    the actual email send is waiting on this.
@@ -987,3 +989,65 @@ history was condensed into the structural sections above on 2026-09-10.)*
   a test), and the job-status auto-email triggers (would require mutating a real job's `en_route_at`/stage). Everything else: live, working,
   ready for the client to be told about. An SMS summarizing this whole batch (all 9 items above) was sent to the client the same day, asking
   again for the SMTP password so email/pay-link sending can go live.
+- **2026-10-15 (SMTP password + Field/Schedule feedback videos)** — client sent the actual Office 365
+  SMTP password (video + ServiceWorks screenshot showing it unmasked); added to local
+  `backend/.env`, confirmed `isMailerConfigured()` now returns true (not a real send) — "Send via
+  Email", the public pay-on-your-phone invoice page, and the payment-notification email to the
+  business are genuinely live. Still needs the same password added to Railway's production env vars
+  once this batch is pushed; SMS side is still blocked on a Twilio account (unchanged, already
+  tracked). Also built from two Technician Field/Schedule feedback videos: Field.tsx got day-by-day
+  date-nav arrows (previously showed every assigned job in one undated list), the Library picker
+  collapsed by default (was trapping the page's own scroll on mobile — its inner list stayed open
+  and tall at all times), and a real delete button on uploaded photos (none existed before).
+  Schedule's Route order dialog (day view) got one-click **Move to top/bottom** buttons plus
+  auto-scroll while dragging near the list's edges — the client's literal complaint ("dragging a
+  stop to the top of the list isn't accepting it") traced to native HTML5 drag having no
+  auto-scroll, so a target row scrolled out of view mid-drag had nothing to drop onto; verified
+  live, moving a stop to the top of a real 7-stop route worked correctly and the Route order list
+  no longer hides completed jobs behind the main calendar's "Show Completed Jobs" toggle (it
+  previously inherited that filter, so a closed stop could silently vanish from the route a client
+  was trying to plan around weeks ahead). `npm run build` clean in both `/` and `/backend`.
+  **Not yet pushed** — today's whole batch (top header nav, Field.tsx fixes, tenant-configurable
+  tax rate, Route order fixes, SMTP password) goes out together once the pending Roles-simplification
+  answer comes back from the client.
+- **2026-10-15 (POS + Inventory/Maintenance videos, same day)** — POS cart quantity is now
+  click-to-type (not just +/- stepping, for ringing up a large quantity fast) and gained a
+  persistent **Cost** toggle (next to the grid/list view switch) that shows cost alongside price
+  everywhere in POS (product grid, list, cart line) without needing the existing right-click
+  trick. Tagged the 6 remaining "PSA - Maintenance ..." rows from the client's Excel
+  (CRM.LINEITEMS.3RDCATEGORY.xlsx, rows 6-11 — Muriatic Acid/Shock/Alkalinity/Calcium/Soda Ash/
+  CYA) as `maintenance_priority` — matched to real catalog SKUs by the same `005`-prefix naming
+  convention the first 8 maintenance items already used (`005muriatic`, `005shock`, etc.),
+  confirmed via a direct DB query before writing. Found and fixed the real gap behind "where do I
+  set Material/Labor/Maintenance" — `maintenance_priority` had **no UI anywhere**, not in
+  Inventory's Add/Edit Product dialogs and not in Data › Import/Export's Inventory
+  template/column list; it had only ever been set by one-off scripts. Added a real "Maintenance
+  line item" checkbox to both Inventory dialogs and a `maintenance_priority` column to the CSV
+  import/export (backend/src/routes/dataTransfer.ts). `npm run build` clean in both `/` and
+  `/backend`. **Not yet pushed** — same batch as above, waiting on the Roles answer.
+- **2026-10-15 (job history + vendor email, same day)** — client SMS "job history links not
+  active" led to a bigger find: CustomerDetail's **Service History** tab read `job_service_history`,
+  a table nothing in the real app has ever written to (confirmed on prod: 6 rows total, all 2024
+  leftover demo seed data, every one `job_id = null`) -- so for every real customer this tab was
+  either empty or showed permanently-inert rows. Rebuilt `GET /api/customers/:id` to compute it
+  from the customer's real `jobs` instead (joined to `profiles` for tech name), and made each row
+  a real link to that job when `job_id` is present. Verified live on JEFF BAUCOM: real jobs
+  rendered with correct tech/date/amount/status (via `jobStatusDisplayLabel`), clicking one opened
+  the exact right job. Separately, a video with the Vendors tab open: "there is no email slot
+  here... we need a set of emails as a group... primarily Pool Builder Supply as default... the
+  ability to change it" -- found the actual workaround this was describing: the real "Heritage"
+  vendor's email had been stuffed into its own *name* field (`HERITAGE (...) (bryan@...)`) for
+  lack of anywhere else to put it. Added `email` + a single `is_default` flag to
+  `supplier_locations` (migration 20261015200000; this table already models "named contacts under
+  one vendor", built 2026-09-05 for multi-location vendors) rather than building a parallel
+  feature; backend's `POST`/new `PATCH /supplier-locations/:id` unset any other default on that
+  vendor when one is set, so only one is ever default. Verified live: added two test contacts with
+  emails, switched the default between them, removed both, no leftover test data. `npm run build`
+  clean in both `/` and `/backend`. **Not yet pushed** — same batch, still waiting on the Roles
+  answer.
+- **2026-10-15 (Reports SMS: sales-tax drill-down + Accounts Outstanding → invoices)** — Sales Tax tab now lists the POS orders behind its totals (`/api/pos/reports` returns `orders`; row click opens `ReceiptDialog`); Accounts Outstanding customer link opens `/customers/:id?tab=invoices` (CustomerDetail reads `?tab=`), and CustomerDetail's invoice rows are now clickable to `/invoicing/:id`. Builds clean both folders. **Not yet pushed** — same batch.
+- **2026-10-15 (Customer page video: notes/invoices/forms)** — customer notes now edit/delete (`PATCH`/`DELETE /api/customers/:id/notes/:noteId`); Invoices tab rows open new `InvoicePreviewDialog` (same tax formula as InvoiceDetail, "Open Full Invoice" button) instead of navigating; Service Forms card opens `FormSubmissionView` popup (templates loaded lazily), date-first, scrollable, ↗ icon still opens the job. Builds clean both folders. **Not yet pushed / not live-checked** — end-of-batch.
+- **2026-10-15 (Sales Tax detail report, client's ServiceWorks PDF)** — new `GET /api/reports/sales-tax-detail?start&end&basis=accrual|cash&tz` (invoices + POS, grouped by order/job then item; accrual = invoice issue_date, cash = `payments.paid_at` with lines scaled by share paid in range; POS tax = stored order tax split across taxable lines) + `SalesTaxDetailReport.tsx` replacing Reports' old POS-only Sales Tax card. Gotcha: `inventory_items.item_number` is integer — cast `::text` when matching line `sku`. Invoice tax uses the current tenant rate (no historical rate stored). API numbers checked read-only; not pushed/live-checked.
+- **2026-10-15 (Sales Analysis report, client's ServiceWorks xlsx)** — new `GET /api/reports/sales-analysis?start&end&tz` (one row per payment: `payments` + `pos_order_payments`, falling back to `pos_orders` for pre-split-tender orders; breakdown columns are the whole invoice/ticket, payment on a not-completed job = Cust Dep) + `SalesAnalysisReport.tsx` as a new Reports tab, grouped by payment type like the sample. No check #/card last4/discount data exists, so those show method-only/$0. Diff/AR shows small positives on invoices paid at the old 8.25% (sales check recomputed at current rate). API totals checked read-only against payment tables; not pushed/live-checked.
+- **2026-10-15 (tech mobile video: permissions, date header, live camera)** — new `profiles.permissions text[]` (migration 20261015210000, applied to prod; values `customers`/`library`) + `FIELD_PERMISSIONS`/`fieldRoleCanOpen()` in auth-context: field-only logins can open granted pages (ProtectedRoute, AppShell nav); Settings › Team edit dialog has the checkboxes; `PATCH /api/profiles/:id` now refuses role/permission changes from technician/contractor callers (RLS alone allowed it — also closes the pre-existing self-promote hole). CustomerDetail/Customers/Library hide edit/delete/add-customer for field roles (`readOnly`). Field: date under "My Day", count = that day's jobs, undated jobs under "No date set"; Camera (`capture="environment"`) + Gallery buttons on every photo spot, also DynamicForm photo fields. Inventory permission deliberately left out (page is full of admin actions). Builds clean; not pushed/live-checked (needs a test tech login).
+- **2026-10-15 ("CRM BUTTON FUNCTIONALITY.docx")** — Field parts search includes `item_number` (matchesQuery) + shows Item #/SKU; Field Documents got `onDelete`; Vendor Bill create: Issue Date defaults today, validation/error shown, backend 400/409 messages, and migration 20261015220000 (applied to prod) changed uniqueness to `(tenant_id, supplier_id, number)`; Timesheets Approve Week shows pending count/disabled/confirmation (it worked, just silent on weeks with no hours); Library upload tags labelled, filters gained "No category/manufacturer" + all used values. Builds clean; not pushed/live-checked.

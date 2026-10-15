@@ -21,6 +21,7 @@ import { settingsApi } from "@/lib/api/settings";
 import { printReceipt, receiptLabels, type ReceiptBusiness, type ReceiptData } from "@/lib/pos-receipt";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import { useLanguage } from "@/lib/language-context";
+import { useTaxRate } from "@/hooks/use-tax-rate";
 import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
 
@@ -50,10 +51,9 @@ const categoryColors: Record<string, string> = {
   "Services": "bg-[#7C3AED]/10 text-[#7C3AED] border-[#7C3AED]/20",
 };
 
-const TAX_RATE = 0.0825;
-
 export default function PointOfSale() {
   const { t, lang } = useLanguage();
+  const TAX_RATE = useTaxRate();
   const [isLoading, setIsLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<PosOrder[]>([]);
@@ -116,6 +116,21 @@ export default function PointOfSale() {
   // Client video 2026-09-25: edit a cart line's price (special order / material items). Only this sale's
   // line changes -- the catalog price stays as it is.
   const [priceEdit, setPriceEdit] = useState<{ index: number; value: string } | null>(null);
+  // Client video 2026-10-15: "need to be able to type in a number here" instead of only +/- for a
+  // large quantity. Click the quantity to edit it directly, same pattern as price edit above.
+  const [qtyEdit, setQtyEdit] = useState<{ index: number; value: string } | null>(null);
+  // Client video 2026-10-15: "at a glance we would like to see the cost... maybe just have a
+  // button here to put cost that we can click and turn on and off" -- the existing right-click
+  // (below) is per-item and not discoverable; this is a persistent on/off switch that shows cost
+  // everywhere (product grid/list and cart) without needing to right-click each line.
+  const [showCost, setShowCost] = useState(() => {
+    try { return localStorage.getItem("pos-show-cost") === "1"; } catch { return false; }
+  });
+  const toggleShowCost = () => setShowCost((prev) => {
+    const next = !prev;
+    try { localStorage.setItem("pos-show-cost", next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
   // Client SMS 2026-09-25: "see the cost of an item if we right click on the price" (inventory list or
   // current sale). Right-click toggles the cost in place; any left click elsewhere hides it again.
   const [costShown, setCostShown] = useState<string | null>(null);
@@ -139,6 +154,19 @@ export default function PointOfSale() {
     const price = Math.round(parseFloat(priceEdit.value) * 100) / 100;
     if (Number.isFinite(price) && price >= 0) setCart((prev) => prev.map((c, i) => (i === priceEdit.index ? { ...c, price } : c)));
     setPriceEdit(null);
+  };
+  // Client video 2026-10-15: type a quantity directly (e.g. selling a large quantity of one item)
+  // instead of only stepping with +/-. Negative values stay allowed (a typed return quantity), and
+  // a typed 0 removes the line, matching updateQty's existing behavior.
+  const commitQtyEdit = () => {
+    if (!qtyEdit) return;
+    const qty = Math.trunc(parseFloat(qtyEdit.value));
+    if (Number.isFinite(qty)) {
+      setCart((prev) => prev
+        .map((c, i) => (i === qtyEdit.index ? { ...c, qty } : c))
+        .filter((c) => c.qty !== 0));
+    }
+    setQtyEdit(null);
   };
   // Client request 2026-09-02: sell items not in stock (inventory can go negative), sell a
   // negative quantity as a return, and ring up non-stock/material items that aren't in the
@@ -249,7 +277,7 @@ export default function PointOfSale() {
   // mark" when ringing up a sale (e.g. a tax-exempt reseller) -- per-transaction, not a tenant
   // setting; defaults on like normal.
   const [taxEnabled, setTaxEnabled] = useState(true);
-  const tax = useMemo(() => (taxEnabled ? Math.max(0, taxableAmount * TAX_RATE) : 0), [taxableAmount, taxEnabled]);
+  const tax = useMemo(() => (taxEnabled ? Math.max(0, taxableAmount * TAX_RATE) : 0), [taxableAmount, taxEnabled, TAX_RATE]);
   const total = useMemo(() => subtotal - discountAmount + tax, [subtotal, discountAmount, tax]);
 
   const addToCart = (p: Product) => {
@@ -503,6 +531,16 @@ export default function PointOfSale() {
                   <Table2 className="w-4 h-4" />
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={toggleShowCost}
+                className={`flex items-center gap-1.5 px-2.5 h-9 rounded-lg border text-sm font-medium shrink-0 ${
+                  showCost ? "bg-[#F59E0B]/10 border-[#F59E0B]/40 text-[#F59E0B]" : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"
+                }`}
+                title={t("Show item cost alongside price")}
+              >
+                <DollarSign className="w-4 h-4" /> {t("Cost")}
+              </button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Select value={category} onValueChange={setCategory}>
@@ -598,6 +636,7 @@ export default function PointOfSale() {
                       <p className="text-base font-bold text-[#0891B2] mt-2" onContextMenu={priceContext(`p:${p.id}`)} title={t("Right-click to see the cost")}>
                         {costShown === `p:${p.id}` ? <span className="text-[#F59E0B]">{costOf(p.id)}</span> : `${(p.price ?? 0).toFixed(2)}`}
                       </p>
+                      {showCost && <p className="text-[11px] text-[#F59E0B] font-medium -mt-1">{costOf(p.id)}</p>}
                     </button>
                   );
                 })}
@@ -644,6 +683,7 @@ export default function PointOfSale() {
                           </td>
                           <td className="text-right py-2 px-3 font-semibold text-[#0891B2]" onContextMenu={priceContext(`p:${p.id}`)} title={t("Right-click to see the cost")}>
                             {costShown === `p:${p.id}` ? <span className="text-[#F59E0B] whitespace-nowrap">{costOf(p.id)}</span> : `${(p.price ?? 0).toFixed(2)}`}
+                            {showCost && <div className="text-[11px] text-[#F59E0B] font-medium whitespace-nowrap">{costOf(p.id)}</div>}
                           </td>
                         </tr>
                       );
@@ -725,6 +765,7 @@ export default function PointOfSale() {
                         <span onContextMenu={priceContext(`c:${index}`)} title={t("Right-click to see the cost")}>
                           {costShown === `c:${index}` ? <span className="text-[#F59E0B] font-semibold">{costOf(item.id)}</span> : <>${item.price.toFixed(2)} / {item.unit}</>}
                         </span>
+                        {showCost && <span className="text-[#F59E0B] font-medium"> ({costOf(item.id)})</span>}
                         {" · "}
                         <button
                           type="button"
@@ -757,7 +798,30 @@ export default function PointOfSale() {
                       <button onClick={() => updateQty(item.id, index, -1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
                         <Minus className="w-3.5 h-3.5 text-[#0F172A]" />
                       </button>
-                      <span className={`w-8 text-center text-sm font-semibold ${item.qty < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>{item.qty}</span>
+                      {/* Client video 2026-10-15: "type in a number here" for a large quantity
+                          instead of only +/-. Click the quantity to edit it directly. */}
+                      {qtyEdit?.index === index ? (
+                        <input
+                          autoFocus
+                          type="number"
+                          step="1"
+                          aria-label={t("Quantity")}
+                          className="w-10 h-7 text-sm text-center border border-[#0891B2] rounded px-0.5 focus:outline-none"
+                          value={qtyEdit.value}
+                          onChange={(e) => setQtyEdit({ index, value: e.target.value })}
+                          onBlur={commitQtyEdit}
+                          onKeyDown={(e) => { if (e.key === "Enter") commitQtyEdit(); if (e.key === "Escape") setQtyEdit(null); }}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setQtyEdit({ index, value: String(item.qty) })}
+                          title={t("Click to type a quantity")}
+                          className={`w-8 text-center text-sm font-semibold rounded hover:bg-[#F8FAFC] ${item.qty < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}
+                        >
+                          {item.qty}
+                        </button>
+                      )}
                       <button onClick={() => updateQty(item.id, index, 1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
                         <Plus className="w-3.5 h-3.5 text-[#0F172A]" />
                       </button>
@@ -828,7 +892,7 @@ export default function PointOfSale() {
                 <div className="flex items-center justify-between text-[#64748B]">
                   <label className="flex items-center gap-1.5 cursor-pointer select-none">
                     <Checkbox checked={taxEnabled} onCheckedChange={(v) => setTaxEnabled(v === true)} />
-                    <span>{t("Tax (8.25%)")}</span>
+                    <span>{t("Tax")} ({(TAX_RATE * 100).toFixed(2)}%)</span>
                   </label>
                   <span className="font-medium text-[#0F172A]">${tax.toFixed(2)}</span>
                 </div>

@@ -6,7 +6,7 @@ type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
 type InventoryVariance = Database["public"]["Tables"]["inventory_variance"]["Row"] & { inventory_items: { name: string } | null };
 
-export type SupplierLocation = { id: string; supplier_id: string; label: string; address: string | null; contact_name: string | null; phone: string | null };
+export type SupplierLocation = { id: string; supplier_id: string; label: string; address: string | null; contact_name: string | null; phone: string | null; email: string | null; is_default: boolean };
 export type PoLineItem = { id: string; po_id: string; description: string; sku: string | null; quantity: number; unit_cost: number; amount: number };
 export type PoLineItemInput = { description: string; sku: string | null; quantity: number; unitCost: number };
 export type CategoryTaxonomyRow = { id: string; category: string; subcategory: string | null; sub_subcategory: string | null; sub_sub_subcategory: string | null };
@@ -42,8 +42,14 @@ export const inventoryApi = {
   // Client PDF 2026-09-05: "some vendors have multiple locations we put from".
   getSupplierLocations: (supplierId: string) => api.get<SupplierLocation[]>(`/api/inventory/suppliers/${supplierId}/locations`),
 
-  addSupplierLocation: (supplierId: string, data: { label: string; address: string | null; contactName: string | null; phone: string | null }) =>
+  addSupplierLocation: (supplierId: string, data: { label: string; address: string | null; contactName: string | null; phone: string | null; email: string | null; isDefault?: boolean }) =>
     api.post<SupplierLocation>(`/api/inventory/suppliers/${supplierId}/locations`, data),
+
+  // Client video 2026-10-15: "we need to have a set of emails on here as a group... primarily we
+  // do pool builder supply as a default... if we need a change, the ability to change the email
+  // from our selected list" -- toggling which location/contact is the default (only one at a time).
+  setDefaultSupplierLocation: (locationId: string) =>
+    api.patch<SupplierLocation>(`/api/inventory/supplier-locations/${locationId}`, { isDefault: true }),
 
   removeSupplierLocation: (locationId: string) => api.del(`/api/inventory/supplier-locations/${locationId}`),
 
@@ -75,6 +81,7 @@ export const inventoryApi = {
     subSubcategory?: string | null;
     subSubSubcategory?: string | null;
     isInventory?: boolean;
+    maintenancePriority?: boolean;
   }) => api.post<InventoryItem>("/api/inventory/items", data),
 
   updatePricing: (itemId: string, unitCost: number, price: number | null) =>
@@ -105,6 +112,7 @@ export const inventoryApi = {
       subSubcategory?: string | null;
       subSubSubcategory?: string | null;
       isInventory?: boolean;
+      maintenancePriority?: boolean;
     },
   ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
 

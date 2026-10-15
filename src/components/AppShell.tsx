@@ -111,14 +111,20 @@ const mobileTabs = [
 export default function AppShell() {
   const { pathname, search } = useLocation();
   const navigate = useNavigate();
-  const { user, signOut, role } = useAuth();
+  const { user, signOut, role, permissions } = useAuth();
   const { t } = useLanguage();
   // Client feedback 2026-09-11: technician/contractor accounts should only see the Field page --
   // ProtectedRoute (App.tsx) already bounces any other URL to /field, this just keeps the nav
   // honest about it instead of showing links that would immediately redirect away.
   const fieldOnly = isFieldOnlyRole(role);
-  const visibleNavSections: (NavLink | NavGroup)[] = fieldOnly ? [{ path: "/field", label: "Technician Field", icon: Phone }] : navSections;
-  const visibleFlatNavLinks: NavLink[] = fieldOnly ? [{ path: "/field", label: "Technician Field", icon: Phone }] : flatNavLinks;
+  // Client video 2026-10-15: plus whatever extra pages an admin granted this person (Settings > Team).
+  const fieldLinks: NavLink[] = [
+    { path: "/field", label: "Technician Field", icon: Phone },
+    ...(permissions.includes("customers") ? [{ path: "/customers", label: "Customer Lookup", icon: Users }] : []),
+    ...(permissions.includes("library") ? [{ path: "/library", label: "Library", icon: BookOpen }] : []),
+  ];
+  const visibleNavSections: (NavLink | NavGroup)[] = fieldOnly ? fieldLinks : navSections;
+  const visibleFlatNavLinks: NavLink[] = fieldOnly ? fieldLinks : flatNavLinks;
   // Keep a "More" tab even field-only so Log Out stays reachable on mobile (its nav grid will
   // just be empty since visibleFlatNavLinks is already field-only).
   const visibleMobileTabs = fieldOnly ? [{ path: "/field", label: "Field", icon: Phone }, { path: "more", label: "More", icon: MoreHorizontal }] : mobileTabs;

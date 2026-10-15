@@ -172,12 +172,31 @@ export default function Timesheets() {
     loadTimesheets();
   };
 
+  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "APPROVE WEEK -- button doesn't work (not
+  // sure if I'm doing it right?)". It did work, but only touches people who have hours that week --
+  // on a week with none nothing changed and nothing was said. The button now shows how many are
+  // waiting, is disabled when there's nothing to approve, and confirms (or shows the error) after.
+  const pendingApproval = rows.filter((r) => !r.approved && (r.total > 0 || r.ts));
+  const [approveWeekMsg, setApproveWeekMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [approvingWeek, setApprovingWeek] = useState(false);
   const handleApproveWeek = async () => {
-    await timesheetsApi.approveWeek(weekStart);
-    // Employees whose hours are only clock entries don't have a weekly row yet.
-    await Promise.all(rows.filter((r) => !r.ts && r.total > 0).map((r) => timesheetsApi.approveEmployee(r.id, weekStart)));
-    loadTimesheets();
+    if (pendingApproval.length === 0) return;
+    setApprovingWeek(true);
+    setApproveWeekMsg(null);
+    try {
+      const count = pendingApproval.length;
+      await timesheetsApi.approveWeek(weekStart);
+      // Employees whose hours are only clock entries don't have a weekly row yet.
+      await Promise.all(rows.filter((r) => !r.ts && r.total > 0).map((r) => timesheetsApi.approveEmployee(r.id, weekStart)));
+      await loadTimesheets();
+      setApproveWeekMsg({ ok: true, text: `${t("Approved")}: ${count} ${count === 1 ? t("employee") : t("employees")}` });
+    } catch (err) {
+      setApproveWeekMsg({ ok: false, text: err instanceof Error ? err.message : t("Could not approve this week.") });
+    } finally {
+      setApprovingWeek(false);
+    }
   };
+  useEffect(() => { setApproveWeekMsg(null); }, [weekStart]);
 
   const openNewEntry = (employeeId: string) => {
     const day = weekOffset === 0 ? localKey(new Date()) : weekStart;
@@ -245,9 +264,20 @@ export default function Timesheets() {
             <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={() => navigate("/settings?tab=team")}>
               <UserPlus className="w-4 h-4 text-[#0891B2]" /> {t("Add Employee")}
             </Button>
-            <Button className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-10" onClick={handleApproveWeek}>
-              <CheckCircle2 className="w-4 h-4" /> {t("Approve Week")}
+            <Button
+              className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-2 h-10"
+              onClick={handleApproveWeek}
+              disabled={approvingWeek || pendingApproval.length === 0}
+              title={pendingApproval.length === 0 ? t("Nothing waiting for approval this week (no one has hours, or all are already approved).") : undefined}
+            >
+              <CheckCircle2 className="w-4 h-4" /> {approvingWeek ? t("Approving...") : t("Approve Week")}
+              {pendingApproval.length > 0 && !approvingWeek && <span className="ml-1 rounded-full bg-white/25 px-1.5 text-xs">{pendingApproval.length}</span>}
             </Button>
+            {approveWeekMsg ? (
+              <span className={`text-sm ${approveWeekMsg.ok ? "text-[#16A34A]" : "text-[#DC2626]"}`}>{approveWeekMsg.text}</span>
+            ) : pendingApproval.length === 0 && !isLoading && (
+              <span className="text-xs text-[#64748B]">{t("Nothing to approve this week")}</span>
+            )}
           </div>
         )}
       </div>

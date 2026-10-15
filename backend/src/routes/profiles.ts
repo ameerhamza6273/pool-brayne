@@ -53,11 +53,23 @@ export default async function profilesRoutes(app: FastifyInstance) {
     });
   });
 
-  app.patch<{ Params: { id: string }; Body: { name: string; role: string } }>("/:id", async (req) => {
+  // Client video 2026-10-15: per-person extra page access for technician/contractor logins
+  // (`permissions`, see migration 20261015210000). Only office roles may change anyone's role or
+  // permissions -- RLS alone lets any tenant member update profiles, so a tech could otherwise
+  // grant themselves access through the API.
+  app.patch<{ Params: { id: string }; Body: { name: string; role: string; permissions?: string[] } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     const { name, role } = req.body;
+    const allowed = ["customers", "library"];
+    const permissions = Array.isArray(req.body.permissions) ? req.body.permissions.filter((p) => allowed.includes(p)) : null;
     return withTenantContext(req.userId, async (tx) => {
-      const [row] = await tx`update profiles set name = ${name}, role = ${role}::staff_role where id = ${id} returning *`;
+      const [caller] = await tx`select role from profiles where id = ${req.userId} limit 1` as unknown as { role: string }[];
+      if (!caller || caller.role === "technician" || caller.role === "contractor") {
+        return reply.code(403).send({ error: "Only office staff can change roles or permissions" });
+      }
+      const [row] = permissions
+        ? await tx`update profiles set name = ${name}, role = ${role}::staff_role, permissions = ${permissions} where id = ${id} returning *`
+        : await tx`update profiles set name = ${name}, role = ${role}::staff_role where id = ${id} returning *`;
       return row;
     });
   });

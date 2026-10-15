@@ -116,9 +116,12 @@ export default async function posRoutes(app: FastifyInstance) {
     const { start, end } = req.query;
     return withTenantContext(req.userId, async (tx) => {
       const orders = await tx`
-        select id, subtotal, tax, total from pos_orders
-        where created_at::date between ${start} and ${end}
-      ` as unknown as { id: string; subtotal: number; tax: number; total: number }[];
+        select o.id, o.created_at, o.subtotal, o.tax, o.total, c.name as customer_name
+        from pos_orders o
+        left join customers c on c.id = o.customer_id
+        where o.created_at::date between ${start} and ${end}
+        order by o.created_at desc
+      ` as unknown as { id: string; created_at: string; subtotal: number; tax: number; total: number; customer_name: string | null }[];
       const orderIds = orders.map((o) => o.id);
       const items = orderIds.length > 0
         ? await tx`
@@ -133,7 +136,10 @@ export default async function posRoutes(app: FastifyInstance) {
         taxableSales: orders.reduce((s, o) => s + Number(o.subtotal), 0),
         taxCollected: orders.reduce((s, o) => s + Number(o.tax), 0),
       };
-      return { qtyByProduct: items, taxSummary };
+      // Client SMS 2026-10-15: "need a way to drill down to see orders and amounts included on
+      // the sales tax report" -- the summary card already added these orders up, just never
+      // returned the list itself.
+      return { qtyByProduct: items, taxSummary, orders };
     });
   });
 

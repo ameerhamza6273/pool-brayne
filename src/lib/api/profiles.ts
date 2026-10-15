@@ -13,7 +13,7 @@ export const profilesApi = {
   create: (data: { name: string; email: string; password: string; role: string }) =>
     api.post<Profile>("/api/profiles", data),
 
-  update: (id: string, data: { name: string; role: string }) =>
+  update: (id: string, data: { name: string; role: string; permissions?: string[] }) =>
     api.patch<Profile>(`/api/profiles/${id}`, data),
 
   remove: (id: string) => api.del(`/api/profiles/${id}`),

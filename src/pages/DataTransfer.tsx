@@ -62,7 +62,7 @@ const datasets: Dataset[] = [
     title: "Inventory List",
     description: "Products / SKUs. Matched by SKU: existing items are updated, new ones (name + category needed) are added. Stock counts are not imported.",
     icon: Package,
-    columns: ["sku", "name", "category", "subcategory", "sub_subcategory", "sub_sub_subcategory", "manufacturer", "unit_cost", "price", "taxable", "unit", "reorder_threshold", "barcode", "short_description", "long_description", "department", "sub_department", "default_distributor", "pos_enabled", "item_number"],
+    columns: ["sku", "name", "category", "subcategory", "sub_subcategory", "sub_sub_subcategory", "manufacturer", "unit_cost", "price", "taxable", "unit", "reorder_threshold", "barcode", "short_description", "long_description", "department", "sub_department", "default_distributor", "pos_enabled", "item_number", "maintenance_priority"],
     required: [["sku"]],
     filename: "inventory.csv",
     sample: { sku: "FILTER-100", name: "Cartridge Filter 100 sq ft", category: "FILTER PART", manufacturer: "Pentair", unit_cost: "45.00", price: "79.99", taxable: "true", unit: "ea", reorder_threshold: "2" },

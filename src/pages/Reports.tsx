@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt, Search, Download } from "lucide-react";
+import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt, Search, Download, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +10,8 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import { customerOption } from "@/lib/customer-options";
 import ReminderLabelSelect from "@/components/ReminderLabelSelect";
 import { reportsApi, type ItemMovementRow, type DepositRow, type InvoiceDueRow, type CustomerReminder, type ValuationRow } from "@/lib/api/reports";
-import { posApi, type SalesReport } from "@/lib/api/pos";
+import SalesTaxDetailReport from "@/components/SalesTaxDetailReport";
+import SalesAnalysisReport from "@/components/SalesAnalysisReport";
 import { customersApi } from "@/lib/api/customers";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
@@ -19,7 +20,7 @@ import { toCsv, downloadCsv } from "@/lib/csv";
 // Client request 2026-09-02 ("Need a reports section"): item movement, customer deposits,
 // invoices total-due per customer, recurring reminder-job types, inventory valuation, plus the
 // sales-tax report that already existed on the POS page (reused here from the same endpoint).
-const reportTabs = ["sales-tax", "movement", "deposits", "due", "reminders", "valuation"];
+const reportTabs = ["sales-tax", "sales-analysis", "movement", "deposits", "due", "reminders", "valuation"];
 
 // Client meeting 2026-09: "a lot of these reports here may be a way to sort these reports by
 // clicking higher to lower." Generic click-to-sort for every report table on this page.
@@ -93,7 +94,6 @@ export default function Reports() {
   // other tab.
   const [valuationAsOf, setValuationAsOf] = useState(() => localKey(new Date()));
 
-  const [salesTax, setSalesTax] = useState<SalesReport | null>(null);
   const [movement, setMovement] = useState<ItemMovementRow[]>([]);
   const [deposits, setDeposits] = useState<DepositRow[]>([]);
   const [invoicesDue, setInvoicesDue] = useState<InvoiceDueRow[]>([]);
@@ -110,15 +110,13 @@ export default function Reports() {
 
   const load = useCallback(async () => {
     setIsLoading(true);
-    const [taxData, movementData, depositsData, dueData, remindersData, customersData] = await Promise.all([
-      posApi.reports(start, end),
+    const [movementData, depositsData, dueData, remindersData, customersData] = await Promise.all([
       reportsApi.itemMovement(start, end),
       reportsApi.deposits(start, end),
       reportsApi.invoicesDue(),
       reportsApi.reminders(),
       customersApi.list(),
     ]);
-    setSalesTax(taxData);
     setMovement(movementData ?? []);
     setDeposits(depositsData ?? []);
     setInvoicesDue(dueData ?? []);
@@ -225,6 +223,7 @@ export default function Reports() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="sales-tax" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Receipt className="w-4 h-4" /> {t("Sales Tax")}</TabsTrigger>
+          <TabsTrigger value="sales-analysis" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><BarChart3 className="w-4 h-4" /> {t("Sales Analysis")}</TabsTrigger>
           <TabsTrigger value="movement" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Package className="w-4 h-4" /> {t("Item Movement")}</TabsTrigger>
           <TabsTrigger value="deposits" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><DollarSign className="w-4 h-4" /> {t("Deposits")}</TabsTrigger>
           <TabsTrigger value="due" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><FileText className="w-4 h-4" /> {t("Accounts Outstanding")}</TabsTrigger>
@@ -233,13 +232,13 @@ export default function Reports() {
         </TabsList>
 
         <TabsContent value="sales-tax" className="mt-4">
-          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-5 max-w-md space-y-3">
-            <p className="text-xs font-semibold text-[#64748B] uppercase">{t("Sales Tax Report (POS sales only — job invoices don't track tax separately)")}</p>
-            <div className="flex justify-between text-sm"><span className="text-[#64748B]">{t("Orders")}</span><span className="font-medium text-[#0F172A]">{salesTax?.taxSummary.orderCount ?? 0}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-[#64748B]">{t("Taxable Sales")}</span><span className="font-medium text-[#0F172A]">${(salesTax?.taxSummary.taxableSales ?? 0).toFixed(2)}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-[#64748B]">{t("Tax Collected")}</span><span className="font-medium text-[#0F172A]">${(salesTax?.taxSummary.taxCollected ?? 0).toFixed(2)}</span></div>
-            <div className="flex justify-between text-sm pt-2 border-t border-[#E2E8F0]"><span className="font-semibold text-[#0F172A]">{t("Total Sales")}</span><span className="font-bold text-[#0891B2]">${(salesTax?.taxSummary.totalSales ?? 0).toFixed(2)}</span></div>
-          </div>
+          {/* Client PDF 2026-10-15: detail report by order/job then item, accrual/cash basis. */}
+          <SalesTaxDetailReport start={start} end={end} />
+        </TabsContent>
+
+        <TabsContent value="sales-analysis" className="mt-4">
+          {/* Client xlsx 2026-10-15: every sale/payment in the date range, their old system's columns. */}
+          <SalesAnalysisReport start={start} end={end} />
         </TabsContent>
 
         <TabsContent value="movement" className="mt-4 space-y-3">
@@ -346,7 +345,10 @@ export default function Reports() {
                   {invoicesDueSort.sorted.map((r) => (
                     <tr key={r.customer_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium">
-                        <button className="text-[#0891B2] hover:underline" onClick={() => navigate(`/customers/${r.customer_id}`)}>{r.customer_name}</button>
+                        {/* Client SMS 2026-10-15: "need to link to customer invoices from the
+                            accounts outstanding report" -- was linking to the customer's generic
+                            page (Service History tab); now opens straight to their Invoices. */}
+                        <button className="text-[#0891B2] hover:underline" onClick={() => navigate(`/customers/${r.customer_id}?tab=invoices`)}>{r.customer_name}</button>
                       </td>
                       <td className="py-3 px-4 text-[#64748B]">{r.account_number ?? "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">${Number(r.bucket_0_30).toFixed(2)}</td>

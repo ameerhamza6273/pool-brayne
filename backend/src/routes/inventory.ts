@@ -86,16 +86,17 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       subSubcategory?: string | null;
       subSubSubcategory?: string | null;
       isInventory?: boolean;
+      maintenancePriority?: boolean;
     };
   }>("/items", async (req) => {
-    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold, subcategory, subSubcategory, subSubSubcategory, isInventory } = req.body;
+    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold, subcategory, subSubcategory, subSubSubcategory, isInventory, maintenancePriority } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         insert into inventory_items
-          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold, subcategory, sub_subcategory, sub_sub_subcategory, is_inventory)
+          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold, subcategory, sub_subcategory, sub_sub_subcategory, is_inventory, maintenance_priority)
         values
-          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0}, ${subcategory ?? null}, ${subSubcategory ?? null}, ${subSubSubcategory ?? null}, ${isInventory ?? true})
+          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0}, ${subcategory ?? null}, ${subSubcategory ?? null}, ${subSubSubcategory ?? null}, ${isInventory ?? true}, ${maintenancePriority ?? false})
         returning *
       `;
       return row;
@@ -139,13 +140,14 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       subSubcategory?: string | null;
       subSubSubcategory?: string | null;
       isInventory?: boolean;
+      maintenancePriority?: boolean;
     };
   }>("/items/:id", async (req) => {
     const { id } = req.params;
     const {
       name, sku, category, unitCost, price, shortDescription, longDescription,
       department, subDepartment, manufacturer, barcode, defaultDistributor, unit, taxable, reorderThreshold,
-      storeQuantity, subcategory, subSubcategory, subSubSubcategory, isInventory,
+      storeQuantity, subcategory, subSubcategory, subSubSubcategory, isInventory, maintenancePriority,
     } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
@@ -157,7 +159,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
           barcode = ${barcode}, default_distributor = ${defaultDistributor}, unit = ${unit}, taxable = ${taxable},
           reorder_threshold = ${reorderThreshold ?? 0}, subcategory = ${subcategory ?? null},
           sub_subcategory = ${subSubcategory ?? null}, sub_sub_subcategory = ${subSubSubcategory ?? null},
-          is_inventory = ${isInventory ?? true}
+          is_inventory = ${isInventory ?? true}, maintenance_priority = ${maintenancePriority ?? false}
         where id = ${id}
         returning *
       `;
@@ -266,18 +268,49 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`select * from supplier_locations where supplier_id = ${id} order by label`);
   });
 
-  app.post<{ Params: { id: string }; Body: { label: string; address: string | null; contactName: string | null; phone: string | null } }>(
+  // Client video 2026-10-15: "we need to have a set of emails on here as a group... primarily we
+  // do pool builder supply as a default... if we need a change, the ability to change the email
+  // from our selected list" -- email + a single default flag added to the existing
+  // "named contacts under one vendor" concept (label/contact_name/phone, built 2026-09-05).
+  app.post<{ Params: { id: string }; Body: { label: string; address: string | null; contactName: string | null; phone: string | null; email: string | null; isDefault?: boolean } }>(
     "/suppliers/:id/locations",
     async (req) => {
       const { id } = req.params;
-      const { label, address, contactName, phone } = req.body;
+      const { label, address, contactName, phone, email, isDefault } = req.body;
       return withTenantContext(req.userId, async (tx) => {
         const [tenant] = await tx`select current_tenant_id() as id`;
+        if (isDefault) await tx`update supplier_locations set is_default = false where supplier_id = ${id}`;
         const [row] = await tx`
-          insert into supplier_locations (tenant_id, supplier_id, label, address, contact_name, phone)
-          values (${tenant.id}, ${id}, ${label}, ${address}, ${contactName}, ${phone})
+          insert into supplier_locations (tenant_id, supplier_id, label, address, contact_name, phone, email, is_default)
+          values (${tenant.id}, ${id}, ${label}, ${address}, ${contactName}, ${phone}, ${email}, ${isDefault ?? false})
           returning *
         `;
+        return row;
+      });
+    },
+  );
+
+  app.patch<{ Params: { locationId: string }; Body: { label?: string; address?: string | null; contactName?: string | null; phone?: string | null; email?: string | null; isDefault?: boolean } }>(
+    "/supplier-locations/:locationId",
+    async (req) => {
+      const { locationId } = req.params;
+      const { label, address, contactName, phone, email, isDefault } = req.body;
+      return withTenantContext(req.userId, async (tx) => {
+        const [existing] = await tx`select supplier_id from supplier_locations where id = ${locationId} limit 1`;
+        if (!existing) return null;
+        if (isDefault) await tx`update supplier_locations set is_default = false where supplier_id = ${existing.supplier_id}`;
+        const patch: Record<string, unknown> = {};
+        if (label !== undefined) patch.label = label;
+        if (address !== undefined) patch.address = address;
+        if (contactName !== undefined) patch.contact_name = contactName;
+        if (phone !== undefined) patch.phone = phone;
+        if (email !== undefined) patch.email = email;
+        if (isDefault !== undefined) patch.is_default = isDefault;
+        if (Object.keys(patch).length === 0) {
+          const [row] = await tx`select * from supplier_locations where id = ${locationId}`;
+          return row;
+        }
+        const [row] = await tx`update supplier_locations set ${tx(patch)} where id = ${locationId} returning *`;
         return row;
       });
     },

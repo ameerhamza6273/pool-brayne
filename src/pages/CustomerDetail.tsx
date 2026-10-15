@@ -1,10 +1,14 @@
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Phone, MessageSquare, Mail, ArrowLeft, MapPin,
-  Wrench, FileText, Camera, Plus, Bell, CheckCircle2, Pencil, X, Trash2, Printer,
+  Wrench, FileText, Camera, Plus, Bell, CheckCircle2, Pencil, X, Trash2, Printer, ExternalLink,
 } from "lucide-react";
 import ReceiptDialog from "@/components/ReceiptDialog";
+import InvoicePreviewDialog from "@/components/InvoicePreviewDialog";
+import FormSubmissionView from "@/components/FormSubmissionView";
+import { formTemplatesApi, type FormTemplate } from "@/lib/api/formTemplates";
+import type { JobForm } from "@/lib/api/jobs";
 import { receiptNumber } from "@/lib/api/pos";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,10 +23,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { customersApi, type CustomerAttachment, type CustomerDetailBundle, type PreviousSale, type CustomerServiceForm } from "@/lib/api/customers";
+import { jobStatusDisplayLabel } from "@/lib/data";
 import { reportsApi, type CustomerReminder } from "@/lib/api/reports";
 import ReminderLabelSelect from "@/components/ReminderLabelSelect";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { formatPhoneInput } from "@/lib/phone";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { useLanguage } from "@/lib/language-context";
@@ -52,7 +57,15 @@ const statusColors: Record<string, string> = {
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, tenantId } = useAuth();
+  // Client SMS 2026-10-15: "need to link to customer invoices from the accounts outstanding
+  // report" -- lets a link open straight to this tab instead of always landing on Service History.
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get("tab") ?? "history";
+  const { user, tenantId, role } = useAuth();
+  // Client video 2026-10-15: a technician granted "Customer Lookup" (Settings > Team) can look up a
+  // customer's history, notes, invoices, photos and add notes/photos, but not edit or delete the
+  // record itself, and links into pages a field login can't open (jobs, full invoice) are hidden.
+  const readOnly = isFieldOnlyRole(role);
   const { t } = useLanguage();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [history, setHistory] = useState<ServiceHistory[]>([]);
@@ -97,6 +110,15 @@ export default function CustomerDetail() {
 
   // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs".
   const [serviceForms, setServiceForms] = useState<CustomerServiceForm[]>([]);
+  // Client video 2026-10-15: past invoices and service forms open in a popup instead of
+  // navigating away to the full invoice/job page.
+  const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
+  const [openForm, setOpenForm] = useState<CustomerServiceForm | null>(null);
+  const [formTemplates, setFormTemplates] = useState<FormTemplate[] | null>(null);
+  // Client video 2026-10-15: notes could be added but never edited or deleted.
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editNoteText, setEditNoteText] = useState("");
+  const [deleteNoteId, setDeleteNoteId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -297,6 +319,25 @@ export default function CustomerDetail() {
     load();
   };
 
+  const handleSaveNoteEdit = async () => {
+    if (!id || !editingNoteId || !editNoteText.trim()) return;
+    const updated = await customersApi.updateNote(id, editingNoteId, editNoteText.trim());
+    setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
+    setEditingNoteId(null);
+  };
+
+  const handleDeleteNote = async () => {
+    if (!id || !deleteNoteId) return;
+    await customersApi.deleteNote(id, deleteNoteId);
+    setNotes((prev) => prev.filter((n) => n.id !== deleteNoteId));
+    setDeleteNoteId(null);
+  };
+
+  const openServiceForm = (f: CustomerServiceForm) => {
+    setOpenForm(f);
+    if (formTemplates === null) formTemplatesApi.list().then(setFormTemplates).catch(() => setFormTemplates([]));
+  };
+
   const handleDeletePhoto = async (attachmentId: string, url: string) => {
     if (!id) return;
     const marker = "/customer-attachments/";
@@ -343,10 +384,12 @@ export default function CustomerDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]" onClick={() => setEditOpen(true)}>
-            <Pencil className="w-4 h-4" />
-            <span className="hidden sm:inline">{t("Edit")}</span>
-          </Button>
+          {!readOnly && (
+            <Button size="sm" variant="outline" className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]" onClick={() => setEditOpen(true)}>
+              <Pencil className="w-4 h-4" />
+              <span className="hidden sm:inline">{t("Edit")}</span>
+            </Button>
+          )}
           {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension detects
               real `tel:` links in the page, not JS button handlers -- a plain onClick with
               `window.location.href` was invisible to it even once their domain is whitelisted. */}
@@ -381,15 +424,17 @@ export default function CustomerDetail() {
             <Mail className="w-4 h-4" />
             <span className="hidden sm:inline">{t("Email")}</span>
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]"
-            onClick={handleSyncToQuickbooks}
-            disabled={qboSyncing || !!customer.qbo_customer_id}
-          >
-            {customer.qbo_customer_id ? t("Synced to QuickBooks") : qboSyncing ? t("Syncing...") : t("Sync to QuickBooks")}
-          </Button>
+          {!readOnly && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]"
+              onClick={handleSyncToQuickbooks}
+              disabled={qboSyncing || !!customer.qbo_customer_id}
+            >
+              {customer.qbo_customer_id ? t("Synced to QuickBooks") : qboSyncing ? t("Syncing...") : t("Sync to QuickBooks")}
+            </Button>
+          )}
         </div>
       </div>
       {qboError && <div className="text-xs text-red-600">{qboError}</div>}
@@ -441,9 +486,11 @@ export default function CustomerDetail() {
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Other Contacts")}</CardTitle>
-              <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-[#E2E8F0]" onClick={() => setAddContactOpen(true)}>
-                <Plus className="w-3.5 h-3.5" /> {t("Add")}
-              </Button>
+              {!readOnly && (
+                <Button size="sm" variant="outline" className="h-7 gap-1 text-xs border-[#E2E8F0]" onClick={() => setAddContactOpen(true)}>
+                  <Plus className="w-3.5 h-3.5" /> {t("Add")}
+                </Button>
+              )}
             </CardHeader>
             <CardContent className="space-y-2 pt-0">
               {household.map((h) => (
@@ -496,7 +543,7 @@ export default function CustomerDetail() {
               {customer.next_reminder_date && new Date(customer.next_reminder_date) <= new Date() && (
                 <p className="text-xs font-medium text-[#DC2626]">{t("Due now — service is overdue.")}</p>
               )}
-              <div className="flex gap-2">
+              <div className={`flex gap-2 ${readOnly ? "hidden" : ""}`}>
                 <Button size="sm" variant="outline" className="flex-1 h-8 border-[#E2E8F0]" onClick={handleSaveReminder}>{t("Save")}</Button>
                 <Button size="sm" className="flex-1 h-8 bg-[#16A34A] hover:bg-[#15803D] text-white gap-1.5" onClick={handleMarkServiced} disabled={!reminderDraft.frequencyMonths}>
                   <CheckCircle2 className="w-3.5 h-3.5" /> {t("Mark Serviced")}
@@ -513,7 +560,7 @@ export default function CustomerDetail() {
               <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
                 <Bell className="w-4 h-4 text-[#0891B2]" /> {t("Other Reminders")}
               </CardTitle>
-              <Button size="icon" variant="outline" className="h-7 w-7 border-[#E2E8F0]" onClick={() => { setEditingReminderId(null); setReminderTypeDraft({ label: "", frequencyMonths: "", nextDue: "" }); setReminderTypeOpen(true); }}>
+              <Button size="icon" variant="outline" className={`h-7 w-7 border-[#E2E8F0] ${readOnly ? "hidden" : ""}`} onClick={() => { setEditingReminderId(null); setReminderTypeDraft({ label: "", frequencyMonths: "", nextDue: "" }); setReminderTypeOpen(true); }}>
                 <Plus className="w-3.5 h-3.5" />
               </Button>
             </CardHeader>
@@ -524,8 +571,8 @@ export default function CustomerDetail() {
                 return (
                   <button
                     key={r.id}
-                    onClick={() => handleOpenReminderEdit(r)}
-                    className="w-full flex items-center justify-between rounded-lg border border-[#F1F5F9] px-3 py-2 text-left hover:bg-[#F8FAFC]"
+                    onClick={() => !readOnly && handleOpenReminderEdit(r)}
+                    className={`w-full flex items-center justify-between rounded-lg border border-[#F1F5F9] px-3 py-2 text-left ${readOnly ? "cursor-default" : "hover:bg-[#F8FAFC]"}`}
                   >
                     <div>
                       <p className="text-sm font-medium text-[#0F172A]">{r.label}</p>
@@ -533,7 +580,7 @@ export default function CustomerDetail() {
                         {t("Due")} {r.next_due} · {t("every")} {r.frequency_months}{t("mo")}{overdue ? ` · ${t("overdue")}` : ""}
                       </p>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className={`flex items-center gap-1 ${readOnly ? "hidden" : ""}`}>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={(e) => { e.stopPropagation(); handleMarkReminderDone(r.id); }}>
                         <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
                       </Button>
@@ -555,17 +602,21 @@ export default function CustomerDetail() {
                 <FileText className="w-4 h-4 text-[#0891B2]" /> {t("Service Forms")}
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 pt-0">
+            <CardContent className="space-y-2 pt-0 max-h-80 overflow-y-auto">
               {serviceForms.length === 0 && <p className="text-xs text-[#64748B]">{t("No forms submitted yet.")}</p>}
               {serviceForms.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => navigate(`/jobs/${f.job_id}`)}
-                  className="w-full text-left rounded-lg border border-[#F1F5F9] px-3 py-2 hover:bg-[#F8FAFC]"
-                >
-                  <p className="text-sm font-medium text-[#0F172A]">{f.template_name ?? f.type}</p>
-                  <p className="text-xs text-[#64748B]">{f.job_type ?? t("Job")} · {new Date(f.submitted_at).toLocaleDateString()}</p>
-                </button>
+                <div key={f.id} className="flex items-center gap-1 rounded-lg border border-[#F1F5F9] hover:bg-[#F8FAFC]">
+                  <button onClick={() => openServiceForm(f)} className="flex-1 min-w-0 text-left px-3 py-2">
+                    <p className="text-xs font-semibold text-[#0891B2]">{new Date(f.submitted_at).toLocaleDateString()}</p>
+                    <p className="text-sm font-medium text-[#0F172A] truncate">{t(f.template_name ?? f.type)}</p>
+                    <p className="text-xs text-[#64748B] truncate">{f.job_type ? t(f.job_type) : t("Job")}</p>
+                  </button>
+                  {f.job_id && !readOnly && (
+                    <Button size="icon" variant="ghost" className="h-7 w-7 mr-1 shrink-0" title={t("Open Job")} onClick={() => navigate(`/jobs/${f.job_id}`)}>
+                      <ExternalLink className="w-3.5 h-3.5 text-[#64748B]" />
+                    </Button>
+                  )}
+                </div>
               ))}
             </CardContent>
           </Card>
@@ -650,7 +701,7 @@ export default function CustomerDetail() {
                 <p className="text-xs text-[#64748B] uppercase mb-1">{t("Access Notes")}</p>
                 <Textarea placeholder="e.g. Dog in backyard, key under mat, etc." className="text-sm" rows={2} value={gateDraft.notes} onChange={(e) => updateGateDraft({ notes: e.target.value })} />
               </div>
-              <Button size="sm" variant="outline" className="w-full h-8 border-[#E2E8F0]" disabled={savingGateCodes} onClick={handleSaveGateCodes}>
+              <Button size="sm" variant="outline" className={`w-full h-8 border-[#E2E8F0] ${readOnly ? "hidden" : ""}`} disabled={savingGateCodes} onClick={handleSaveGateCodes}>
                 {savingGateCodes ? t("Saving...") : t("Save Access Info")}
               </Button>
               {gateCodesSavedAt && (
@@ -660,7 +711,7 @@ export default function CustomerDetail() {
           </Card>
         </div>
         <div className="lg:col-span-2">
-          <Tabs defaultValue="history" className="w-full">
+          <Tabs defaultValue={initialTab} className="w-full">
             <TabsList className="bg-white border border-[#E2E8F0] w-full justify-start h-10 p-1 rounded-lg mb-4">
               <TabsTrigger value="history" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Service History")}</TabsTrigger>
               <TabsTrigger value="notes" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Notes")}</TabsTrigger>
@@ -672,15 +723,22 @@ export default function CustomerDetail() {
               <Card className="border-[#E2E8F0] shadow-sm">
                 <CardContent className="p-0">
                   <div className="divide-y divide-[#F1F5F9]">
+                    {/* Client SMS 2026-10-15: "job history links not active" -- these rows had no
+                        onClick/Link at all, purely decorative. job_service_history.job_id (nullable,
+                        older/historic rows may not have one) links straight to the real job. */}
                     {history.map((h) => (
-                      <div key={h.id} className="p-4 flex items-center gap-4">
+                      <div
+                        key={h.id}
+                        onClick={() => h.job_id && !readOnly && navigate(`/jobs/${h.job_id}`)}
+                        className={`p-4 flex items-center gap-4 ${h.job_id && !readOnly ? "cursor-pointer hover:bg-[#F8FAFC]" : ""}`}
+                      >
                         <div className="w-12 h-12 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0">
                           <Wrench className="w-5 h-5 text-[#0891B2]" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="font-medium text-[#0F172A]">{h.type}</p>
-                            <Badge className={`${statusColors[h.status] || ""} text-[10px] px-1.5 py-0`}>{t(h.status)}</Badge>
+                            <p className={`font-medium ${h.job_id ? "text-[#0891B2] hover:underline" : "text-[#0F172A]"}`}>{h.type}</p>
+                            <Badge className={`${statusColors[h.status] || ""} text-[10px] px-1.5 py-0`}>{t(jobStatusDisplayLabel(h.status))}</Badge>
                           </div>
                           <p className="text-sm text-[#64748B]">{h.service_date} &middot; {h.tech}</p>
                         </div>
@@ -709,7 +767,25 @@ export default function CustomerDetail() {
                   <div className="space-y-3">
                     {notes.map((n) => (
                       <div key={n.id} className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
-                        <p className="text-sm text-[#0F172A]">{n.text}</p>
+                        {editingNoteId === n.id ? (
+                          <div className="space-y-2">
+                            <Textarea value={editNoteText} onChange={(e) => setEditNoteText(e.target.value)} rows={3} autoFocus />
+                            <div className="flex justify-end gap-2">
+                              <Button size="sm" variant="outline" onClick={() => setEditingNoteId(null)}>{t("Cancel")}</Button>
+                              <Button size="sm" className="bg-[#0891B2] text-white" disabled={!editNoteText.trim()} onClick={handleSaveNoteEdit}>{t("Save")}</Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-start gap-2">
+                            <p className="flex-1 text-sm text-[#0F172A] whitespace-pre-wrap">{n.text}</p>
+                            <Button size="icon" variant="ghost" className={`h-7 w-7 shrink-0 ${readOnly ? "hidden" : ""}`} title={t("Edit note")} onClick={() => { setEditingNoteId(n.id); setEditNoteText(n.text); }}>
+                              <Pencil className="w-3.5 h-3.5 text-[#64748B]" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className={`h-7 w-7 shrink-0 ${readOnly ? "hidden" : ""}`} title={t("Delete note")} onClick={() => setDeleteNoteId(n.id)}>
+                              <Trash2 className="w-3.5 h-3.5 text-[#DC2626]" />
+                            </Button>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 mt-2 text-xs text-[#64748B]">
                           <span className="font-medium">{n.author}</span>
                           <span>&middot;</span>
@@ -740,6 +816,7 @@ export default function CustomerDetail() {
                           <img src={photo.url} alt="Customer" className="w-full h-full object-cover" />
                           <button
                             onClick={() => handleDeletePhoto(photo.id, photo.url)}
+                            hidden={readOnly}
                             className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                             title={t("Delete photo")}
                           >
@@ -769,7 +846,7 @@ export default function CustomerDetail() {
                 <CardContent className="p-0">
                   <div className="divide-y divide-[#F1F5F9]">
                     {invoices.map((inv) => (
-                      <div key={inv.id} className="p-4 flex items-center gap-4">
+                      <div key={inv.id} onClick={() => setOpenInvoiceId(inv.id)} className="p-4 flex items-center gap-4 cursor-pointer hover:bg-[#F8FAFC]">
                         <div className="w-12 h-12 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0">
                           <FileText className="w-5 h-5 text-[#0891B2]" />
                         </div>
@@ -928,6 +1005,23 @@ export default function CustomerDetail() {
         </DialogContent>
       </Dialog>
       <ReceiptDialog orderId={openSaleId} onClose={() => setOpenSaleId(null)} />
+      <InvoicePreviewDialog invoiceId={openInvoiceId} onClose={() => setOpenInvoiceId(null)} allowOpenFull={!readOnly} />
+      <FormSubmissionView
+        template={openForm ? (formTemplates ?? []).find((tpl) => tpl.id === openForm.template_id) ?? null : null}
+        form={openForm as JobForm | null}
+        open={openForm !== null}
+        onOpenChange={(open) => { if (!open) setOpenForm(null); }}
+      />
+      <Dialog open={deleteNoteId !== null} onOpenChange={(open) => { if (!open) setDeleteNoteId(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{t("Delete this note?")}</DialogTitle></DialogHeader>
+          <p className="text-sm text-[#64748B]">{t("This permanently removes the note from this customer.")}</p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setDeleteNoteId(null)}>{t("Cancel")}</Button>
+            <Button className="bg-[#DC2626] text-white hover:bg-[#B91C1C]" onClick={handleDeleteNote}>{t("Delete")}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -19,7 +19,8 @@ import { contentCategories } from "@/lib/data";
 import { useLanguage } from "@/lib/language-context";
 import { useConfigLists } from "@/hooks/use-config-lists";
 import type { ConfigListKey, ConfigListItem } from "@/lib/api/configLists";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, FIELD_PERMISSIONS } from "@/lib/auth-context";
+import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
@@ -104,7 +105,8 @@ export default function Settings() {
   const [newTech, setNewTech] = useState({ name: "", email: "", password: "", role: "technician" });
   const [techError, setTechError] = useState("");
   const [editTech, setEditTech] = useState<Profile | null>(null);
-  const [editTechDraft, setEditTechDraft] = useState({ name: "", role: "technician" });
+  const [editTechDraft, setEditTechDraft] = useState<{ name: string; role: string; permissions: string[] }>({ name: "", role: "technician", permissions: [] });
+  const [editTechError, setEditTechError] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
@@ -125,6 +127,13 @@ export default function Settings() {
   const [logoUploading, setLogoUploading] = useState(false);
   const [savingCompany, setSavingCompany] = useState(false);
   const [companySaveResult, setCompanySaveResult] = useState<"saved" | "error" | null>(null);
+  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- real tenant
+  // sales tax rate, editable here (was a hardcoded 8.25% literal everywhere in the app). Edited as
+  // a percentage string ("7.75") for a natural typing experience, converted to/from the stored
+  // fraction (0.0775) at the API boundary.
+  const [taxRatePercent, setTaxRatePercent] = useState("7.75");
+  const [savingTaxRate, setSavingTaxRate] = useState(false);
+  const [taxRateSaveResult, setTaxRateSaveResult] = useState<"saved" | "error" | null>(null);
   const { tenantId } = useAuth();
   // Client SMS 2026-09-30: "settings screen: set sku# or Item # as a default on receipt."
   const [receiptLineId, setReceiptLineId] = useState<"sku" | "item_number">("sku");
@@ -161,7 +170,7 @@ export default function Settings() {
 
   const loadSettings = useCallback(async () => {
     setIsLoading(true);
-    const [data, receiptData] = await Promise.all([settingsApi.all(), settingsApi.receipt()]);
+    const [data, receiptData, taxRateData] = await Promise.all([settingsApi.all(), settingsApi.receipt(), settingsApi.getTaxRate()]);
     setTeamMembers(data.teamMembers);
     setIntegrations(data.integrations);
     setSubscriptionPlans(data.subscriptionPlans);
@@ -177,6 +186,7 @@ export default function Settings() {
     setLogoUrl(data.logoUrl);
     setSelectedPlan(data.planId);
     setReceiptLineId(receiptData.lineId);
+    setTaxRatePercent((taxRateData.taxRate * 100).toFixed(2));
     setIsLoading(false);
   }, []);
 
@@ -203,14 +213,19 @@ export default function Settings() {
 
   const openEditTech = (m: Profile) => {
     setEditTech(m);
-    setEditTechDraft({ name: m.name, role: m.role });
+    setEditTechDraft({ name: m.name, role: m.role, permissions: m.permissions ?? [] });
+    setEditTechError(null);
   };
 
   const handleSaveTech = async () => {
     if (!editTech) return;
-    await profilesApi.update(editTech.id, editTechDraft);
-    setEditTech(null);
-    loadSettings();
+    try {
+      await profilesApi.update(editTech.id, editTechDraft);
+      setEditTech(null);
+      loadSettings();
+    } catch (err) {
+      setEditTechError(err instanceof Error ? err.message : t("Could not save changes."));
+    }
   };
 
   const handleDeleteTech = async (m: Profile) => {
@@ -233,6 +248,25 @@ export default function Settings() {
     }
     setSavingCompany(false);
     setTimeout(() => setCompanySaveResult(null), 3000);
+  };
+
+  const handleSaveTaxRate = async () => {
+    const pct = Number(taxRatePercent);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 30) {
+      setTaxRateSaveResult("error");
+      setTimeout(() => setTaxRateSaveResult(null), 3000);
+      return;
+    }
+    setSavingTaxRate(true);
+    setTaxRateSaveResult(null);
+    try {
+      await settingsApi.saveTaxRate(pct / 100);
+      setTaxRateSaveResult("saved");
+    } catch {
+      setTaxRateSaveResult("error");
+    }
+    setSavingTaxRate(false);
+    setTimeout(() => setTaxRateSaveResult(null), 3000);
   };
 
   const handleLogoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -410,6 +444,29 @@ export default function Settings() {
                   </Select>
                   <p className="text-xs text-[#64748B] mt-1">{t("Which identifier prints under each line on a Point of Sale receipt.")}</p>
                 </div>
+                <div>
+                  <Label className="text-sm font-medium text-[#0F172A]">{t("Sales Tax Rate")}</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="relative flex-1">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="30"
+                        value={taxRatePercent}
+                        onChange={(e) => setTaxRatePercent(e.target.value)}
+                        className="h-10 pr-7"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[#64748B]">%</span>
+                    </div>
+                    <Button variant="outline" className="h-10" onClick={handleSaveTaxRate} disabled={savingTaxRate}>
+                      {savingTaxRate ? t("Saving...") : t("Save")}
+                    </Button>
+                  </div>
+                  {taxRateSaveResult === "saved" && <p className="text-xs text-[#16A34A] mt-1 flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> {t("Saved")}</p>}
+                  {taxRateSaveResult === "error" && <p className="text-xs text-[#DC2626] mt-1">{t("Couldn't save — enter a value between 0 and 30")}</p>}
+                  <p className="text-xs text-[#64748B] mt-1">{t("Applied to taxable materials on Estimates, Invoices, Jobs, and Point of Sale (labor is never taxed).")}</p>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white h-10" onClick={handleSaveCompany} disabled={savingCompany}>
@@ -480,6 +537,27 @@ export default function Settings() {
                     </SelectContent>
                   </Select>
                 </div>
+                {/* Client video 2026-10-15: "a few more options here under permissions rather than
+                    just one field. Customer lookup, a few others so you can look at history." */}
+                {(editTechDraft.role === "technician" || editTechDraft.role === "contractor") && (
+                  <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-2">
+                    <p className="text-sm font-medium text-[#0F172A]">{t("Permissions")}</p>
+                    <p className="text-xs text-[#64748B]">{t("Technician Field is always on. Tick any extra pages this person can open:")}</p>
+                    {FIELD_PERMISSIONS.map((perm) => (
+                      <label key={perm.key} className="flex items-center gap-2 text-sm text-[#0F172A] cursor-pointer">
+                        <Checkbox
+                          checked={editTechDraft.permissions.includes(perm.key)}
+                          onCheckedChange={(checked) => setEditTechDraft((p) => ({
+                            ...p,
+                            permissions: checked ? [...p.permissions.filter((x) => x !== perm.key), perm.key] : p.permissions.filter((x) => x !== perm.key),
+                          }))}
+                        />
+                        {t(perm.label)}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {editTechError && <p className="text-sm text-[#DC2626]">{editTechError}</p>}
                 <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveTech}>{t("Save Changes")}</Button>
               </div>
             </DialogContent>

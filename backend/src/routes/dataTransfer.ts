@@ -128,6 +128,10 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
           }
           const tax = bool(row.taxable); if (tax !== null) values.taxable = tax;
           const pos = bool(row.pos_enabled); if (pos !== null) values.pos_enabled = pos;
+          // Client video 2026-10-15: "whenever we import or export functionality, it is not on
+          // the list as an option" -- Maintenance (the 3rd line-item type alongside Material/Labor,
+          // previously only settable via a one-off script) is now a real import/export column.
+          const maint = bool(row.maintenance_priority); if (maint !== null) values.maintenance_priority = maint;
           const found = bySku.get(lc(sku));
           if (found) {
             const patch: Record<string, unknown> = {};
@@ -151,10 +155,11 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
               department: values.department ?? null, sub_department: values.sub_department ?? null, default_distributor: values.default_distributor ?? null,
               unit_cost: values.unit_cost ?? 0, price: values.price ?? null, reorder_threshold: values.reorder_threshold ?? 0,
               taxable: values.taxable ?? true, pos_enabled: values.pos_enabled ?? false,
+              maintenance_priority: values.maintenance_priority ?? false,
             });
           }
         });
-        const cols = ["tenant_id", "sku", "name", "category", "subcategory", "sub_subcategory", "sub_sub_subcategory", "manufacturer", "unit", "barcode", "short_description", "long_description", "department", "sub_department", "default_distributor", "unit_cost", "price", "reorder_threshold", "taxable", "pos_enabled"];
+        const cols = ["tenant_id", "sku", "name", "category", "subcategory", "sub_subcategory", "sub_sub_subcategory", "manufacturer", "unit", "barcode", "short_description", "long_description", "department", "sub_department", "default_distributor", "unit_cost", "price", "reorder_threshold", "taxable", "pos_enabled", "maintenance_priority"];
         for (let i = 0; i < news.length; i += 200) {
           await tx`insert into inventory_items ${tx(news.slice(i, i + 200), ...cols)}`;
         }

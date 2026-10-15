@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AuthProvider, useAuth, isFieldOnlyRole } from "@/lib/auth-context";
+import { AuthProvider, useAuth, isFieldOnlyRole, fieldRoleCanOpen } from "@/lib/auth-context";
 import { LanguageProvider } from "@/lib/language-context";
 import AppShell from "@/components/AppShell";
 import Login from "@/pages/Login";
@@ -37,11 +37,11 @@ import { Toaster } from "@/components/ui/sonner";
 // view" -- technician/contractor accounts are restricted to the Field page; every other route
 // (including "/") bounces them there instead of exposing the full admin app.
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, role } = useAuth();
+  const { isAuthenticated, isLoading, role, permissions } = useAuth();
   const location = useLocation();
   if (isLoading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (isFieldOnlyRole(role) && location.pathname !== "/field") return <Navigate to="/field" replace />;
+  if (isFieldOnlyRole(role) && !fieldRoleCanOpen(location.pathname, permissions)) return <Navigate to="/field" replace />;
   return <>{children}</>;
 }
 

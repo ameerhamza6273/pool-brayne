@@ -1410,6 +1410,7 @@ export type Database = {
           hourly_rate: number | null
           id: string
           name: string
+          permissions: string[]
           phone: string | null
           role: Database["public"]["Enums"]["staff_role"]
           salary: number | null
@@ -1426,6 +1427,7 @@ export type Database = {
           hourly_rate?: number | null
           id: string
           name: string
+          permissions?: string[]
           phone?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
           salary?: number | null
@@ -1442,6 +1444,7 @@ export type Database = {
           hourly_rate?: number | null
           id?: string
           name?: string
+          permissions?: string[]
           phone?: string | null
           role?: Database["public"]["Enums"]["staff_role"]
           salary?: number | null

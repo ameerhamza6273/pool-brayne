@@ -11,6 +11,7 @@ import { customersApi } from "@/lib/api/customers";
 import { formatPhoneInput } from "@/lib/phone";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { useLanguage } from "@/lib/language-context";
+import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
 
@@ -26,6 +27,7 @@ const tagColors: Record<string, string> = {
 };
 
 export default function Customers() {
+  const { role } = useAuth();
   const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("All");
@@ -113,7 +115,8 @@ export default function Customers() {
         <h1 className="text-2xl font-bold text-[#0F172A]">{t("Customers")}</h1>
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10">
+            {/* Client video 2026-10-15: technicians with "Customer Lookup" only look up, never add. */}
+            <Button className={`bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10 ${isFieldOnlyRole(role) ? "hidden" : ""}`}>
               <Plus className="w-4 h-4" />
               {t("Add Customer")}
             </Button>

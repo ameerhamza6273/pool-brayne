@@ -5,7 +5,7 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { 
 export type InvoiceLineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
-// `total` (materials taxed at 8.25%, labor untaxed, added by the backend list endpoint) matches
+// `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches
 // what EstimateDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
 export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null; total?: number };
 export type EstimateLineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
@@ -61,6 +61,10 @@ type Business = {
   state: string | null;
   zip: string | null;
   invoice_business_name: string | null;
+  // Client text 2026-10-15: real per-tenant sales tax rate (replaces a hardcoded 8.25% literal) --
+  // only populated on the public (no-login) estimate/invoice bundles, which can't call the
+  // authenticated /api/settings/tax-rate endpoint the rest of the app uses (see useTaxRate()).
+  tax_rate?: number | null;
 };
 
 // Job-derived extras for the customer-facing invoice document (all null/empty for invoices with no job).

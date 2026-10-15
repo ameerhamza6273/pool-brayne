@@ -32,7 +32,7 @@ export default async function publicRoutes(app: FastifyInstance) {
       from estimate_line_items where estimate_id = ${estimate.id} order by sort_order
     `;
     const [business] = await sql`
-      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name
+      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name, t.tax_rate
       from estimates e join tenants t on t.id = e.tenant_id
       where e.approval_token = ${token} limit 1
     `;
@@ -113,11 +113,15 @@ export default async function publicRoutes(app: FastifyInstance) {
       from invoice_line_items where invoice_id = ${invoice.id} order by sort_order
     `;
     const [business] = await sql`
-      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name
+      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name, t.tax_rate
       from invoices i join tenants t on t.id = i.tenant_id
       where i.payment_token = ${token} limit 1
     `;
-    const total = taxedTotal(lineItems as unknown as { amount: number; item_type: string | null; taxable: boolean }[], 0);
+    const total = taxedTotal(
+      lineItems as unknown as { amount: number; item_type: string | null; taxable: boolean }[],
+      0,
+      Number(business?.tax_rate ?? 0.0775),
+    );
     return { invoice, lineItems, business: business ?? null, total };
   });
 
@@ -127,8 +131,10 @@ export default async function publicRoutes(app: FastifyInstance) {
       const { token } = req.params;
       const { opaqueData } = req.body;
       const [invoice] = await sql`
-        select i.id, i.status, i.customer_id, i.number, c.name as customer_name
-        from invoices i join customers c on c.id = i.customer_id
+        select i.id, i.status, i.customer_id, i.number, c.name as customer_name, t.tax_rate
+        from invoices i
+        join customers c on c.id = i.customer_id
+        join tenants t on t.id = i.tenant_id
         where i.payment_token = ${token} limit 1
       `;
       if (!invoice) {
@@ -140,7 +146,11 @@ export default async function publicRoutes(app: FastifyInstance) {
         return;
       }
       const lineItems = await sql`select amount, item_type, taxable from invoice_line_items where invoice_id = ${invoice.id}`;
-      const total = taxedTotal(lineItems as unknown as { amount: number; item_type: string | null; taxable: boolean }[], 0);
+      const total = taxedTotal(
+        lineItems as unknown as { amount: number; item_type: string | null; taxable: boolean }[],
+        0,
+        Number(invoice.tax_rate ?? 0.0775),
+      );
       if (!opaqueData) {
         reply.code(400).send({ error: "Card payment requires tokenized card data" });
         return;

@@ -26,9 +26,10 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import { useLanguage } from "@/lib/language-context";
+import { useTaxRate } from "@/hooks/use-tax-rate";
 import type { Database } from "@/lib/database.types";
 
-// `total` (materials taxed at 8.25%, labor untaxed, added by the backend list endpoint) matches
+// `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches
 // what InvoiceDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null; total?: number };
 type UninvoicedJob = Database["public"]["Tables"]["jobs"]["Row"];
@@ -52,7 +53,7 @@ const paymentMethods: Record<string, { icon: typeof CreditCard; label: string }>
 };
 
 const daysBetween = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
-// QA sweep 2026-09-30 follow-up: `total` (materials * 1.0825 + labor) is a floating-point result --
+// QA sweep 2026-09-30 follow-up: `total` (materials * (1 + tax rate) + labor) is a floating-point result --
 // plain toLocaleString() shows up to 3 fraction digits by default, so a value like 4216.3149999998
 // rendered as "$4,216.315" instead of "$4,216.32". Every money amount in this file should go
 // through this instead of calling toLocaleString() directly.
@@ -60,6 +61,7 @@ const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits
 
 export default function Invoicing() {
   const { t } = useLanguage();
+  const taxRate = useTaxRate();
   const [search, setSearch] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
@@ -619,7 +621,7 @@ export default function Invoicing() {
                       </div>
                       {bulkPayMethod === "Card" ? (
                         <CardPaymentForm
-                          amount={openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0) * 1.0825}
+                          amount={openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0) * (1 + taxRate)}
                           onCharge={(opaqueData) => handleBulkCollect(opaqueData)}
                         />
                       ) : (

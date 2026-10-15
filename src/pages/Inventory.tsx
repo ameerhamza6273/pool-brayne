@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { averyLabelsPdfUrl, zebraLabelsPdfUrl } from "@/lib/label-pdf";
-import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText } from "lucide-react";
+import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText, Mail, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -109,7 +109,7 @@ export default function Inventory() {
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
     barcode: "", defaultDistributor: "", unit: "", taxable: true, reorderThreshold: "", storeQuantity: "",
-    subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true,
+    subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false,
   });
   const [categoryTaxonomy, setCategoryTaxonomy] = useState<CategoryTaxonomyRow[]>([]);
   // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
@@ -140,7 +140,7 @@ export default function Inventory() {
   const [newProduct, setNewProduct] = useState({
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "",
-    subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true,
+    subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false,
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
   // QA sweep 2026-09-30: this used to be a client-guessed, user-editable "PO Number" field
@@ -159,7 +159,7 @@ export default function Inventory() {
   // Client PDF 2026-09-05: "some vendors have multiple locations we put from".
   const [locationsSupplier, setLocationsSupplier] = useState<Supplier | null>(null);
   const [supplierLocations, setSupplierLocations] = useState<SupplierLocation[]>([]);
-  const [newLocation, setNewLocation] = useState({ label: "", address: "", contactName: "", phone: "" });
+  const [newLocation, setNewLocation] = useState({ label: "", address: "", contactName: "", phone: "", email: "", isDefault: false });
 
   // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage etc.
   const [writeoffs, setWriteoffs] = useState<(InventoryWriteoff & { inventory_items: { name: string; sku: string } | null })[]>([]);
@@ -175,7 +175,13 @@ export default function Inventory() {
   const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [vendorBillsDue, setVendorBillsDue] = useState<VendorBillDueRow[]>([]);
   const [newBillOpen, setNewBillOpen] = useState(false);
-  const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "", poId: "" });
+  // Client doc 2026-10-15: "Create New Vendor Bill doesn't work" -- Issue Date started blank and
+  // the create handler silently returned when it (or vendor / bill #) was missing, so clicking Create
+  // did nothing at all. Issue Date now defaults to today and every failure says why.
+  const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: todayKey(), dueDate: "", amount: "", poId: "" });
+  const [newBillError, setNewBillError] = useState<string | null>(null);
+  const [newBillSaving, setNewBillSaving] = useState(false);
   // Client PDF 2026-09-15: "Ability to search by PO number" on the Pay Invoices / Vendor Bills tab.
   const [billSearch, setBillSearch] = useState("");
   const [billSort, setBillSort] = useState<{ key: "amount" | "vendor" | null; dir: "asc" | "desc" }>({ key: null, dir: "asc" });
@@ -222,8 +228,9 @@ export default function Inventory() {
       subSubcategory: newProduct.subSubcategory || null,
       subSubSubcategory: newProduct.subSubSubcategory || null,
       isInventory: newProduct.isInventory,
+      maintenancePriority: newProduct.maintenancePriority,
     });
-    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false });
     setAddOpen(false);
     loadInventory();
   };
@@ -270,6 +277,7 @@ export default function Inventory() {
       subSubcategory: item.sub_subcategory ?? "",
       subSubSubcategory: item.sub_sub_subcategory ?? "",
       isInventory: item.is_inventory,
+      maintenancePriority: item.maintenance_priority,
     });
   };
 
@@ -296,6 +304,7 @@ export default function Inventory() {
       subSubcategory: editProductDraft.subSubcategory || null,
       subSubSubcategory: editProductDraft.subSubSubcategory || null,
       isInventory: editProductDraft.isInventory,
+      maintenancePriority: editProductDraft.maintenancePriority,
     });
     setEditProductItem(null);
     loadInventory();
@@ -374,14 +383,24 @@ export default function Inventory() {
       address: newLocation.address || null,
       contactName: newLocation.contactName || null,
       phone: newLocation.phone || null,
+      email: newLocation.email || null,
+      isDefault: newLocation.isDefault,
     });
-    setNewLocation({ label: "", address: "", contactName: "", phone: "" });
+    setNewLocation({ label: "", address: "", contactName: "", phone: "", email: "", isDefault: false });
     setSupplierLocations(await inventoryApi.getSupplierLocations(locationsSupplier.id));
   };
 
   const handleRemoveLocation = async (locationId: string) => {
     if (!locationsSupplier) return;
     await inventoryApi.removeSupplierLocation(locationId);
+    setSupplierLocations(await inventoryApi.getSupplierLocations(locationsSupplier.id));
+  };
+
+  // Client video 2026-10-15: "primarily we do pool builder supply as a default... if we need a
+  // change, the ability to change the email from our selected list."
+  const handleSetDefaultLocation = async (locationId: string) => {
+    if (!locationsSupplier) return;
+    await inventoryApi.setDefaultSupplierLocation(locationId);
     setSupplierLocations(await inventoryApi.getSupplierLocations(locationsSupplier.id));
   };
 
@@ -582,18 +601,30 @@ export default function Inventory() {
   };
 
   const handleCreateBill = async () => {
-    if (!newBill.supplierId || !newBill.number || !newBill.issueDate) return;
-    await invoicingApi.createVendorBill({
-      supplierId: newBill.supplierId,
-      number: newBill.number,
-      issueDate: newBill.issueDate,
-      dueDate: newBill.dueDate || null,
-      amount: parseFloat(newBill.amount) || 0,
-      poId: newBill.poId || null,
-    });
-    setNewBill({ supplierId: "", number: "", issueDate: "", dueDate: "", amount: "", poId: "" });
-    setNewBillOpen(false);
-    loadInventory();
+    const missing = [!newBill.supplierId && t("Vendor"), !newBill.number.trim() && t("Bill Number"), !newBill.issueDate && t("Issue Date")].filter(Boolean);
+    if (missing.length > 0) {
+      setNewBillError(`${t("Please fill in")}: ${missing.join(", ")}`);
+      return;
+    }
+    setNewBillSaving(true);
+    setNewBillError(null);
+    try {
+      await invoicingApi.createVendorBill({
+        supplierId: newBill.supplierId,
+        number: newBill.number.trim(),
+        issueDate: newBill.issueDate,
+        dueDate: newBill.dueDate || null,
+        amount: parseFloat(newBill.amount) || 0,
+        poId: newBill.poId || null,
+      });
+      setNewBill({ supplierId: "", number: "", issueDate: todayKey(), dueDate: "", amount: "", poId: "" });
+      setNewBillOpen(false);
+      loadInventory();
+    } catch (err) {
+      setNewBillError(err instanceof Error ? err.message : t("Could not create the vendor bill."));
+    } finally {
+      setNewBillSaving(false);
+    }
   };
 
   const handleMarkBillPaid = async (id: string) => {
@@ -685,6 +716,19 @@ export default function Inventory() {
                   </Select>
                   <p className="text-xs text-[#64748B] mt-1">{t("Non-Inventory items (labor, shipping, misc fees) are never stocked and never show as Out or Low.")}</p>
                 </div>
+                {/* Client video 2026-10-15: "where do I set Material / Labor / Maintenance" --
+                    Labor is already set via Category above (e.g. category "Labor"); this is the
+                    other missing piece, a real toggle for the Maintenance line-item type used on
+                    Estimates/Invoices (previously only ever set by a one-off script). */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newProduct.maintenancePriority}
+                    onChange={(e) => setNewProduct((p) => ({ ...p, maintenancePriority: e.target.checked }))}
+                  />
+                  <span className="text-sm text-[#0F172A]">{t("Maintenance line item")}</span>
+                </label>
+                <p className="text-xs text-[#64748B] -mt-2">{t("Shows under \"Maintenance\" (instead of Material) in the line-item picker on Estimates, Invoices, and Jobs.")}</p>
                 <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>{t("Save Product")}</Button>
               </div>
             </DialogContent>
@@ -930,19 +974,33 @@ export default function Inventory() {
             </div>
           </div>
 
-          {/* Client PDF 2026-09-05: "some vendors have multiple locations we put from". */}
+          {/* Client PDF 2026-09-05: "some vendors have multiple locations we put from". Client
+              video 2026-10-15: email + a single default, for the group of people (e.g. Pool
+              Builder Supply / Superior Landscape / Classic Tile, all under parent company
+              Heritage) this vendor's invoices get emailed to. */}
           <Dialog open={!!locationsSupplier} onOpenChange={(open) => !open && setLocationsSupplier(null)}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{locationsSupplier?.name} — {t("Locations")}</DialogTitle></DialogHeader>
               <div className="space-y-3 pt-2">
                 {supplierLocations.map((loc) => (
-                  <div key={loc.id} className="flex items-start justify-between p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
+                  <div key={loc.id} className={`flex items-start justify-between p-3 rounded-lg border ${loc.is_default ? "bg-[#0891B2]/5 border-[#0891B2]/30" : "bg-[#F8FAFC] border-[#E2E8F0]"}`}>
                     <div className="text-sm">
-                      <p className="font-medium text-[#0F172A]">{loc.label}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-medium text-[#0F172A]">{loc.label}</p>
+                        {loc.is_default && <Badge className="bg-[#0891B2]/10 text-[#0891B2] text-[10px] px-1.5 py-0">{t("Default")}</Badge>}
+                      </div>
                       {loc.address && <p className="text-[#64748B]">{loc.address}</p>}
                       {(loc.contact_name || loc.phone) && <p className="text-[#64748B]">{[loc.contact_name, loc.phone].filter(Boolean).join(" · ")}</p>}
+                      {loc.email && <p className="text-[#64748B] flex items-center gap-1"><Mail className="w-3 h-3" /> {loc.email}</p>}
                     </div>
-                    <button onClick={() => handleRemoveLocation(loc.id)} className="text-[#DC2626] text-xs">{t("Remove")}</button>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {!loc.is_default && (
+                        <button onClick={() => handleSetDefaultLocation(loc.id)} className="text-[#0891B2] text-xs flex items-center gap-0.5" title={t("Make this the default email")}>
+                          <Star className="w-3 h-3" /> {t("Make Default")}
+                        </button>
+                      )}
+                      <button onClick={() => handleRemoveLocation(loc.id)} className="text-[#DC2626] text-xs">{t("Remove")}</button>
+                    </div>
                   </div>
                 ))}
                 {supplierLocations.length === 0 && <p className="text-sm text-[#64748B]">{t("No additional locations yet.")}</p>}
@@ -954,6 +1012,11 @@ export default function Inventory() {
                     <Input placeholder={t("Contact Name")} value={newLocation.contactName} onChange={(e) => setNewLocation((p) => ({ ...p, contactName: e.target.value }))} />
                     <Input placeholder={t("Phone")} value={newLocation.phone} onChange={(e) => setNewLocation((p) => ({ ...p, phone: e.target.value }))} />
                   </div>
+                  <Input type="email" placeholder={t("Email")} value={newLocation.email} onChange={(e) => setNewLocation((p) => ({ ...p, email: e.target.value }))} />
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={newLocation.isDefault} onChange={(e) => setNewLocation((p) => ({ ...p, isDefault: e.target.checked }))} />
+                    <span className="text-sm text-[#0F172A]">{t("Make this the default email")}</span>
+                  </label>
                   <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddLocation}>{t("Add Location")}</Button>
                 </div>
               </div>
@@ -1123,13 +1186,13 @@ export default function Inventory() {
 
         <TabsContent value="vendor-bills" className="mt-4 space-y-3">
           <div className="flex justify-end">
-            <Dialog open={newBillOpen} onOpenChange={setNewBillOpen}>
+            <Dialog open={newBillOpen} onOpenChange={(open) => { setNewBillOpen(open); if (!open) setNewBillError(null); }}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("New Vendor Bill")}</Button>
               </DialogTrigger>
               <DialogContent className="max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{t("Create New Vendor Bill")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  <div><Label>{t("Vendor")}</Label>
+                  <div><Label>{t("Vendor")} <span className="text-[#DC2626]">*</span></Label>
                     <div className="mt-1">
                       <SearchableSelect
                         value={newBill.supplierId}
@@ -1140,7 +1203,7 @@ export default function Inventory() {
                       />
                     </div>
                   </div>
-                  <div><Label>{t("Bill Number")}</Label><Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} /></div>
+                  <div><Label>{t("Bill Number")} <span className="text-[#DC2626]">*</span></Label><Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} /></div>
                   {/* Client PDF 2026-09-15: link a bill back to the PO it's paying off, so it can be searched/found by PO number. */}
                   <div><Label>{t("Purchase Order (optional)")}</Label>
                     <div className="mt-1">
@@ -1157,11 +1220,12 @@ export default function Inventory() {
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div><Label>{t("Issue Date")}</Label><Input type="date" className="mt-1" value={newBill.issueDate} onChange={(e) => setNewBill((p) => ({ ...p, issueDate: e.target.value }))} /></div>
+                    <div><Label>{t("Issue Date")} <span className="text-[#DC2626]">*</span></Label><Input type="date" className="mt-1" value={newBill.issueDate} onChange={(e) => setNewBill((p) => ({ ...p, issueDate: e.target.value }))} /></div>
                     <div><Label>{t("Due Date")}</Label><Input type="date" className="mt-1" value={newBill.dueDate} onChange={(e) => setNewBill((p) => ({ ...p, dueDate: e.target.value }))} /></div>
                   </div>
                   <div><Label>{t("Amount")}</Label><Input type="number" className="mt-1" placeholder="0.00" value={newBill.amount} onChange={(e) => setNewBill((p) => ({ ...p, amount: e.target.value }))} /></div>
-                  <Button className="w-full bg-[#0891B2] text-white" onClick={handleCreateBill}>{t("Create Vendor Bill")}</Button>
+                  {newBillError && <p className="text-sm text-[#DC2626]">{newBillError}</p>}
+                  <Button className="w-full bg-[#0891B2] text-white" disabled={newBillSaving} onClick={handleCreateBill}>{newBillSaving ? t("Saving...") : t("Create Vendor Bill")}</Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -1499,6 +1563,20 @@ export default function Inventory() {
                   <SelectItem value="non-inventory">{t("Non-Inventory")}</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            {/* Client video 2026-10-15: "where do I set Material / Labor / Maintenance" -- Labor is
+                already set via Category above; this is the other missing piece, a real toggle for
+                the Maintenance line-item type (previously only ever set by a one-off script). */}
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editProductDraft.maintenancePriority}
+                  onChange={(e) => setEditProductDraft((p) => ({ ...p, maintenancePriority: e.target.checked }))}
+                />
+                <span className="text-sm text-[#0F172A]">{t("Maintenance line item")}</span>
+              </label>
+              <p className="text-xs text-[#64748B] mt-1">{t("Shows under \"Maintenance\" (instead of Material) in the line-item picker on Estimates, Invoices, and Jobs.")}</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>{t("Cost (internal)")}</Label><Input className="mt-1" type="number" value={editProductDraft.unitCost} onChange={(e) => setEditProductDraft((p) => ({ ...p, unitCost: e.target.value }))} /></div>

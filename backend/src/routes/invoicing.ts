@@ -49,31 +49,41 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
   }
 }
 
+// Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- confirmed as the
+// tenant's real sales tax rate (was a hardcoded 8.25% placeholder everywhere, frontend and
+// backend). Now a real per-tenant column (migration 20261015170000) instead of a literal, since
+// "for now" implies the client may change it later from Settings without a code deploy.
+export async function getTaxRate(tx: postgres.TransactionSql): Promise<number> {
+  const [row] = (await tx`select tax_rate from tenants where id = current_tenant_id() limit 1`) as unknown as { tax_rate: string | number }[];
+  return row ? Number(row.tax_rate) : 0.0775;
+}
+
 // QA sweep 2026-09-30 found the invoice/estimate "Amount" shown in every list view (Invoicing,
 // Dashboard, Reports) never matched the real Total on the invoice document/charge -- because it's
 // the stored pre-tax `amount`, while the document (InvoiceDetail.tsx/EstimateDetail.tsx) taxes only
-// materials, not labor (`materialsSubtotal * 0.0825`, see Architecture > Labor vs materials). This
+// materials, not labor (`materialsSubtotal * taxRate`, see Architecture > Labor vs materials). This
 // function had ALSO drifted from that rule -- it taxed the whole subtotal including labor, so any
 // invoice with labor line items would be OVERCHARGED on card payment. Fixed to match the one true
 // formula every other total in the app already uses.
 // Client video 2026-10-06: tax is now driven by each line's real `taxable` flag (manually
 // overridable per SKU) instead of the item_type rule alone -- `item_type` only used as a fallback
 // for any pre-migration row that somehow has neither set.
-export function taxedTotal(lineItems: { amount: number; item_type?: string | null; taxable?: boolean | null }[], fallbackAmount: number): number {
-  if (lineItems.length === 0) return Math.round(fallbackAmount * 1.0825 * 100) / 100;
+export function taxedTotal(lineItems: { amount: number; item_type?: string | null; taxable?: boolean | null }[], fallbackAmount: number, taxRate: number): number {
+  if (lineItems.length === 0) return Math.round(fallbackAmount * (1 + taxRate) * 100) / 100;
   const isTaxable = (li: { item_type?: string | null; taxable?: boolean | null }) => li.taxable ?? li.item_type !== "labor";
   const taxableAmount = lineItems.filter(isTaxable).reduce((sum, li) => sum + li.amount, 0);
   const exemptAmount = lineItems.filter((li) => !isTaxable(li)).reduce((sum, li) => sum + li.amount, 0);
-  // Floating-point multiplication (e.g. 8.25% tax) can land a cent or two off a clean decimal --
+  // Floating-point multiplication (e.g. 7.75% tax) can land a cent or two off a clean decimal --
   // round to the cent so every surface that displays this shows the same, correctly-formatted number.
-  return Math.round((taxableAmount * 1.0825 + exemptAmount) * 100) / 100;
+  return Math.round((taxableAmount * (1 + taxRate) + exemptAmount) * 100) / 100;
 }
 
 async function computeInvoiceTotal(tx: postgres.TransactionSql, invoiceId: string) {
   const [invoiceRow] = await tx`select * from invoices where id = ${invoiceId} limit 1`;
   const invoice = invoiceRow as unknown as { id: string; customer_id: string; amount: number };
   const lineItems = (await tx`select amount, item_type, taxable from invoice_line_items where invoice_id = ${invoiceId}`) as unknown as { amount: number; item_type: string | null; taxable: boolean }[];
-  return { invoice, total: taxedTotal(lineItems, invoice.amount) };
+  const taxRate = await getTaxRate(tx);
+  return { invoice, total: taxedTotal(lineItems, invoice.amount, taxRate) };
 }
 
 // Records a payment already collected — for Card, `providerTransactionId` is the real
@@ -111,7 +121,8 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const lineItemRows = (await tx`
         select invoice_id, amount, item_type, taxable from invoice_line_items where invoice_id = any(${invoices.map((i) => i.id)})
       `) as unknown as { invoice_id: string; amount: number; item_type: string | null; taxable: boolean }[];
-      return invoices.map((i) => ({ ...i, total: taxedTotal(lineItemRows.filter((li) => li.invoice_id === i.id), i.amount) }));
+      const taxRate = await getTaxRate(tx);
+      return invoices.map((i) => ({ ...i, total: taxedTotal(lineItemRows.filter((li) => li.invoice_id === i.id), i.amount, taxRate) }));
     });
   });
 
@@ -392,7 +403,8 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const lineItemRows = (await tx`
         select estimate_id, amount, item_type, taxable from estimate_line_items where estimate_id = any(${estimates.map((e) => e.id)})
       `) as unknown as { estimate_id: string; amount: number; item_type: string | null; taxable: boolean }[];
-      return estimates.map((e) => ({ ...e, total: taxedTotal(lineItemRows.filter((li) => li.estimate_id === e.id), e.amount) }));
+      const taxRate = await getTaxRate(tx);
+      return estimates.map((e) => ({ ...e, total: taxedTotal(lineItemRows.filter((li) => li.estimate_id === e.id), e.amount, taxRate) }));
     });
   });
 
@@ -690,17 +702,27 @@ export default async function invoicingRoutes(app: FastifyInstance) {
 
   app.post<{
     Body: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number; poId?: string | null };
-  }>("/vendor-bills", async (req) => {
+  }>("/vendor-bills", async (req, reply) => {
     const { supplierId, number, issueDate, dueDate, amount, poId } = req.body;
-    return withTenantContext(req.userId, async (tx) => {
-      const [tenant] = await tx`select current_tenant_id() as id`;
-      const [row] = await tx`
-        insert into vendor_bills (tenant_id, supplier_id, number, issue_date, due_date, amount, status, po_id)
-        values (${tenant.id}, ${supplierId}, ${number}, ${issueDate}, ${dueDate}, ${amount}, 'Received', ${poId || null})
-        returning *
-      `;
-      return row;
-    });
+    // Client doc 2026-10-15: "Create New Vendor Bill doesn't work" -- failures used to surface as a
+    // bare 500 the dialog never showed. Clear messages now for the two real failure cases.
+    if (!supplierId || !number?.trim()) return reply.code(400).send({ error: "Vendor and bill number are required" });
+    try {
+      return await withTenantContext(req.userId, async (tx) => {
+        const [tenant] = await tx`select current_tenant_id() as id`;
+        const [row] = await tx`
+          insert into vendor_bills (tenant_id, supplier_id, number, issue_date, due_date, amount, status, po_id)
+          values (${tenant.id}, ${supplierId}, ${number.trim()}, ${issueDate || new Date().toISOString().slice(0, 10)}, ${dueDate || null}, ${Number.isFinite(amount) ? amount : 0}, 'Received', ${poId || null})
+          returning *
+        `;
+        return row;
+      });
+    } catch (err) {
+      if ((err as { code?: string }).code === "23505") {
+        return reply.code(409).send({ error: `This vendor already has a bill numbered ${number.trim()}` });
+      }
+      throw err;
+    }
   });
 
   app.patch<{ Params: { id: string } }>("/vendor-bills/:id/mark-paid", async (req) => {

@@ -16,6 +16,9 @@ export const receiptNumber = (orderId: string) => `POS-${orderId.replace(/-/g, "
 export type SalesReport = {
   qtyByProduct: { description: string; qty: number; revenue: number }[];
   taxSummary: { orderCount: number; totalSales: number; taxableSales: number; taxCollected: number };
+  // Client SMS 2026-10-15: "need a way to drill down to see orders and amounts included on the
+  // sales tax report" -- the orders behind the summary totals above.
+  orders: { id: string; created_at: string; subtotal: number; tax: number; total: number; customer_name: string | null }[];
 };
 
 export const posApi = {

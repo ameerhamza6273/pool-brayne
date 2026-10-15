@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCircle2, Circle, ChevronDown, ChevronRight, Upload, X } from "lucide-react";
+import { CheckCircle2, Circle, ChevronDown, ChevronRight, Upload, X, Camera } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -158,11 +158,20 @@ export default function DynamicForm({
               {f.type === "photo" && (
                 <div className="space-y-2">
                   {onUploadPhoto ? (
-                    <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#E2E8F0] text-sm text-[#0F172A] cursor-pointer hover:bg-[#F8FAFC] w-fit">
-                      <Upload className="w-3.5 h-3.5" />
-                      {uploadingField === f.id ? t("Uploading...") : t("Add Photo")}
-                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(f.id, e)} disabled={uploadingField === f.id} />
-                    </label>
+                    // Client video 2026-10-15: "no live photo" -- `capture` opens the phone camera
+                    // directly; the plain input still offers the gallery.
+                    <div className="flex flex-wrap gap-2">
+                      <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#0891B2]/40 bg-[#0891B2]/5 text-sm text-[#0891B2] cursor-pointer hover:bg-[#0891B2]/10 w-fit">
+                        <Camera className="w-3.5 h-3.5" />
+                        {uploadingField === f.id ? t("Uploading...") : t("Take Photo")}
+                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handlePhotoSelect(f.id, e)} disabled={uploadingField === f.id} />
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#E2E8F0] text-sm text-[#0F172A] cursor-pointer hover:bg-[#F8FAFC] w-fit">
+                        <Upload className="w-3.5 h-3.5" />
+                        {t("Choose from Gallery")}
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handlePhotoSelect(f.id, e)} disabled={uploadingField === f.id} />
+                      </label>
+                    </div>
                   ) : (
                     <p className="text-xs text-[#94A3B8]">{t("Photo upload not available here.")}</p>
                   )}

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
+import { getTaxRate } from "./invoicing.js";
 
 type Item = { id: string; name: string; reorder_threshold: number };
 type Stock = { item_id: string; quantity: number };
@@ -39,11 +40,12 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       // invoice document/charge is taxed (materials only, see invoicing.ts `taxedTotal`) -- so this
       // tile always understated what's really owed. `total` matches that same formula.
       const lineItemsByInvoice = invoiceLineItemsRaw as unknown as { invoice_id: string; amount: number; item_type: string | null }[];
+      const taxRate = await getTaxRate(tx);
       const invoices = (invoicesRaw as unknown as { id: string; amount: number; status: string; issue_date: string }[]).map((i) => {
         const lineItems = lineItemsByInvoice.filter((li) => li.invoice_id === i.id);
         const materials = lineItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
         const labor = lineItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-        const rawTotal = lineItems.length > 0 ? materials * 1.0825 + labor : i.amount * 1.0825;
+        const rawTotal = lineItems.length > 0 ? materials * (1 + taxRate) + labor : i.amount * (1 + taxRate);
         return { ...i, total: Math.round(rawTotal * 100) / 100 };
       });
 

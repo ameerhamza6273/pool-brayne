@@ -432,7 +432,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
   });
 
   // Client video 2026-09-25: documents need Edit (rename the label) and Delete. Only document rows --
-  // photos/signatures are untouched by these routes.
+  // photos/signatures are untouched by this route.
   app.patch<{ Params: { id: string; attId: string }; Body: { label: string | null } }>("/:id/attachments/:attId", async (req) => {
     const { id, attId } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -444,10 +444,14 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
+  // Client video feedback 2026-10-15 (Technician Field): "there is no way to delete a picture if
+  // you uploaded the wrong picture" -- widened from document-only to also allow photo rows
+  // (signatures are still untouched; deleting a signed job completion isn't the same kind of
+  // mistake-correction this was asked for).
   app.delete<{ Params: { id: string; attId: string } }>("/:id/attachments/:attId", async (req) => {
     const { id, attId } = req.params;
     return withTenantContext(req.userId, async (tx) => {
-      await tx`delete from job_attachments where id = ${attId} and job_id = ${id} and type = 'document'`;
+      await tx`delete from job_attachments where id = ${attId} and job_id = ${id} and type in ('document', 'photo')`;
       return { ok: true };
     });
   });

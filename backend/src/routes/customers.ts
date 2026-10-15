@@ -12,7 +12,19 @@ export default async function customersRoutes(app: FastifyInstance) {
     const result = await withTenantContext(req.userId, async (tx) => {
       const [customer, history, notes, invoices, posOrdersRaw] = await Promise.all([
         tx`select * from customers where id = ${id} limit 1`,
-        tx`select * from job_service_history where customer_id = ${id} order by service_date desc`,
+        // Client SMS 2026-10-15: "job history links not active" -- traced to the real root cause:
+        // this tab was reading `job_service_history`, a table no real workflow has ever written to
+        // (confirmed on prod: 6 rows total, all leftover 2024 demo seed data, every one with
+        // job_id = null) -- so for every real customer this tab was either empty or, if a seed row
+        // happened to exist, permanently unclickable. Built from the customer's real `jobs` instead.
+        tx`
+          select j.id, j.id as job_id, j.customer_id, j.type, j.status, j.scheduled_date as service_date,
+            p.name as tech, j.amount
+          from jobs j
+          left join profiles p on p.id = j.tech_id
+          where j.customer_id = ${id}
+          order by j.scheduled_date desc nulls last, j.created_at desc
+        `,
         tx`select * from customer_notes where customer_id = ${id} order by created_at desc`,
         tx`select * from invoices where customer_id = ${id} order by issue_date desc`,
         tx`select * from pos_orders where customer_id = ${id} order by created_at desc`,
@@ -161,6 +173,28 @@ export default async function customersRoutes(app: FastifyInstance) {
         returning *
       `;
       return row;
+    });
+  });
+
+  // Client video 2026-10-15: "you can add the notes, but you cannot remove a note. It won't let
+  // you delete or edit."
+  app.patch<{ Params: { id: string; noteId: string }; Body: { text: string } }>("/:id/notes/:noteId", async (req, reply) => {
+    const { id, noteId } = req.params;
+    const text = (req.body.text ?? "").trim();
+    if (!text) return reply.code(400).send({ error: "Note text is required" });
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`update customer_notes set text = ${text} where id = ${noteId} and customer_id = ${id} returning *`;
+      if (!row) return reply.code(404).send({ error: "Note not found" });
+      return row;
+    });
+  });
+
+  app.delete<{ Params: { id: string; noteId: string } }>("/:id/notes/:noteId", async (req, reply) => {
+    const { id, noteId } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`delete from customer_notes where id = ${noteId} and customer_id = ${id} returning id`;
+      if (!row) return reply.code(404).send({ error: "Note not found" });
+      return { id: row.id };
     });
   });
 

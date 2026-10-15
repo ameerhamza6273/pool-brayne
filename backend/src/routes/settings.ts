@@ -304,4 +304,27 @@ export default async function settingsRoutes(app: FastifyInstance) {
     const { planId } = req.body;
     return withTenantContext(req.userId, (tx) => tx`update tenants set plan_id = ${planId} where id = current_tenant_id() returning *`);
   });
+
+  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- the tenant's
+  // real sales tax rate, a real editable setting (migration 20261015170000) instead of a hardcoded
+  // literal, since "for now" implies it may change later. Kept as its own light endpoint (not
+  // folded into the main GET /, which also loads team/integrations/billing) since every
+  // Estimate/Invoice/Job/POS page needs to read just this one number.
+  app.get("/tax-rate", async (req) => {
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = (await tx`select tax_rate from tenants where id = current_tenant_id() limit 1`) as unknown as { tax_rate: string | number }[];
+      return { taxRate: row ? Number(row.tax_rate) : 0.0775 };
+    });
+  });
+
+  app.patch<{ Body: { taxRate: number } }>("/tax-rate", async (req) => {
+    const taxRate = Number(req.body.taxRate);
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 0.3) {
+      return { error: "Tax rate must be a percentage between 0% and 30%." };
+    }
+    return withTenantContext(req.userId, async (tx) => {
+      await tx`update tenants set tax_rate = ${taxRate} where id = current_tenant_id()`;
+      return { taxRate };
+    });
+  });
 }

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import { useConfigLists } from "@/hooks/use-config-lists";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth-context";
+import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { matchesQuery } from "@/lib/search";
@@ -23,6 +23,8 @@ import { matchesQuery } from "@/lib/search";
 // not just at upload time.
 export default function Library() {
   const { t } = useLanguage();
+  // Client video 2026-10-15: technicians granted "Library" (Settings > Team) browse/open only.
+  const readOnly = isFieldOnlyRole(useAuth().role);
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Client excel sheet 2026-09-18: Library's category/manufacturer lists are its own fixed
@@ -87,10 +89,18 @@ export default function Library() {
     load();
   };
 
+  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "NO CATEGORY / NO MANUFACTURER -- not
+  // filtering properly". Those two dropdowns at the top were the *upload* tags, never filters; the
+  // real filters had no way to find untagged documents, and tags on a document that aren't in the
+  // configured list couldn't be picked at all. Filters now include "No category"/"No manufacturer"
+  // ("__none__") plus every value actually used, and the upload tags are labelled as such.
+  const NONE = "__none__";
+  const categoryOptions = [...new Set([...categories, ...documents.map((d) => d.category).filter((c): c is string => !!c)])].sort((a, b) => a.localeCompare(b));
+  const manufacturerOptions = [...new Set([...manufacturers, ...documents.map((d) => d.manufacturer).filter((m): m is string => !!m)])].sort((a, b) => a.localeCompare(b));
   const filtered = documents.filter((d) => {
     const matchesSearch = matchesQuery(search, [d.name, d.category, d.manufacturer]);
-    const matchesCategory = categoryFilter === "All" || d.category === categoryFilter;
-    const matchesManufacturer = manufacturerFilter === "All" || d.manufacturer === manufacturerFilter;
+    const matchesCategory = categoryFilter === "All" || (categoryFilter === NONE ? !d.category : d.category === categoryFilter);
+    const matchesManufacturer = manufacturerFilter === "All" || (manufacturerFilter === NONE ? !d.manufacturer : d.manufacturer === manufacturerFilter);
     return matchesSearch && matchesCategory && matchesManufacturer;
   });
 
@@ -101,7 +111,8 @@ export default function Library() {
           <h1 className="text-2xl font-bold text-[#0F172A]">{t("Library")}</h1>
           <p className="text-sm text-[#64748B] mt-0.5">{t("Company documents — SOPs, price sheets, training material.")}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className={`flex flex-wrap items-center gap-2 ${readOnly ? "hidden" : ""}`}>
+          <span className="text-xs font-medium text-[#64748B]">{t("Tag new uploads:")}</span>
           <Select value={uploadCategory || "none"} onValueChange={(v) => setUploadCategory(v === "none" ? "" : v)}>
             <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Category")} /></SelectTrigger>
             <SelectContent className="max-h-72">
@@ -132,14 +143,16 @@ export default function Library() {
           <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue /></SelectTrigger>
           <SelectContent className="max-h-72">
             <SelectItem value="All">{t("All Categories")}</SelectItem>
-            {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            <SelectItem value={NONE}>{t("No category")}</SelectItem>
+            {categoryOptions.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={manufacturerFilter} onValueChange={setManufacturerFilter}>
           <SelectTrigger className="h-10 w-40 bg-white border-[#E2E8F0]"><SelectValue /></SelectTrigger>
           <SelectContent className="max-h-72">
             <SelectItem value="All">{t("All Manufacturers")}</SelectItem>
-            {manufacturers.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+            <SelectItem value={NONE}>{t("No manufacturer")}</SelectItem>
+            {manufacturerOptions.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
           </SelectContent>
         </Select>
         <ViewToggle mode={viewMode} onChange={setViewMode} />
@@ -173,8 +186,8 @@ export default function Library() {
                     <td className="py-3 px-4 text-[#64748B]">{new Date(d.created_at).toLocaleDateString()}</td>
                     <td className="py-3 px-4">
                       <div className="flex items-center justify-end gap-3">
-                        <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit category / manufacturer")} onClick={() => openTagDialog(d)}><Pencil className="w-4 h-4" /></button>
-                        <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => handleDelete(d.id)}><Trash2 className="w-4 h-4" /></button>
+                        <button className="text-[#64748B] hover:text-[#0891B2]" hidden={readOnly} title={t("Edit category / manufacturer")} onClick={() => openTagDialog(d)}><Pencil className="w-4 h-4" /></button>
+                        <button className="text-[#64748B] hover:text-[#DC2626]" hidden={readOnly} onClick={() => handleDelete(d.id)}><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   </tr>
@@ -202,10 +215,10 @@ export default function Library() {
                 <p className="text-xs text-[#94A3B8] mt-0.5">{d.uploaded_by_name ?? t("Unknown")} · {new Date(d.created_at).toLocaleDateString()}</p>
               </div>
               <div className="flex flex-col gap-2 items-center shrink-0">
-                <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit category / manufacturer")} onClick={() => openTagDialog(d)}>
+                <button className="text-[#64748B] hover:text-[#0891B2]" hidden={readOnly} title={t("Edit category / manufacturer")} onClick={() => openTagDialog(d)}>
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => handleDelete(d.id)}>
+                <button className="text-[#64748B] hover:text-[#DC2626]" hidden={readOnly} onClick={() => handleDelete(d.id)}>
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>

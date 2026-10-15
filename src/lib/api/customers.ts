@@ -37,6 +37,12 @@ export const customersApi = {
   addNote: (customerId: string, data: { text: string; author: string }) =>
     api.post<CustomerNote>(`/api/customers/${customerId}/notes`, data),
 
+  updateNote: (customerId: string, noteId: string, text: string) =>
+    api.patch<CustomerNote>(`/api/customers/${customerId}/notes/${noteId}`, { text }),
+
+  deleteNote: (customerId: string, noteId: string) =>
+    api.del<{ id: string }>(`/api/customers/${customerId}/notes/${noteId}`),
+
   getAttachments: (customerId: string) => api.get<CustomerAttachment[]>(`/api/customers/${customerId}/attachments`),
 
   addAttachment: (customerId: string, url: string) =>
@@ -80,6 +86,8 @@ export type CustomerServiceForm = {
   id: string;
   job_id: string;
   type: string;
+  template_id: string | null;
+  public_token: string;
   template_name: string | null;
   data: Record<string, unknown>;
   notes: string | null;

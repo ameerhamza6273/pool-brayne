@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import {
   ArrowLeft, MapPin, Clock, Phone, Camera, CheckCircle2, Navigation,
-  ChevronRight, Wrench, User, DollarSign, Minus, Plus, Eraser, FileText,
+  ChevronRight, ChevronLeft, ChevronDown, Wrench, User, DollarSign, Minus, Plus, Eraser, FileText, X,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,7 +43,7 @@ const statusSteps = [
 export default function Field() {
   const navigate = useNavigate();
   const { profileId, tenantId, user, role } = useAuth();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const fieldOnly = isFieldOnlyRole(role);
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -53,6 +54,10 @@ export default function Field() {
   const [photos, setPhotos] = useState<{ id: string; url: string; label: string | null }[]>([]);
   const [internalNotes, setInternalNotes] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
+  // Client video feedback 2026-10-15: Library's always-open result list trapped the page's own
+  // scroll on mobile (a finger scrolling the page would get "grabbed" by this inner scrollable
+  // list instead) -- collapsed by default, only renders its list/search once opened.
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const photoLabelRef = useRef<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
@@ -74,6 +79,10 @@ export default function Field() {
   const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocument[]>([]);
   const [formError, setFormError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Client video 2026-10-15: "When uploading a photo we need to give an option to take a live photo.
+  // It's currently only going through the gallery." Android Chrome opens the gallery for a plain
+  // file input; `capture` opens the camera directly, so there's one input of each.
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
 
@@ -83,6 +92,18 @@ export default function Field() {
   // Jobs page uses), Tech View = jobsApi.mine() (just this login's assigned jobs, the original
   // default) -- "revert back to the person assigned to whatever login we're under", per the video.
   const [adminView, setAdminView] = useState(false);
+  // Client video feedback 2026-10-15: "add an arrow here so we can scroll up and down dates and
+  // look at one, two, three days in the future" -- this list previously showed every assigned job
+  // at once with no date filter at all. Client-side filter of the already-fetched list (same
+  // pattern Jobs.tsx's Map tab uses), parsed/compared as local dates per the established gotcha
+  // (never toISOString() for a local day).
+  const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const [selectedDate, setSelectedDate] = useState(() => localKey(new Date()));
+  const shiftDate = (delta: number) => {
+    const d = new Date(selectedDate + "T00:00:00");
+    d.setDate(d.getDate() + delta);
+    setSelectedDate(localKey(d));
+  };
   const loadMyJobs = useCallback(async () => {
     if (!profileId) return;
     setIsLoading(true);
@@ -128,6 +149,36 @@ export default function Field() {
     jobsApi.getForms(job.id).then(setJobForms);
   };
 
+  const dayJobs = myJobs.filter((j) => j.scheduled_date === selectedDate);
+  const unscheduledJobs = myJobs.filter((j) => !j.scheduled_date);
+  const visibleJobs = [...dayJobs, ...unscheduledJobs];
+
+  // Jump to whichever day has the active job when jobs first load; after that, moving the date
+  // forward/back re-picks the first job of the newly-selected day so the right-hand panel doesn't
+  // keep showing a job from a day you've navigated away from.
+  useEffect(() => {
+    if (dayJobs.length > 0 && !dayJobs.some((j) => j.id === activeJobId)) {
+      selectJob(dayJobs[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, myJobs]);
+
+  // Client video feedback 2026-10-15: "there is no way to delete a picture if you uploaded the
+  // wrong picture."
+  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "Need to add a DELETE icon on Documents"
+  // -- same delete JobDetail's Documents already has (DocumentsSection asks to confirm first).
+  const handleDeleteDocument = async (doc: { id: string }) => {
+    if (!currentJob) return;
+    await jobsApi.deleteDocument(currentJob.id, doc.id);
+    setJobDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  };
+
+  const handleDeletePhoto = async (photoId: string) => {
+    if (!currentJob) return;
+    await jobsApi.deleteAttachment(currentJob.id, photoId);
+    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+  };
+
   const uploadAttachment = async (jobId: string, file: Blob, filename: string, type: "photo" | "signature", label?: string | null) => {
     const path = `${tenantId}/${jobId}/${type}-${Date.now()}-${filename}`;
     const { error } = await supabase.storage.from("job-attachments").upload(path, file);
@@ -146,9 +197,9 @@ export default function Field() {
     e.target.value = "";
   };
 
-  const pickPhoto = (label: "before" | "after" | "internal") => {
+  const pickPhoto = (label: "before" | "after" | "internal", source: "camera" | "gallery") => {
     photoLabelRef.current = label;
-    fileInputRef.current?.click();
+    (source === "camera" ? cameraInputRef : fileInputRef).current?.click();
   };
 
   // Client video 2026-09-29: "When I typed the notes here last time, it did not save." -- this
@@ -348,7 +399,12 @@ export default function Field() {
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
-        <h1 className="text-xl font-bold text-[#0F172A]">{adminView ? t("All Jobs") : t("My Day")}</h1>
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold text-[#0F172A] leading-tight">{adminView ? t("All Jobs") : t("My Day")}</h1>
+          <p className="text-xs font-medium text-[#0891B2]">
+            {new Date(selectedDate + "T00:00:00").toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" })}
+          </p>
+        </div>
         <div className="ml-auto flex items-center gap-3">
           {/* Client video 2026-10-05: "always have it present here so we can toggle back and
               forth" -- an in-place Admin View / Tech View toggle, not the old button that just
@@ -371,9 +427,26 @@ export default function Field() {
           </div>
           <div className="flex items-center gap-1 text-sm text-[#64748B]">
             <Clock className="w-4 h-4" />
-            <span>{myJobs.length} {t("jobs")}</span>
+            <span>{dayJobs.length} {t("jobs")}</span>
           </div>
         </div>
+      </div>
+
+      {/* Client video feedback 2026-10-15: day-at-a-time navigation for the job list ("scroll up
+          and down dates and look at one, two, three days in the future"). Unscheduled jobs (no
+          date) always stay visible below whichever day is selected, so nothing silently vanishes. */}
+      <div className="flex items-center justify-between bg-white rounded-xl border border-[#E2E8F0] px-2 py-1.5">
+        <button onClick={() => shiftDate(-1)} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]" aria-label={t("Previous day")}>
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+        <span className="font-medium text-sm text-[#0F172A]">
+          {selectedDate === localKey(new Date())
+            ? `${t("Today")} · ${new Date(selectedDate + "T00:00:00").toLocaleDateString(lang === "es" ? "es-US" : "en-US", { month: "short", day: "numeric" })}`
+            : new Date(selectedDate + "T00:00:00").toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "short", month: "short", day: "numeric" })}
+        </span>
+        <button onClick={() => shiftDate(1)} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]" aria-label={t("Next day")}>
+          <ChevronRight className="w-5 h-5" />
+        </button>
       </div>
 
       {/* Client SMS 2026-09-25: techs clock in / out and make requests from their phone (they can only open /field). */}
@@ -382,13 +455,17 @@ export default function Field() {
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading your jobs...")}</div>}
 
-      {!isLoading && myJobs.length === 0 && (
-        <div className="text-center py-12 text-[#64748B]">{t("No active jobs assigned to you")}</div>
+      {!isLoading && visibleJobs.length === 0 && (
+        <div className="text-center py-12 text-[#64748B]">{t("No jobs for this day")}</div>
       )}
 
       {/* Job List - Compact */}
       <div className="space-y-2">
-        {myJobs.map((job) => (
+        {visibleJobs.map((job, idx) => (
+          <Fragment key={job.id}>
+          {idx === dayJobs.length && (
+            <p className="text-xs font-semibold text-[#64748B] uppercase pt-2">{t("No date set")}</p>
+          )}
           <button
             key={job.id}
             onClick={() => selectJob(job)}
@@ -412,6 +489,7 @@ export default function Field() {
               <ChevronRight className="w-4 h-4 text-[#64748B] shrink-0" />
             </div>
           </button>
+          </Fragment>
         ))}
       </div>
 
@@ -491,9 +569,19 @@ export default function Field() {
                 <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Existing Photos")}</p>
                 <div className="grid grid-cols-4 gap-2">
                   {existingPhotos.map((photo) => (
-                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10 block">
-                      <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
-                    </a>
+                    <div key={photo.id} className="relative aspect-square">
+                      <a href={photo.url} target="_blank" rel="noreferrer" className="block w-full h-full rounded-lg overflow-hidden bg-[#0891B2]/10">
+                        <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeletePhoto(photo.id); }}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+                        aria-label={t("Delete photo")}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -523,7 +611,7 @@ export default function Field() {
             <div>
               <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Parts Used")}</p>
               <Input
-                placeholder={t("Search parts by name, SKU, or description...")}
+                placeholder={t("Search parts by item #, SKU, name or description...")}
                 className="mb-2 h-9 text-sm"
                 value={partsSearch}
                 onChange={(e) => setPartsSearch(e.target.value)}
@@ -538,15 +626,22 @@ export default function Field() {
                     // search term (same cap approach as SearchableSelect).
                     if ((partsUsed[item.id] ?? 0) > 0) return true;
                     if (!partsSearch.trim()) return false;
-                    const q = partsSearch.toLowerCase();
-                    return [item.name, item.sku, item.short_description, item.long_description, item.category, item.manufacturer]
-                      .filter(Boolean)
-                      .some((f) => (f as string).toLowerCase().includes(q));
+                    return matchesQuery(partsSearch, [
+                      item.item_number != null ? String(item.item_number) : null, item.sku, item.name,
+                      item.short_description, item.long_description, item.category, item.manufacturer,
+                    ]);
                   })
                   .slice(0, 50)
                   .map((item) => (
                   <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-[#F1F5F9] last:border-b-0">
-                    <span className="text-sm text-[#0F172A] truncate">{item.name}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm text-[#0F172A] truncate">{item.name}</p>
+                      <p className="text-[11px] text-[#64748B] truncate">
+                        {item.item_number != null && <>{t("Item #")} {item.item_number}</>}
+                        {item.item_number != null && item.sku && " · "}
+                        {item.sku && <>{t("SKU")} {item.sku}</>}
+                      </p>
+                    </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => adjustPart(item.id, -1)}
@@ -579,33 +674,47 @@ export default function Field() {
               uploading={docsUploading}
               libraryDocuments={libraryDocuments}
               onAttachExisting={handleAttachLibraryDocument}
+              onDelete={handleDeleteDocument}
             />
 
             {/* Library — the company document library, browse/open only (attaching to the job is the
-                Documents section above). */}
+                Documents section above). Client video feedback 2026-10-15: the list used to always
+                render open, and its own internal scroll "grabbed" the page's scroll on mobile --
+                collapsed by default, the search box and list only mount once opened. */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Library")}</p>
-              <Input
-                placeholder={t("Search library documents...")}
-                className="mb-2 h-9 text-sm"
-                value={librarySearch}
-                onChange={(e) => setLibrarySearch(e.target.value)}
-              />
-              <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-[#E2E8F0]">
-                {libraryDocuments
-                  .filter((d) => matchesQuery(librarySearch, [d.name, d.category, d.manufacturer]))
-                  .slice(0, 30)
-                  .map((d) => (
-                    <a key={d.id} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#F8FAFC]">
-                      <FileText className="w-4 h-4 text-[#0891B2] shrink-0" />
-                      <span className="flex-1 min-w-0 truncate text-[#0F172A]">{d.name}</span>
-                      {d.category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] shrink-0">{t(d.category)}</span>}
-                    </a>
-                  ))}
-                {libraryDocuments.filter((d) => matchesQuery(librarySearch, [d.name, d.category, d.manufacturer])).length === 0 && (
-                  <p className="px-3 py-3 text-sm text-[#64748B]">{t("No library documents found.")}</p>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setLibraryOpen((v) => !v)}
+                className="w-full flex items-center justify-between mb-2"
+              >
+                <p className="text-sm font-medium text-[#0F172A]">{t("Library")}</p>
+                <ChevronDown className={`w-4 h-4 text-[#64748B] transition-transform ${libraryOpen ? "rotate-180" : ""}`} />
+              </button>
+              {libraryOpen && (
+                <>
+                  <Input
+                    placeholder={t("Search library documents...")}
+                    className="mb-2 h-9 text-sm"
+                    value={librarySearch}
+                    onChange={(e) => setLibrarySearch(e.target.value)}
+                  />
+                  <div className="max-h-40 overflow-y-auto space-y-1 rounded-lg border border-[#E2E8F0]">
+                    {libraryDocuments
+                      .filter((d) => matchesQuery(librarySearch, [d.name, d.category, d.manufacturer]))
+                      .slice(0, 30)
+                      .map((d) => (
+                        <a key={d.id} href={d.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-[#F8FAFC]">
+                          <FileText className="w-4 h-4 text-[#0891B2] shrink-0" />
+                          <span className="flex-1 min-w-0 truncate text-[#0F172A]">{d.name}</span>
+                          {d.category && <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#64748B] shrink-0">{t(d.category)}</span>}
+                        </a>
+                      ))}
+                    {libraryDocuments.filter((d) => matchesQuery(librarySearch, [d.name, d.category, d.manufacturer])).length === 0 && (
+                      <p className="px-3 py-3 text-sm text-[#64748B]">{t("No library documents found.")}</p>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Photos taken before / after the work. */}
@@ -619,21 +728,49 @@ export default function Field() {
                 className="hidden"
                 onChange={handlePhotoSelect}
               />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
               {(["before", "after"] as const).map((kind) => (
                 <div key={kind} className="mb-3">
                   <p className="text-xs text-[#64748B] mb-1">{kind === "before" ? t("Before") : t("After")}</p>
                   <div className="grid grid-cols-4 gap-2">
                     {(kind === "before" ? beforePhotos : afterPhotos).map((photo) => (
-                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10 block">
-                      <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
-                    </a>
+                    <div key={photo.id} className="relative aspect-square">
+                      <a href={photo.url} target="_blank" rel="noreferrer" className="block w-full h-full rounded-lg overflow-hidden bg-[#0891B2]/10">
+                        <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeletePhoto(photo.id); }}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+                        aria-label={t("Delete photo")}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
                   ))}
+<div className="aspect-square grid grid-rows-2 gap-1">
                     <button
-                    onClick={() => pickPhoto(kind)}
-                    className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center"
-                  >
-                    <Camera className="w-5 h-5 text-[#64748B]" />
-                  </button>
+                      onClick={() => pickPhoto(kind, "camera")}
+                      className="rounded-lg bg-[#0891B2]/10 border border-[#0891B2]/30 flex items-center justify-center gap-1 text-[10px] font-medium text-[#0891B2]"
+                      aria-label={t("Take Photo")}
+                    >
+                      <Camera className="w-4 h-4" /> {t("Camera")}
+                    </button>
+                    <button
+                      onClick={() => pickPhoto(kind, "gallery")}
+                      className="rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center gap-1 text-[10px] font-medium text-[#64748B]"
+                      aria-label={t("Choose from Gallery")}
+                    >
+                      <ImageIcon className="w-4 h-4" /> {t("Gallery")}
+                    </button>
+                  </div>
                   </div>
                 </div>
               ))}
@@ -723,16 +860,36 @@ export default function Field() {
               />
               <div className="grid grid-cols-4 gap-2 mt-2">
                 {internalPhotos.map((photo) => (
-                    <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="aspect-square rounded-lg overflow-hidden bg-[#0891B2]/10 block">
-                      <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
-                    </a>
+                    <div key={photo.id} className="relative aspect-square">
+                      <a href={photo.url} target="_blank" rel="noreferrer" className="block w-full h-full rounded-lg overflow-hidden bg-[#0891B2]/10">
+                        <img src={photo.url} alt="Job" className="w-full h-full object-cover" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeletePhoto(photo.id); }}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
+                        aria-label={t("Delete photo")}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
                   ))}
-                <button
-                    onClick={() => pickPhoto("internal")}
-                    className="aspect-square rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center"
-                  >
-                    <Camera className="w-5 h-5 text-[#64748B]" />
-                  </button>
+<div className="aspect-square grid grid-rows-2 gap-1">
+                    <button
+                      onClick={() => pickPhoto("internal", "camera")}
+                      className="rounded-lg bg-[#0891B2]/10 border border-[#0891B2]/30 flex items-center justify-center gap-1 text-[10px] font-medium text-[#0891B2]"
+                      aria-label={t("Take Photo")}
+                    >
+                      <Camera className="w-4 h-4" /> {t("Camera")}
+                    </button>
+                    <button
+                      onClick={() => pickPhoto("internal", "gallery")}
+                      className="rounded-lg bg-[#F1F5F9] border border-dashed border-[#E2E8F0] flex items-center justify-center gap-1 text-[10px] font-medium text-[#64748B]"
+                      aria-label={t("Choose from Gallery")}
+                    >
+                      <ImageIcon className="w-4 h-4" /> {t("Gallery")}
+                    </button>
+                  </div>
               </div>
             </div>
 

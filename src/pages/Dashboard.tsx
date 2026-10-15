@@ -31,7 +31,7 @@ const seasonalLabels: Record<string, string> = {
   Sep: "Wind-down", Oct: "Closing season", Nov: "Off-season", Dec: "Off-season",
 };
 
-// QA sweep 2026-09-30 follow-up: invoice `total` (materials * 1.0825 + labor) is a floating-point
+// QA sweep 2026-09-30 follow-up: invoice `total` (materials * (1 + tax rate) + labor) is a floating-point
 // result -- plain toLocaleString() can show up to 3 fraction digits (e.g. "$4,216.315" instead of
 // "$4,216.32"). Use this wherever an invoice total (not a plain job/POS revenue figure) is shown.
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });

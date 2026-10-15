@@ -23,7 +23,41 @@ export type CustomerReminder = {
 export type ValuationRow = { name: string; sku: string; unit_cost: number; quantity: number; value: number };
 export type VendorBillDueRow = { supplier_id: string; supplier_name: string; total_due: number; bill_count: number };
 
+export type SalesTaxBasis = "accrual" | "cash";
+export type SalesTaxLine = {
+  description: string; brand: string | null; itemNumber: string | null; quantity: number;
+  category: "Taxable Sale" | "Nontax Sale" | "Labor" | "Taxable Labor"; taxable: boolean; price: number; tax: number;
+};
+export type SalesTaxGroup = {
+  kind: "invoice" | "pos"; id: string; number: string | null; status: string; date: string | null;
+  customerName: string | null; jobId: string | null; jobType: string | null;
+  // Cash basis only: % of the invoice collected inside the date range (lines are scaled by it).
+  paidShare: number | null;
+  lines: SalesTaxLine[];
+};
+export type SalesTaxDetail = {
+  basis: SalesTaxBasis; taxRate: number; groups: SalesTaxGroup[];
+  totals: { orders: number; sales: number; taxableSales: number; nontaxableSales: number; tax: number };
+};
+
+export type SalesAnalysisRow = {
+  key: string; kind: "invoice" | "pos"; refId: string; number: string | null; paidDate: string;
+  jobType: string | null; status: "Delivered" | "Not Delivered"; accountNumber: string | null; customerName: string | null;
+  paymentType: "Cash" | "Check" | "Credit Card" | "Other" | "Refund"; paymentMode: string;
+  amount: number; delivered: number; salesCheck: number; diffAr: number; labor: number; itemCost: number; laborCost: number;
+  customerDeposit: number; merch: number; inStoreLabor: number; jobLabor: number; discount: number; tax: number;
+  combinedInvoice: string | null; payoutId: string | null;
+};
+
 export const reportsApi = {
+  // Client xlsx 2026-10-15: sales analysis -- every payment in a date range, their old system's columns.
+  salesAnalysis: (start: string, end: string) =>
+    api.get<{ rows: SalesAnalysisRow[] }>(`/api/reports/sales-analysis?start=${start}&end=${end}&tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`),
+
+  // Client PDF 2026-10-15: sales tax detail by order/job then item, accrual or cash basis.
+  salesTaxDetail: (start: string, end: string, basis: SalesTaxBasis) =>
+    api.get<SalesTaxDetail>(`/api/reports/sales-tax-detail?start=${start}&end=${end}&basis=${basis}&tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`),
+
   itemMovement: (start: string, end: string) => api.get<ItemMovementRow[]>(`/api/reports/item-movement?start=${start}&end=${end}`),
 
   deposits: (start?: string, end?: string) =>

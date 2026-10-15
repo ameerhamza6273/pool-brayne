@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, GripVertical } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ArrowDownToLine, ArrowUpToLine, GripVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,6 +53,8 @@ export default function RouteOrderDialog({
   const [scope, setScope] = useState<"permanent" | "temporary">("permanent");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const autoScrollRef = useRef<number | null>(null);
 
   // Start from the order the stops already run in (by time, then name), earliest existing time as the start.
   // Keyed on the set of stops (not the array identity) so a parent re-render doesn't wipe the user's ordering.
@@ -75,6 +77,8 @@ export default function RouteOrderDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, rowsKey]);
 
+  useEffect(() => () => { if (autoScrollRef.current !== null) cancelAnimationFrame(autoScrollRef.current); }, []);
+
   const step = Math.max(5, parseInt(minutes, 10) || 30);
   const timeFor = (i: number) => fromMin(toMin(startTime) + i * step);
 
@@ -85,8 +89,41 @@ export default function RouteOrderDialog({
     [next[i], next[j]] = [next[j], next[i]];
     return next;
   });
+  // Client video 2026-10-15: "trying to move it to the top of the list, it's not accepting it" --
+  // on a long list the row you're trying to reach can be scrolled out of view mid-drag (native
+  // HTML5 drag has no built-in auto-scroll), so there's nothing to drop on. One-click "move to
+  // top/bottom" buttons give a reliable way in that case regardless of list length or scroll
+  // position; autoScroll below also scrolls the list while dragging near its top/bottom edge.
+  const moveToEnd = (i: number, to: "start" | "end") => setOrder((prev) => {
+    const next = [...prev];
+    const [row] = next.splice(i, 1);
+    next.splice(to === "start" ? 0 : next.length, 0, row);
+    return next;
+  });
+  const stopAutoScroll = () => {
+    if (autoScrollRef.current !== null) { cancelAnimationFrame(autoScrollRef.current); autoScrollRef.current = null; }
+  };
+  const autoScroll = (e: React.DragEvent) => {
+    const el = listRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const edge = 40;
+    const fromTop = e.clientY - rect.top;
+    const fromBottom = rect.bottom - e.clientY;
+    stopAutoScroll();
+    if (fromTop < edge && el.scrollTop > 0) {
+      const speed = Math.max(2, edge - fromTop) / 2;
+      const step = () => { el.scrollTop -= speed; autoScrollRef.current = requestAnimationFrame(step); };
+      autoScrollRef.current = requestAnimationFrame(step);
+    } else if (fromBottom < edge && el.scrollTop + el.clientHeight < el.scrollHeight) {
+      const speed = Math.max(2, edge - fromBottom) / 2;
+      const step = () => { el.scrollTop += speed; autoScrollRef.current = requestAnimationFrame(step); };
+      autoScrollRef.current = requestAnimationFrame(step);
+    }
+  };
   // Client SMS 2026-09-25: drag a stop up / down to change the order.
   const dropAt = (to: number) => {
+    stopAutoScroll();
     if (dragIndex === null || dragIndex === to) return;
     setOrder((prev) => {
       const next = [...prev];
@@ -141,15 +178,15 @@ export default function RouteOrderDialog({
           </div>
         )}
 
-        <div className="border border-[#E2E8F0] rounded-lg divide-y divide-[#F1F5F9] max-h-[42vh] overflow-y-auto">
+        <div ref={listRef} className="border border-[#E2E8F0] rounded-lg divide-y divide-[#F1F5F9] max-h-[42vh] overflow-y-auto">
           {order.map((r, i) => (
             <div
               key={r.key}
               draggable
               onDragStart={(e) => { setDragIndex(i); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", r.key); }}
-              onDragOver={(e) => { e.preventDefault(); setOverIndex(i); }}
+              onDragOver={(e) => { e.preventDefault(); setOverIndex(i); autoScroll(e); }}
               onDrop={(e) => { e.preventDefault(); dropAt(i); setDragIndex(null); setOverIndex(null); }}
-              onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+              onDragEnd={() => { setDragIndex(null); setOverIndex(null); stopAutoScroll(); }}
               className={`flex items-center gap-2 px-3 py-2 cursor-grab active:cursor-grabbing ${dragIndex === i ? "opacity-50" : ""} ${overIndex === i && dragIndex !== null && dragIndex !== i ? "bg-[#0891B2]/10" : ""}`}
             >
               <GripVertical className="w-4 h-4 text-[#CBD5E1] shrink-0" />
@@ -164,9 +201,13 @@ export default function RouteOrderDialog({
                 </label>
               )}
               <span className="text-xs font-semibold text-[#0F172A] w-16 text-right shrink-0">{fmt(timeFor(i))}</span>
-              <div className="flex flex-col shrink-0">
-                <button className="text-[#64748B] hover:text-[#0891B2] disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)} title={t("Move up")}><ArrowUp className="w-3.5 h-3.5" /></button>
-                <button className="text-[#64748B] hover:text-[#0891B2] disabled:opacity-30" disabled={i === order.length - 1} onClick={() => move(i, 1)} title={t("Move down")}><ArrowDown className="w-3.5 h-3.5" /></button>
+              <div className="flex items-center gap-0.5 shrink-0">
+                <button className="text-[#64748B] hover:text-[#0891B2] disabled:opacity-30" disabled={i === 0} onClick={() => moveToEnd(i, "start")} title={t("Move to top")}><ArrowUpToLine className="w-3.5 h-3.5" /></button>
+                <div className="flex flex-col">
+                  <button className="text-[#64748B] hover:text-[#0891B2] disabled:opacity-30" disabled={i === 0} onClick={() => move(i, -1)} title={t("Move up")}><ArrowUp className="w-3.5 h-3.5" /></button>
+                  <button className="text-[#64748B] hover:text-[#0891B2] disabled:opacity-30" disabled={i === order.length - 1} onClick={() => move(i, 1)} title={t("Move down")}><ArrowDown className="w-3.5 h-3.5" /></button>
+                </div>
+                <button className="text-[#64748B] hover:text-[#0891B2] disabled:opacity-30" disabled={i === order.length - 1} onClick={() => moveToEnd(i, "end")} title={t("Move to bottom")}><ArrowDownToLine className="w-3.5 h-3.5" /></button>
               </div>
             </div>
           ))}

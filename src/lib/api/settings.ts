@@ -40,4 +40,11 @@ export const settingsApi = {
   saveReceiptLineId: (lineId: "sku" | "item_number") => api.patch<{ lineId: "sku" | "item_number" }>("/api/settings/receipt-line-id", { lineId }),
 
   selectPlan: (planId: string) => api.patch("/api/settings/plan", { planId }),
+
+  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- real tenant
+  // sales tax rate (was hardcoded 8.25% everywhere). Kept as its own light endpoint since every
+  // Estimate/Invoice/Job/POS page reads it, not just Settings.
+  getTaxRate: () => api.get<{ taxRate: number }>("/api/settings/tax-rate"),
+
+  saveTaxRate: (taxRate: number) => api.patch<{ taxRate: number }>("/api/settings/tax-rate", { taxRate }),
 };

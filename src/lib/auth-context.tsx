@@ -21,6 +21,21 @@ export function isFieldOnlyRole(role: StaffRole | null): boolean {
   return role === "technician" || role === "contractor";
 }
 
+/** Client video 2026-10-15: "give a few more options here under permissions rather than just one
+ * field. Customer lookup, a few others so you can look at history." Extra pages an admin can turn
+ * on per field-only person (profiles.permissions, Settings > Team). */
+export type FieldPermission = "customers" | "library";
+export const FIELD_PERMISSIONS: { key: FieldPermission; label: string; paths: string[] }[] = [
+  { key: "customers", label: "Customer Lookup (history, notes, invoices)", paths: ["/customers"] },
+  { key: "library", label: "Library", paths: ["/library"] },
+];
+
+/** Can a field-only login open this path? /field always; anything else only if granted. */
+export function fieldRoleCanOpen(pathname: string, permissions: string[]): boolean {
+  if (pathname === "/field") return true;
+  return FIELD_PERMISSIONS.some((p) => permissions.includes(p.key) && p.paths.some((base) => pathname === base || pathname.startsWith(base + "/")));
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -30,6 +45,8 @@ interface AuthContextType {
   tenantId: string | null;
   profileId: string | null;
   role: StaffRole | null;
+  /** Extra pages granted to a field-only login (see FIELD_PERMISSIONS). */
+  permissions: string[];
   signUp: (email: string, password: string, data: { name: string; company: string }) => Promise<{ error: string | null; needsEmailConfirmation: boolean }>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -41,10 +58,10 @@ function getAvatar(name: string): string {
   return name.split(" ").map((n) => n[0]?.toUpperCase()).join("").slice(0, 2) || "?";
 }
 
-async function loadProfile(session: Session): Promise<{ user: User; tenantId: string; profileId: string; role: StaffRole } | null> {
+async function loadProfile(session: Session): Promise<{ user: User; tenantId: string; profileId: string; role: StaffRole; permissions: string[] } | null> {
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("name, email, avatar, tenant_id, role, tenants(name)")
+    .select("name, email, avatar, tenant_id, role, permissions, tenants(name)")
     .eq("id", session.user.id)
     .single();
 
@@ -63,6 +80,7 @@ async function loadProfile(session: Session): Promise<{ user: User; tenantId: st
     tenantId: profile.tenant_id,
     profileId: session.user.id,
     role: profile.role as StaffRole,
+    permissions: (profile as { permissions?: string[] | null }).permissions ?? [],
   };
 }
 
@@ -72,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [tenantId, setTenantId] = useState<string | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
   const [role, setRole] = useState<StaffRole | null>(null);
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const applyProfile = useCallback((session: Session) => {
@@ -80,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTenantId(result?.tenantId ?? null);
       setProfileId(result?.profileId ?? null);
       setRole(result?.role ?? null);
+      setPermissions(result?.permissions ?? []);
     });
   }, []);
 
@@ -101,6 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTenantId(null);
         setProfileId(null);
         setRole(null);
+        setPermissions([]);
       }
     });
 
@@ -126,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated: !!session, isLoading, user, session, tenantId, profileId, role, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ isAuthenticated: !!session, isLoading, user, session, tenantId, profileId, role, permissions, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

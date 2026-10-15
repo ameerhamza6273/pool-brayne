@@ -316,6 +316,16 @@ export default function ScheduleCalendar({
   }
   const listed = busyOnly ? people.filter((p) => (countByTech.get(p.id) ?? 0) > 0) : people;
   const jobsOn = (key: string) => visible.filter((j) => j.scheduled_date === key);
+  // Client video 2026-10-15: "regardless of the job is closed or not, we still need to see it" in
+  // the Route order dialog -- that list previously inherited the "Show Completed Jobs" toggle from
+  // the main calendar (off by default for some sessions, via the persisted schedule-prefs), so a
+  // completed stop could silently drop out of the route being planned. Route order always needs
+  // the full, real stop order regardless of that toggle, so it's built from `scheduled` directly
+  // (same tech/unassigned visibility as `shownBase`, but skipping the showCompleted gate).
+  const routeVisible = scheduled
+    .filter((j) => !(j.tech_id ? hiddenTechIds.has(j.tech_id) : !showUnassigned))
+    .filter((j) => rangeKeys.has(j.scheduled_date as string));
+  const jobsOnForRoute = (key: string) => routeVisible.filter((j) => j.scheduled_date === key);
 
   const slotTime = (e: React.MouseEvent | React.DragEvent, el: HTMLElement, snap: "round" | "floor") => {
     const y = e.clientY - el.getBoundingClientRect().top;
@@ -395,7 +405,9 @@ export default function ScheduleCalendar({
     jobsOn(c.dateKey).filter((j) => c.techId === undefined || (c.techId === null ? !j.tech_id : j.tech_id === c.techId));
 
   const orderRows = orderCol
-    ? jobsInCol({ key: "", dateKey: orderCol.dateKey, date: fromKey(orderCol.dateKey), techId: orderCol.techId, name: orderCol.name }).filter((j) => !j.kind).map((j) => ({
+    ? jobsOnForRoute(orderCol.dateKey)
+        .filter((j) => orderCol.techId === undefined || (orderCol.techId === null ? !j.tech_id : j.tech_id === orderCol.techId))
+        .filter((j) => !j.kind).map((j) => ({
         key: j.id,
         jobId: j.virtual ? null : j.id,
         recurringId: j.virtual ? (j.recurringId ?? null) : (j.recurring_job_id ?? null),

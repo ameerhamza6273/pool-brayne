@@ -15,6 +15,7 @@ import { inventoryApi, type ItemWithStock } from "@/lib/api/inventory";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
+import { useTaxRate } from "@/hooks/use-tax-rate";
 import { laborFirst } from "@/lib/labor";
 import { customerOption } from "@/lib/customer-options";
 import type { Database } from "@/lib/database.types";
@@ -49,6 +50,7 @@ export default function EstimateDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const taxRate = useTaxRate();
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
@@ -149,7 +151,7 @@ export default function EstimateDetail() {
   // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
   // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
   const taxableSubtotal = items.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
-  const tax = taxableSubtotal * 0.0825;
+  const tax = taxableSubtotal * taxRate;
   const total = subtotal + tax;
   const downPayment = estimate.down_payment ?? 0;
   const remainingBalance = total - downPayment;

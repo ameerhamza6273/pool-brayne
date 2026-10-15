@@ -64,6 +64,11 @@ export const jobsApi = {
 
   deleteDocument: (jobId: string, attId: string) => api.del<void>(`/api/jobs/${jobId}/attachments/${attId}`),
 
+  // Client video feedback 2026-10-15 (Technician Field): delete a wrongly-uploaded photo. Same
+  // route as deleteDocument (backend now accepts 'document' or 'photo'), named separately so each
+  // call site reads clearly.
+  deleteAttachment: (jobId: string, attId: string) => api.del<void>(`/api/jobs/${jobId}/attachments/${attId}`),
+
   getLineItems: (jobId: string) => api.get<JobLineItem[]>(`/api/jobs/${jobId}/line-items`),
 
   saveLineItems: (jobId: string, lineItems: JobLineItemInput[]) =>

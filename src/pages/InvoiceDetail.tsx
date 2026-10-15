@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import { useLanguage } from "@/lib/language-context";
+import { useTaxRate } from "@/hooks/use-tax-rate";
 import { laborFirst } from "@/lib/labor";
 import type { Database } from "@/lib/database.types";
 
@@ -45,6 +46,7 @@ export default function InvoiceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useLanguage();
+  const taxRate = useTaxRate();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
@@ -152,7 +154,7 @@ export default function InvoiceDetail() {
   // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
   // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
   const taxableSubtotal = items.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
-  const tax = taxableSubtotal * 0.0825;
+  const tax = taxableSubtotal * taxRate;
   const total = subtotal + tax;
   const downPayment = invoice.down_payment ?? 0;
   const remainingBalance = total - downPayment;
@@ -168,7 +170,7 @@ export default function InvoiceDetail() {
         const jobMaterials = jobItems.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
         const jobLabor = jobItems.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
         const jobTaxable = jobItems.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
-        const jobTax = jobTaxable * 0.0825;
+        const jobTax = jobTaxable * taxRate;
         return { job: bj, items: jobItems, subtotal: jobMaterials + jobLabor, tax: jobTax, jobTotal: jobMaterials + jobLabor + jobTax };
       })
     : [];

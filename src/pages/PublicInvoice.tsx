@@ -54,7 +54,7 @@ export default function PublicInvoice() {
   // Client video 2026-10-06: display-only breakdown now follows each line's real `taxable`
   // override too, matching the backend-computed `total` above (the one actually charged).
   const taxableSubtotal = lineItems.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
-  const tax = taxableSubtotal * 0.0825;
+  const tax = taxableSubtotal * (business?.tax_rate ?? 0.0775);
   const remainingBalance = total - (invoice.down_payment ?? 0);
   const isPaid = invoice.status === "Paid";
 

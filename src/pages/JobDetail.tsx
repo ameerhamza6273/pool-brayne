@@ -24,6 +24,7 @@ import { useConfigLists } from "@/hooks/use-config-lists";
 import type { ConfigListItem } from "@/lib/api/configLists";
 import { useTranslator } from "@/hooks/use-translator";
 import { useLanguage } from "@/lib/language-context";
+import { useTaxRate } from "@/hooks/use-tax-rate";
 import { Loader2, RefreshCw, Pencil } from "lucide-react";
 import DynamicForm from "@/components/DynamicForm";
 import FormSubmissionView from "@/components/FormSubmissionView";
@@ -176,6 +177,7 @@ export default function JobDetail() {
   const [noteSavedAt, setNoteSavedAt] = useState<number | null>(null);
   const [partsUsed, setPartsUsed] = useState<JobPartUsed[]>([]);
   const { lang, setLang, t } = useLanguage();
+  const taxRate = useTaxRate();
   const { states: trStates, translateDebounced } = useTranslator();
 
   // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously
@@ -591,7 +593,7 @@ export default function JobDetail() {
   // card taxed job.amount in full (materials + labor); Estimates/Invoices already exclude labor
   // (see Architecture > Labor vs materials), this one just never got the same treatment.
   const jobMaterialsTotal = jobLineItems.reduce((sum, li) => sum + (li.item_type === "labor" ? 0 : li.amount), 0);
-  const jobTax = jobMaterialsTotal * 0.0825;
+  const jobTax = jobMaterialsTotal * taxRate;
 
   const handleMarkComplete = async () => {
     if (!job) return;
@@ -1375,7 +1377,7 @@ export default function JobDetail() {
                     <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-sm text-[#64748B]">{t("Tax (8.25%)")}</span>
+                    <span className="text-sm text-[#64748B]">{t("Tax")} ({(taxRate * 100).toFixed(2)}%)</span>
                     <span className="text-sm text-[#0F172A]">${jobTax.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
@@ -1399,12 +1401,12 @@ export default function JobDetail() {
                     <span className="font-semibold text-[#0F172A]">${job.amount.toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
-                    <span className="text-sm text-[#64748B]">{t("Tax (8.25%)")}</span>
-                    <span className="text-sm text-[#0F172A]">${(job.amount * 0.0825).toFixed(2)}</span>
+                    <span className="text-sm text-[#64748B]">{t("Tax")} ({(taxRate * 100).toFixed(2)}%)</span>
+                    <span className="text-sm text-[#0F172A]">${(job.amount * taxRate).toFixed(2)}</span>
                   </div>
                   <div className="flex items-center justify-between py-3">
                     <span className="text-base font-semibold text-[#0F172A]">{t("Total")}</span>
-                    <span className="text-base font-bold text-[#0891B2]">${(job.amount * 1.0825).toFixed(2)}</span>
+                    <span className="text-base font-bold text-[#0891B2]">${(job.amount * (1 + taxRate)).toFixed(2)}</span>
                   </div>
                 </div>
               )}
