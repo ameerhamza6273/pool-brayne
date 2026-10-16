@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type DragEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { averyLabelsPdfUrl, zebraLabelsPdfUrl } from "@/lib/label-pdf";
 import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText, Mail, Star, X } from "lucide-react";
@@ -130,6 +130,21 @@ export default function Inventory() {
     }
     setUploadingPhoto(false);
   };
+  // Client video 2026-10-16: "allow us to drag and drop into this file here instead of pulling
+  // from an existing file list... when I grab it and try to drop it, it just brings up a new
+  // window" -- the dropzone had no drag handlers at all, so the browser's default action (open the
+  // dropped file) took over. Shared by Add Product and Edit Product.
+  const [photoDragActive, setPhotoDragActive] = useState(false);
+  const photoDropHandlers = (current: string[], set: (urls: string[]) => void) => ({
+    onDragOver: (e: DragEvent) => { e.preventDefault(); setPhotoDragActive(true); },
+    onDragLeave: () => setPhotoDragActive(false),
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      setPhotoDragActive(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) uploadItemPhoto(file, current, set);
+    },
+  });
   const [categoryTaxonomy, setCategoryTaxonomy] = useState<CategoryTaxonomyRow[]>([]);
   // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
   // inventory (2,600+ items) was imported.
@@ -205,6 +220,23 @@ export default function Inventory() {
   // Client PDF 2026-09-15: "Ability to search by PO number" on the Pay Invoices / Vendor Bills tab.
   const [billSearch, setBillSearch] = useState("");
   const [billSort, setBillSort] = useState<{ key: "amount" | "vendor" | null; dir: "asc" | "desc" }>({ key: null, dir: "asc" });
+  // Client video 2026-10-16: "spin the item number report here to make a numerical order" --
+  // the Catalog table's column headers were plain text, not clickable, on every column.
+  type CatalogSortKey = "item_number" | "name" | "sku" | "category" | "manufacturer" | "storeQty" | "vehicleQty" | "total" | "reorder_threshold" | "unit_cost" | "price" | "status";
+  const [catalogSort, setCatalogSort] = useState<{ key: CatalogSortKey | null; dir: "asc" | "desc" }>({ key: null, dir: "asc" });
+  const toggleCatalogSort = (key: CatalogSortKey) => {
+    setCatalogSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  };
+  const catalogSortTh = (key: CatalogSortKey, label: string, align: "left" | "right" | "center" = "left") => (
+    <th
+      className={`text-${align} py-3 px-4 text-xs font-semibold text-[#64748B] uppercase cursor-pointer select-none hover:text-[#0891B2]`}
+      onClick={() => toggleCatalogSort(key)}
+    >
+      <span className={`inline-flex items-center gap-1 ${align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""}`}>
+        {t(label)}{catalogSort.key === key && <span className="text-[10px]">{catalogSort.dir === "asc" ? "▲" : "▼"}</span>}
+      </span>
+    </th>
+  );
 
   const loadInventory = useCallback(async () => {
     setIsLoading(true);
@@ -544,11 +576,24 @@ export default function Inventory() {
     return qboAccountList.filter((a) => a.classification === "Asset");
   };
 
-  const filtered = items.filter((p) => {
-    const matchesSearch = matchesQuery(search, [p.name, p.sku, p.item_number != null ? String(p.item_number) : null, p.short_description, p.long_description, p.category, p.manufacturer]);
-    const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filtered = items
+    .filter((p) => {
+      const matchesSearch = matchesQuery(search, [p.name, p.sku, p.item_number != null ? String(p.item_number) : null, p.short_description, p.long_description, p.category, p.manufacturer]);
+      const matchesCategory = categoryFilter === "All" || p.category === categoryFilter;
+      return matchesSearch && matchesCategory;
+    })
+    .sort((a, b) => {
+      const key = catalogSort.key;
+      if (!key) return 0;
+      const dir = catalogSort.dir === "asc" ? 1 : -1;
+      const av = a[key];
+      const bv = b[key];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      return String(av).localeCompare(String(bv)) * dir;
+    });
 
   // Client bug report 2026-09-04: the filter dropdown (and the Add/Edit Product Category field,
   // which used to be this same fixed list) only had 5 hardcoded values -- real imported items
@@ -766,8 +811,11 @@ export default function Inventory() {
                       </div>
                     ))}
                     {newProduct.photoUrls.length < 2 && (
-                      <label className="w-20 h-20 rounded-lg border border-dashed border-[#E2E8F0] flex items-center justify-center text-[#64748B] text-xs cursor-pointer hover:bg-[#F8FAFC]">
-                        {uploadingPhoto ? t("Uploading...") : t("Add Photo")}
+                      <label
+                        className={`w-20 h-20 rounded-lg border border-dashed flex flex-col items-center justify-center gap-0.5 text-xs cursor-pointer transition-colors ${photoDragActive ? "border-[#0891B2] bg-[#0891B2]/5 text-[#0891B2]" : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"}`}
+                        {...photoDropHandlers(newProduct.photoUrls, (urls) => setNewProduct((p) => ({ ...p, photoUrls: urls })))}
+                      >
+                        {uploadingPhoto ? t("Uploading...") : (<><Plus className="w-4 h-4" />{t("Add Photo")}</>)}
                         <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={(e) => { if (e.target.files?.[0]) uploadItemPhoto(e.target.files[0], newProduct.photoUrls, (urls) => setNewProduct((p) => ({ ...p, photoUrls: urls }))); e.target.value = ""; }} />
                       </label>
                     )}
@@ -861,18 +909,18 @@ export default function Inventory() {
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                     <th className="w-8 py-3 px-4"></th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Item #")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("SKU")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Category")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Manufacturer")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Store")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vehicles")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Reorder")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Cost")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Price")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {catalogSortTh("item_number", "Item #")}
+                    {catalogSortTh("name", "Product")}
+                    {catalogSortTh("sku", "SKU")}
+                    {catalogSortTh("category", "Category")}
+                    {catalogSortTh("manufacturer", "Manufacturer")}
+                    {catalogSortTh("storeQty", "Store", "right")}
+                    {catalogSortTh("vehicleQty", "Vehicles", "right")}
+                    {catalogSortTh("total", "Total", "right")}
+                    {catalogSortTh("reorder_threshold", "Reorder", "right")}
+                    {catalogSortTh("unit_cost", "Cost", "right")}
+                    {catalogSortTh("price", "Price", "right")}
+                    {catalogSortTh("status", "Status", "center")}
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">QBO</th>
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
@@ -1668,8 +1716,11 @@ export default function Inventory() {
                   </div>
                 ))}
                 {editProductDraft.photoUrls.length < 2 && (
-                  <label className="w-20 h-20 rounded-lg border border-dashed border-[#E2E8F0] flex items-center justify-center text-[#64748B] text-xs cursor-pointer hover:bg-[#F8FAFC]">
-                    {uploadingPhoto ? t("Uploading...") : t("Add Photo")}
+                  <label
+                    className={`w-20 h-20 rounded-lg border border-dashed flex flex-col items-center justify-center gap-0.5 text-xs cursor-pointer transition-colors ${photoDragActive ? "border-[#0891B2] bg-[#0891B2]/5 text-[#0891B2]" : "border-[#E2E8F0] text-[#64748B] hover:bg-[#F8FAFC]"}`}
+                    {...photoDropHandlers(editProductDraft.photoUrls, (urls) => setEditProductDraft((p) => ({ ...p, photoUrls: urls })))}
+                  >
+                    {uploadingPhoto ? t("Uploading...") : (<><Plus className="w-4 h-4" />{t("Add Photo")}</>)}
                     <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={(e) => { if (e.target.files?.[0]) uploadItemPhoto(e.target.files[0], editProductDraft.photoUrls, (urls) => setEditProductDraft((p) => ({ ...p, photoUrls: urls }))); e.target.value = ""; }} />
                   </label>
                 )}
