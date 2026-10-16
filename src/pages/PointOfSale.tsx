@@ -279,7 +279,10 @@ export default function PointOfSale() {
   // mark" when ringing up a sale (e.g. a tax-exempt reseller) -- per-transaction, not a tenant
   // setting; defaults on like normal.
   const [taxEnabled, setTaxEnabled] = useState(true);
-  const tax = useMemo(() => (taxEnabled ? Math.max(0, taxableAmount * TAX_RATE) : 0), [taxableAmount, taxEnabled, TAX_RATE]);
+  // Client video 2026-10-16: "doing a return...sales tax goes to zero...does not return the sales
+  // tax" -- the `Math.max(0, ...)` floor meant a return (negative taxableAmount) always clamped to
+  // $0 tax instead of refunding it. A return's tax should go negative just like its subtotal does.
+  const tax = useMemo(() => (taxEnabled ? taxableAmount * TAX_RATE : 0), [taxableAmount, taxEnabled, TAX_RATE]);
   const total = useMemo(() => subtotal - discountAmount + tax, [subtotal, discountAmount, tax]);
 
   const addToCart = (p: Product) => {
@@ -897,7 +900,7 @@ export default function PointOfSale() {
                     <Checkbox checked={taxEnabled} onCheckedChange={(v) => setTaxEnabled(v === true)} />
                     <span>{t("Tax")} ({(TAX_RATE * 100).toFixed(2)}%)</span>
                   </label>
-                  <span className="font-medium text-[#0F172A]">${tax.toFixed(2)}</span>
+                  <span className="font-medium text-[#0F172A]">{money(tax)}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t border-[#E2E8F0]">
                   <span className="font-semibold text-[#0F172A]">{t("Total")}</span>
@@ -970,9 +973,9 @@ export default function PointOfSale() {
                     {tx.note && <span className="block text-xs font-normal text-[#94A3B8] truncate max-w-[220px]" title={tx.note}>{tx.note}</span>}
                   </td>
                   <td className="py-3 px-4 text-right text-[#0F172A]">{tx.item_count}</td>
-                  <td className="py-3 px-4 text-right text-[#0F172A]">${tx.subtotal.toFixed(2)}</td>
-                  <td className="py-3 px-4 text-right text-[#0F172A]">${tx.tax.toFixed(2)}</td>
-                  <td className="py-3 px-4 text-right font-semibold text-[#0F172A]">${tx.total.toFixed(2)}</td>
+                  <td className="py-3 px-4 text-right text-[#0F172A]">{money(tx.subtotal)}</td>
+                  <td className="py-3 px-4 text-right text-[#0F172A]">{money(tx.tax)}</td>
+                  <td className="py-3 px-4 text-right font-semibold text-[#0F172A]">{money(tx.total)}</td>
                   <td className="py-3 px-4 text-center">
                     <Badge className={`text-[10px] px-2 py-0 ${tx.payment_method === "Cash" ? "bg-[#16A34A]/10 text-[#16A34A]" : tx.payment_method === "Card" ? "bg-[#0891B2]/10 text-[#0891B2]" : "bg-[#7C3AED]/10 text-[#7C3AED]"}`}>{t(tx.payment_method ?? "")}</Badge>
                   </td>

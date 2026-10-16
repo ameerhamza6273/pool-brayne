@@ -30,6 +30,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { formatPhoneInput } from "@/lib/phone";
 import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { geocodeAddress, geocodeApproximate } from "@/lib/geocode";
 import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 
@@ -171,6 +172,35 @@ export default function CustomerDetail() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Client video 2026-10-16: "the map view section...we need [a real] map of the address" (it was
+  // a static placeholder icon) + "when I try to click on the map...it does not load to a map, so I
+  // can't get directions from my current location" -- real embedded map now, click opens Google
+  // Maps directions (works from a phone's current location with no origin specified). Same
+  // geocode-then-persist pattern Jobs.tsx's Map tab already uses.
+  const [mapCoords, setMapCoords] = useState<{ lat: number; lng: number; approx: boolean } | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
+  useEffect(() => {
+    if (!customer) { setMapCoords(null); return; }
+    if (customer.lat != null && customer.lng != null) { setMapCoords({ lat: customer.lat, lng: customer.lng, approx: false }); return; }
+    if (!customer.address) { setMapCoords(null); return; }
+    let cancelled = false;
+    setMapLoading(true);
+    (async () => {
+      const exact = await geocodeAddress(customer.address!);
+      if (cancelled) return;
+      if (exact) {
+        setMapCoords({ ...exact, approx: false });
+        customersApi.updateCoordinates(customer.id, exact.lat, exact.lng).catch(() => {});
+      } else {
+        const near = await geocodeApproximate(customer.address!);
+        if (cancelled) return;
+        setMapCoords(near ? { ...near, approx: true } : null);
+      }
+      setMapLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [customer?.id, customer?.address, customer?.lat, customer?.lng]);
 
   const uploadPhotos = async (files: FileList | File[]) => {
     if (!id) return;
@@ -471,13 +501,38 @@ export default function CustomerDetail() {
                   <span>{customer.address}</span>
                 </div>
               </div>
-              {/* Map placeholder */}
-              <div className="h-32 rounded-lg bg-[#F1F5F9] flex items-center justify-center">
-                <div className="text-center">
-                  <MapPin className="w-6 h-6 text-[#0891B2] mx-auto mb-1" />
-                  <p className="text-xs text-[#64748B]">{t("Map view")}</p>
+              <a
+                href={
+                  mapCoords
+                    ? `https://www.google.com/maps/dir/?api=1&destination=${mapCoords.lat},${mapCoords.lng}`
+                    : customer.address
+                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customer.address)}`
+                      : undefined
+                }
+                target="_blank"
+                rel="noreferrer"
+                className={`relative h-32 rounded-lg bg-[#F1F5F9] overflow-hidden block ${!mapCoords && !customer.address ? "pointer-events-none" : ""}`}
+                title={t("Get directions")}
+              >
+                {mapCoords ? (
+                  <iframe
+                    title="map"
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${mapCoords.lng - 0.006}%2C${mapCoords.lat - 0.004}%2C${mapCoords.lng + 0.006}%2C${mapCoords.lat + 0.004}&layer=mapnik&marker=${mapCoords.lat}%2C${mapCoords.lng}`}
+                    className="w-full h-full border-0 pointer-events-none"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <MapPin className="w-6 h-6 text-[#0891B2] mx-auto mb-1" />
+                      <p className="text-xs text-[#64748B]">{mapLoading ? t("Locating address...") : t("Map view")}</p>
+                    </div>
+                  </div>
+                )}
+                <div className="absolute inset-x-0 bottom-0 bg-black/55 text-white text-xs text-center py-1 flex items-center justify-center gap-1">
+                  <MapPin className="w-3 h-3" /> {t("Get directions")}
                 </div>
-              </div>
+              </a>
             </CardContent>
           </Card>
 
@@ -635,11 +690,18 @@ export default function CustomerDetail() {
             </DialogContent>
           </Dialog>
 
-          {/* Equipment on File (client bug report 2026-09-02: now editable via the header Edit
-              button) */}
+          {/* Equipment on File (client bug report 2026-09-02: editable via the header Edit button;
+              client video 2026-10-16: "these are not clickable to edit in this screen...I'm not
+              sure...or you go to the edit screen somewhere here" -- that button wasn't discoverable
+              from this card at all, so a direct Edit button now lives right on it too). */}
           <Card className="border-[#E2E8F0] shadow-sm">
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Equipment on File")}</CardTitle>
+              {!readOnly && (
+                <button className="text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => setEditOpen(true)}>
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
             </CardHeader>
             <CardContent className="space-y-3 pt-0">
               <div className="grid grid-cols-2 gap-3 text-sm">

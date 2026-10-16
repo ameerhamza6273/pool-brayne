@@ -285,6 +285,8 @@ export const esDictionary: Record<string, string> = {
   "Loading timesheets...": "Cargando hojas de tiempo...",
   "Loading your jobs...": "Cargando sus trabajos...",
   "Locating addresses...": "Ubicando direcciones...",
+  "Locating address...": "Ubicando dirección...",
+  "Get directions": "Obtener indicaciones",
   "Low": "Baja",
   "Make Recurring": "Hacer recurrente",
   "Make one-time": "Hacer de una sola vez",
