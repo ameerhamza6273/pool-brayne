@@ -30,9 +30,12 @@ export const FIELD_PERMISSIONS: { key: FieldPermission; label: string; paths: st
   { key: "library", label: "Library", paths: ["/library"] },
 ];
 
-/** Can a field-only login open this path? /field always; anything else only if granted. */
+/** Can a field-only login open this path? /field and /directory always (Directory is just
+ * sales-rep/vendor phone numbers, not customer data -- client SMS 2026-10-16 asked for it to be
+ * visible in tech view, and its own original purpose comment already says it's for techs); anything
+ * else only if granted. */
 export function fieldRoleCanOpen(pathname: string, permissions: string[]): boolean {
-  if (pathname === "/field") return true;
+  if (pathname === "/field" || pathname === "/directory") return true;
   return FIELD_PERMISSIONS.some((p) => permissions.includes(p.key) && p.paths.some((base) => pathname === base || pathname.startsWith(base + "/")));
 }
 

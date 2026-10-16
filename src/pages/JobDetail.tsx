@@ -609,12 +609,10 @@ export default function JobDetail() {
       const issueDate = new Date().toISOString().slice(0, 10);
       const dueDate = new Date();
       dueDate.setDate(dueDate.getDate() + 14);
-      const number = `INV-${issueDate.replace(/-/g, "")}-${job.id.slice(0, 4).toUpperCase()}`;
       try {
         const invoice = await invoicingApi.create({
           customerId: job.customer_id,
           jobId: job.id,
-          number,
           issueDate,
           dueDate: dueDate.toISOString().slice(0, 10),
           amount: job.amount,
@@ -660,7 +658,7 @@ export default function JobDetail() {
         </button>
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.id.slice(0, 8).toUpperCase()}</h1>
+            <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.number ?? job.id.slice(0, 8).toUpperCase()}</h1>
             <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type, configLists.job_types)}>{t(job.type)}</Badge>
             <Badge className={`${statusBadge(job.status, configLists.job_statuses)} text-[10px] px-1.5 py-0`}>{t(jobStatusDisplayLabel(job.status))}</Badge>
           </div>

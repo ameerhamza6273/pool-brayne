@@ -122,6 +122,10 @@ export default function AppShell() {
     { path: "/field", label: "Technician Field", icon: Phone },
     ...(permissions.includes("customers") ? [{ path: "/customers", label: "Customer Lookup", icon: Users }] : []),
     ...(permissions.includes("library") ? [{ path: "/library", label: "Library", icon: BookOpen }] : []),
+    // Client SMS 2026-10-16: "make this visible in tech view" -- always on (not a per-tech
+    // permission toggle like the two above), since Directory is just sales-rep/vendor phone
+    // numbers, not customer data.
+    { path: "/directory", label: "Directory", icon: BookUser },
   ];
   const visibleNavSections: (NavLink | NavGroup)[] = fieldOnly ? fieldLinks : navSections;
   const visibleFlatNavLinks: NavLink[] = fieldOnly ? fieldLinks : flatNavLinks;
@@ -564,9 +568,23 @@ export default function AppShell() {
           <div className="flex items-center gap-2">
             <LanguageToggle />
             <NotificationsPanel />
-            <Avatar className="w-8 h-8">
-              <AvatarFallback className="bg-[#0891B2] text-white text-xs">{user?.avatar || "BR"}</AvatarFallback>
-            </Avatar>
+            {/* Client video 2026-10-16: "does not allow anybody to log out... the drop down here is
+                not available in the phone view" -- this Avatar had no DropdownMenu at all (the
+                desktop header's matching avatar does), so tapping it on a phone did nothing. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="rounded-full">
+                  <Avatar className="w-8 h-8">
+                    <AvatarFallback className="bg-[#0891B2] text-white text-xs">{user?.avatar || "BR"}</AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {!fieldOnly && <DropdownMenuItem onClick={() => navigate("/settings")}>{t("Profile")}</DropdownMenuItem>}
+                {!fieldOnly && <DropdownMenuItem onClick={() => navigate("/settings")}>{t("Settings")}</DropdownMenuItem>}
+                <DropdownMenuItem onClick={() => signOut()}>{t("Log out")}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 

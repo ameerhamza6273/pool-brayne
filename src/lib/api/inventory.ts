@@ -82,6 +82,7 @@ export const inventoryApi = {
     subSubSubcategory?: string | null;
     isInventory?: boolean;
     maintenancePriority?: boolean;
+    photoUrls?: string[];
   }) => api.post<InventoryItem>("/api/inventory/items", data),
 
   updatePricing: (itemId: string, unitCost: number, price: number | null) =>
@@ -113,11 +114,16 @@ export const inventoryApi = {
       subSubSubcategory?: string | null;
       isInventory?: boolean;
       maintenancePriority?: boolean;
+      photoUrls?: string[];
     },
   ) => api.patch<InventoryItem>(`/api/inventory/items/${itemId}`, data),
 
-  createPurchaseOrder: (data: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string }) =>
+  createPurchaseOrder: (data: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string; number?: string }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),
+
+  // Peek-only suggestion shown in the New PO dialog's editable number field (client SMS
+  // 2026-10-16); doesn't reserve the number.
+  nextPoNumber: () => api.get<{ number: string }>("/api/inventory/purchase-orders/next-number"),
 
   getQboAccounts: () => api.get<QboAccount[]>("/api/inventory/qbo-accounts"),
 

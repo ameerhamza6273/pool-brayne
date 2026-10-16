@@ -103,9 +103,11 @@ export default function PointOfSale() {
   // Client request 2026-09-03: "Allow us to use more than one payment type or multiple credit
   // card" — a sale can be tendered across several lines (e.g. part cash, part card) instead of
   // one single method.
-  const [tenderLines, setTenderLines] = useState<{ method: "Cash" | "Card" | "ACH" | "Check"; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[]>([]);
+  const [tenderLines, setTenderLines] = useState<{ method: "Cash" | "Card" | "ACH" | "Check"; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null }[]>([]);
   const [tenderMethod, setTenderMethod] = useState<"Cash" | "Card" | "ACH" | "Check">("Cash");
   const [tenderAmount, setTenderAmount] = useState("");
+  // Client SMS 2026-10-16: "when receiving a check payment allow us to put a check #".
+  const [checkNumberInput, setCheckNumberInput] = useState("");
   const [discount, setDiscount] = useState(0);
   const [discountType, setDiscountType] = useState<"percent" | "amount">("percent");
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -338,8 +340,9 @@ export default function PointOfSale() {
     // the sale with a negative "remaining" that never reaches zero.
     const capped = round2(Math.min(Math.abs(amt), Math.abs(remainingTender)));
     if (capped <= 0) return;
-    setTenderLines((prev) => [...prev, { method: tenderMethod, amount: remainingTender < 0 ? -capped : capped }]);
+    setTenderLines((prev) => [...prev, { method: tenderMethod, amount: remainingTender < 0 ? -capped : capped, checkNumber: tenderMethod === "Check" ? checkNumberInput.trim() || null : null }]);
     setTenderAmount("");
+    setCheckNumberInput("");
   };
 
   const addCardTender = (amount: number, opaqueData: { dataDescriptor: string; dataValue: string }) => {
@@ -373,12 +376,11 @@ export default function PointOfSale() {
   const runCheckout = async () => {
     let lines = tenderLines;
     if (Math.abs(remainingTender) > 0.01) {
-      lines = [{ method: tenderMethod, amount: round2(total) }];
+      lines = [{ method: tenderMethod, amount: round2(total), checkNumber: tenderMethod === "Check" ? checkNumberInput.trim() || null : null }];
     } else if (lines.length === 0) {
       // Even exchange (net $0): the order still needs one payment row.
       lines = [{ method: "Cash", amount: 0 }];
     }
-    const num = `POS-${new Date().toISOString().slice(2, 10).replace(/-/g, "")}-${String(transactions.length + 1).padStart(3, "0")}`;
     const paymentLabel = lines.length > 1 ? `${t("Split")} (${lines.map((l) => t(l.method)).join(" + ")})` : t(lines[0].method);
 
     const saved = await posApi.checkout({
@@ -387,7 +389,7 @@ export default function PointOfSale() {
       tax,
       total,
       note: saleNote.trim() || null,
-      payments: lines.map((t) => ({ method: t.method, amount: t.amount, opaqueData: t.opaqueData })),
+      payments: lines.map((line) => ({ method: line.method, amount: line.amount, opaqueData: line.opaqueData, checkNumber: line.checkNumber })),
       items: cart.map((item) => ({
         id: item.id,
         name: item.name,
@@ -399,7 +401,7 @@ export default function PointOfSale() {
       })),
     });
 
-    const number = saved?.id ? receiptNumber(saved.id) : num;
+    const number = receiptNumber(saved.id, saved.number);
     setCompletedSale({
       number, total, payment: paymentLabel, items: cart.reduce((s, i) => s + i.qty, 0),
       receipt: {
@@ -417,6 +419,7 @@ export default function PointOfSale() {
     setCustomerId(null);
     setTenderLines([]);
     setTenderAmount("");
+    setCheckNumberInput("");
     setSaleNote("");
     posApi.catalog().then(setProducts); // stock changed
     loadSales();
@@ -1136,7 +1139,10 @@ export default function PointOfSale() {
               <div className="space-y-1.5">
                 {tenderLines.map((tenderLine, i) => (
                   <div key={i} className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm">
-                    <span className="font-medium text-[#0F172A]">{tenderLine.method}</span>
+                    <span className="font-medium text-[#0F172A]">
+                      {t(tenderLine.method)}
+                      {tenderLine.checkNumber && <span className="text-[#64748B] font-normal"> · {t("Check #")}{tenderLine.checkNumber}</span>}
+                    </span>
                     <div className="flex items-center gap-2">
                       <span className="text-[#0F172A]">{money(tenderLine.amount)}</span>
                       <button onClick={() => removeTender(i)} className="text-[#DC2626] hover:bg-[#DC2626]/10 p-1 rounded">
@@ -1183,6 +1189,13 @@ export default function PointOfSale() {
                   />
                 ) : (
                   <div className="space-y-2">
+                    {tenderMethod === "Check" && (
+                      <Input
+                        placeholder={t("Check #")}
+                        value={checkNumberInput}
+                        onChange={(e) => setCheckNumberInput(e.target.value)}
+                      />
+                    )}
                     <div className="flex gap-2">
                       <Input
                         type="number"

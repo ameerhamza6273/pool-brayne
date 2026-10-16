@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { invoicingApi, type InvoiceDetailBundle, type InvoiceAttachment } from "@/lib/api/invoicing";
 import DocumentsSection from "@/components/DocumentsSection";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
@@ -56,6 +57,8 @@ export default function InvoiceDetail() {
   const [bulkJobs, setBulkJobs] = useState<InvoiceDetailBundle["bulkJobs"]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [payOpen, setPayOpen] = useState(false);
+  const [checkNumber, setCheckNumber] = useState("");
+  const [collectingCheck, setCollectingCheck] = useState(false);
   const [qboSyncing, setQboSyncing] = useState(false);
   const [qboError, setQboError] = useState<string | null>(null);
   const [writeOffOpen, setWriteOffOpen] = useState(false);
@@ -184,11 +187,21 @@ export default function InvoiceDetail() {
     return i > 0 ? [a.slice(0, i).trim(), a.slice(i + 1).trim()] : [a];
   })();
 
-  const handleCollectPayment = async (method: "Card" | "ACH", opaqueData?: { dataDescriptor: string; dataValue: string }) => {
+  const handleCollectPayment = async (method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }, checkNum?: string) => {
     if (!id) return;
-    await invoicingApi.collectPayment(id, method, opaqueData);
+    await invoicingApi.collectPayment(id, method, opaqueData, checkNum ?? null);
     setPayOpen(false);
+    setCheckNumber("");
     loadInvoice();
+  };
+
+  const handleCollectCheck = async () => {
+    setCollectingCheck(true);
+    try {
+      await handleCollectPayment("Check", undefined, checkNumber.trim() || undefined);
+    } finally {
+      setCollectingCheck(false);
+    }
   };
 
   const handleSendEmail = async () => {
@@ -273,6 +286,7 @@ export default function InvoiceDetail() {
                 <TabsList className="w-full">
                   <TabsTrigger value="card" className="flex-1">{t("Card")}</TabsTrigger>
                   <TabsTrigger value="ach" className="flex-1">ACH</TabsTrigger>
+                  <TabsTrigger value="check" className="flex-1">{t("Check")}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="card" className="space-y-4 mt-4">
                   {/* Charges the full invoice total, matching the backend's computeInvoiceTotal
@@ -288,6 +302,16 @@ export default function InvoiceDetail() {
                     </div>
                   </div>
                   <Button className="w-full bg-[#16A34A] text-white" onClick={() => handleCollectPayment("ACH")}>{t("Pay")} ${total.toFixed(2)} {t("via ACH")}</Button>
+                </TabsContent>
+                <TabsContent value="check" className="space-y-4 mt-4">
+                  {/* Client SMS 2026-10-16: "when receiving a check payment allow us to put a check #". */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">{t("Check #")}</label>
+                    <Input value={checkNumber} onChange={(e) => setCheckNumber(e.target.value)} placeholder={t("Check #")} />
+                  </div>
+                  <Button className="w-full bg-[#16A34A] hover:bg-[#15803D] text-white" disabled={collectingCheck} onClick={handleCollectCheck}>
+                    {collectingCheck ? t("Saving...") : `${t("Mark Paid")} $${total.toFixed(2)} (${t("Check")})`}
+                  </Button>
                 </TabsContent>
               </Tabs>
             </DialogContent>

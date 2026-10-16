@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 import { withQuickbooksConnection, getChartOfAccounts } from "../lib/quickbooks.js";
+import { nextDocNumber, peekNextDocNumber } from "../lib/numbering.js";
 
 type Location = { id: string; type: string };
 type Stock = { item_id: string; location_id: string; quantity: number };
@@ -87,16 +88,17 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       subSubSubcategory?: string | null;
       isInventory?: boolean;
       maintenancePriority?: boolean;
+      photoUrls?: string[];
     };
   }>("/items", async (req) => {
-    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold, subcategory, subSubcategory, subSubSubcategory, isInventory, maintenancePriority } = req.body;
+    const { name, sku, category, unitCost, price, shortDescription, longDescription, department, subDepartment, manufacturer, reorderThreshold, subcategory, subSubcategory, subSubSubcategory, isInventory, maintenancePriority, photoUrls } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
         insert into inventory_items
-          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold, subcategory, sub_subcategory, sub_sub_subcategory, is_inventory, maintenance_priority)
+          (tenant_id, name, sku, category, unit_cost, price, short_description, long_description, department, sub_department, manufacturer, reorder_threshold, subcategory, sub_subcategory, sub_sub_subcategory, is_inventory, maintenance_priority, photo_urls)
         values
-          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0}, ${subcategory ?? null}, ${subSubcategory ?? null}, ${subSubSubcategory ?? null}, ${isInventory ?? true}, ${maintenancePriority ?? false})
+          (${tenant.id}, ${name}, ${sku}, ${category}, ${unitCost}, ${price}, ${shortDescription}, ${longDescription}, ${department}, ${subDepartment}, ${manufacturer}, ${reorderThreshold ?? 0}, ${subcategory ?? null}, ${subSubcategory ?? null}, ${subSubSubcategory ?? null}, ${isInventory ?? true}, ${maintenancePriority ?? false}, ${tx.json((photoUrls ?? []).slice(0, 2))})
         returning *
       `;
       return row;
@@ -141,13 +143,14 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       subSubSubcategory?: string | null;
       isInventory?: boolean;
       maintenancePriority?: boolean;
+      photoUrls?: string[];
     };
   }>("/items/:id", async (req) => {
     const { id } = req.params;
     const {
       name, sku, category, unitCost, price, shortDescription, longDescription,
       department, subDepartment, manufacturer, barcode, defaultDistributor, unit, taxable, reorderThreshold,
-      storeQuantity, subcategory, subSubcategory, subSubSubcategory, isInventory, maintenancePriority,
+      storeQuantity, subcategory, subSubcategory, subSubSubcategory, isInventory, maintenancePriority, photoUrls,
     } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
@@ -159,7 +162,8 @@ export default async function inventoryRoutes(app: FastifyInstance) {
           barcode = ${barcode}, default_distributor = ${defaultDistributor}, unit = ${unit}, taxable = ${taxable},
           reorder_threshold = ${reorderThreshold ?? 0}, subcategory = ${subcategory ?? null},
           sub_subcategory = ${subSubcategory ?? null}, sub_sub_subcategory = ${subSubSubcategory ?? null},
-          is_inventory = ${isInventory ?? true}, maintenance_priority = ${maintenancePriority ?? false}
+          is_inventory = ${isInventory ?? true}, maintenance_priority = ${maintenancePriority ?? false},
+          photo_urls = ${tx.json((photoUrls ?? []).slice(0, 2))}
         where id = ${id}
         returning *
       `;
@@ -380,28 +384,32 @@ export default async function inventoryRoutes(app: FastifyInstance) {
 
   type PoLineItemInput = { description: string; sku: string | null; quantity: number; unitCost: number };
 
+  // Client SMS 2026-10-16: "when creating a po to a vendor allow us to change it if we need to" --
+  // the New PO dialog shows this as a prefilled, editable suggestion. Peek-only, doesn't reserve
+  // the number (see numbering.ts).
+  app.get("/purchase-orders/next-number", async (req) => {
+    return withTenantContext(req.userId, async (tx) => {
+      const [tenant] = await tx`select current_tenant_id() as id`;
+      return { number: await peekNextDocNumber(tx, tenant.id, "PO") };
+    });
+  });
+
   // QA sweep 2026-09-30: the PO number used to be guessed client-side from the locally-loaded
   // list's length (Inventory.tsx) -- it drifts from reality (deletions, concurrent staff, a
-  // filtered view) and produced two unrelated real POs both named "PO-20260914-001". The client
-  // can still suggest one (kept for the same-day case where it's already correct), but the server
-  // is the source of truth: it re-derives the next free suffix for that date from the actual table,
-  // and retries once on the (now-enforced, see migration 20260930110000) unique-constraint conflict.
-  app.post<{ Body: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string } }>("/purchase-orders", async (req) => {
+  // filtered view) and produced two unrelated real POs both named "PO-20260914-001". The server is
+  // the source of truth, now via the shared per-tenant sequence (numbering.ts) -- format "PO-0001"
+  // (client SMS 2026-10-16: "numbers only", no date embedded). A client-supplied `number` (the
+  // editable suggestion above, possibly hand-changed) is used as-is; on a unique-constraint
+  // conflict it falls back to a freshly-generated number instead of failing the create outright.
+  app.post<{ Body: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string; number?: string } }>("/purchase-orders", async (req) => {
     const { supplierId, locationId, lineItems, paymentTerms } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const itemCount = lineItems?.length ?? 0;
       const total = (lineItems ?? []).reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
-      const datePrefix = new Date().toISOString().slice(0, 10).replace(/-/g, "");
       let row: Record<string, unknown> & { id: string } | undefined;
+      let number = req.body.number?.trim() || (await nextDocNumber(tx, tenant.id, "PO"));
       for (let attempt = 0; attempt < 5 && !row; attempt++) {
-        const existing = (await tx`
-          select number from purchase_orders where tenant_id = ${tenant.id} and number like ${`PO-${datePrefix}-%`}
-        `) as unknown as { number: string }[];
-        const used = new Set(existing.map((r) => parseInt(r.number.slice(-3), 10)).filter((n) => !isNaN(n)));
-        let next = 1;
-        while (used.has(next)) next++;
-        const number = `PO-${datePrefix}-${String(next).padStart(3, "0")}`;
         try {
           [row] = (await tx`
             insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total, payment_terms)
@@ -410,6 +418,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
           `) as unknown as (Record<string, unknown> & { id: string })[];
         } catch (e) {
           if ((e as { code?: string }).code !== "23505") throw e; // not a unique-violation, don't retry
+          number = await nextDocNumber(tx, tenant.id, "PO"); // the number was taken -- generate a fresh one and retry
         }
       }
       if (!row) throw new Error("Could not allocate a unique PO number, please retry");

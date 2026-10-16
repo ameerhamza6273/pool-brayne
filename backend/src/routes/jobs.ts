@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 import { nextOccurrenceDate, generateOccurrence, catchUpOccurrences, type RecurringJob } from "./recurringJobs.js";
 import { notifyCustomerOfJobEvent } from "../lib/mailer.js";
+import { nextDocNumber } from "../lib/numbering.js";
 
 export default async function jobsRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
@@ -110,9 +111,12 @@ export default async function jobsRoutes(app: FastifyInstance) {
       : amount ?? 0;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
+      // Client SMS 2026-10-16: "numbers only" numbering for every document type, including jobs
+      // (which never had a number before -- only ever identified by their internal uuid).
+      const number = await nextDocNumber(tx, tenant.id, "JOB");
       const [row] = await tx`
-        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount, item_sku, labor_sku, selected_form_ids)
-        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${computedAmount}, ${itemSku ?? null}, ${laborSku ?? null}, ${tx.json(selectedFormIds ?? [])})
+        insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount, item_sku, labor_sku, selected_form_ids, number)
+        values (${tenant.id}, ${customerId}, ${jobType}, ${techId}, ${status}, ${stage}, ${date}, ${time}, ${description}, ${address}, ${computedAmount}, ${itemSku ?? null}, ${laborSku ?? null}, ${tx.json(selectedFormIds ?? [])}, ${number})
         returning *
       `;
       if (lineItems && lineItems.length > 0) {
@@ -346,7 +350,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
       }[];
 
       const [tenant] = await tx`select current_tenant_id() as id`;
-      const estimateNumber = `EST-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${id.replace(/-/g, "").slice(-4).toUpperCase()}`;
+      const estimateNumber = await nextDocNumber(tx, tenant.id, "EST");
       const [estimate] = await tx`
         insert into estimates (tenant_id, customer_id, job_id, number, amount, status, job_description)
         values (${tenant.id}, ${job.customer_id}, ${job.id}, ${estimateNumber}, ${job.amount}, 'Draft', ${job.description})

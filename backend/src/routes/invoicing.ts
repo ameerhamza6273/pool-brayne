@@ -5,6 +5,7 @@ import { withQuickbooksConnection, pushInvoice } from "../lib/quickbooks.js";
 import { syncCustomerToQuickbooks } from "./customers.js";
 import { chargeOpaqueData } from "../lib/authorizenet.js";
 import { notifyBusinessOfPayment, isMailerConfigured, sendMail } from "../lib/mailer.js";
+import { nextDocNumber } from "../lib/numbering.js";
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "http://localhost:5175";
 
@@ -95,6 +96,8 @@ async function recordPayment(
   total: number,
   method: "Card" | "ACH" | "Check",
   providerTransactionId: string | null,
+  // Client SMS 2026-10-16: "when receiving a check payment allow us to put a check #".
+  checkNumber: string | null = null,
 ) {
   const today = new Date().toISOString().slice(0, 10);
   const [tenant] = await tx`select current_tenant_id() as id`;
@@ -103,8 +106,8 @@ async function recordPayment(
     where id = ${invoice.id} returning *
   `;
   await tx`
-    insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status, provider_transaction_id)
-    values (${tenant.id}, ${invoice.id}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success', ${providerTransactionId})
+    insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status, provider_transaction_id, check_number)
+    values (${tenant.id}, ${invoice.id}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success', ${providerTransactionId}, ${checkNumber})
   `;
   return updated;
 }
@@ -199,7 +202,12 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     Body: {
       customerId: string;
       jobId?: string | null;
-      number: string;
+      // Client SMS 2026-10-16: "numbers only" -- callers no longer need to compute one (the old
+      // client-side date-based guesses are the same duplicate-number bug class already fixed once
+      // for PO); the server assigns a sequential "INV-0001" via the shared per-tenant counter when
+      // omitted. Kept optional (not removed) only so a caller with a real reason to pin a specific
+      // number still can.
+      number?: string;
       issueDate: string;
       dueDate: string | null;
       amount: number;
@@ -209,10 +217,11 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       lineItems?: LineItemInput[];
     };
   }>("/", async (req) => {
-    const { customerId, jobId, number, issueDate, dueDate, status, downPayment, jobDescription, lineItems } = req.body;
+    const { customerId, jobId, issueDate, dueDate, status, downPayment, jobDescription, lineItems } = req.body;
     const amount = lineItems && lineItems.length > 0 ? lineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0) : req.body.amount;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
+      const number = req.body.number?.trim() || (await nextDocNumber(tx, tenant.id, "INV"));
       const [row] = await tx`
         insert into invoices (tenant_id, customer_id, job_id, number, issue_date, due_date, amount, status, down_payment, job_description)
         values (${tenant.id}, ${customerId}, ${jobId ?? null}, ${number}, ${issueDate}, ${dueDate}, ${amount}, ${status ?? "Draft"}, ${downPayment ?? 0}, ${jobDescription ?? null})
@@ -230,11 +239,12 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   // what's actually on each job; a job with no real line items still falls back to one flat line
   // from its own amount, same as before, so nothing silently disappears.
   app.post<{
-    Body: { customerId: string; jobIds: string[]; number: string; issueDate: string };
+    Body: { customerId: string; jobIds: string[]; number?: string; issueDate: string };
   }>("/bulk", async (req) => {
-    const { customerId, jobIds, number, issueDate } = req.body;
+    const { customerId, jobIds, issueDate } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
+      const number = req.body.number?.trim() || (await nextDocNumber(tx, tenant.id, "INV"));
       const jobs = (await tx`select * from jobs where id = any(${jobIds})`) as unknown as { id: string; type: string; scheduled_date: string | null; created_at: string; amount: number }[];
       const allLineItems: LineItemInput[] = [];
       for (const job of jobs) {
@@ -297,10 +307,10 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   // Check stay simulated (no real bank-transfer/check processor is wired up).
   app.patch<{
     Params: { id: string };
-    Body: { method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string } };
+    Body: { method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null };
   }>("/:id/collect-payment", async (req, reply) => {
     const { id } = req.params;
-    const { method, opaqueData } = req.body;
+    const { method, opaqueData, checkNumber } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const { invoice, total } = await computeInvoiceTotal(tx, id);
       let providerTransactionId: string | null = null;
@@ -316,7 +326,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         }
         providerTransactionId = result.transactionId;
       }
-      const updated = await recordPayment(tx, invoice, total, method, providerTransactionId);
+      const updated = await recordPayment(tx, invoice, total, method, providerTransactionId, checkNumber ?? null);
       const [withCustomer] = await tx`
         select i.number, c.name as customer_name from invoices i join customers c on c.id = i.customer_id where i.id = ${id} limit 1
       `;
@@ -330,9 +340,9 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   // (not once per invoice), then every selected invoice is marked Paid with that same real
   // Authorize.net transaction ID.
   app.post<{
-    Body: { invoiceIds: string[]; method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string } };
+    Body: { invoiceIds: string[]; method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null };
   }>("/bulk-collect", async (req, reply) => {
-    const { invoiceIds, method, opaqueData } = req.body;
+    const { invoiceIds, method, opaqueData, checkNumber } = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const entries = await Promise.all(invoiceIds.map((id) => computeInvoiceTotal(tx, id)));
       const combinedTotal = entries.reduce((sum, e) => sum + e.total, 0);
@@ -352,7 +362,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       }
 
       const results = [];
-      for (const entry of entries) results.push(await recordPayment(tx, entry.invoice, entry.total, method, providerTransactionId));
+      for (const entry of entries) results.push(await recordPayment(tx, entry.invoice, entry.total, method, providerTransactionId, checkNumber ?? null));
       return results;
     });
   });
@@ -579,7 +589,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     Body: {
       customerId: string;
       jobId?: string | null;
-      number: string;
+      number?: string;
       issueDate: string;
       expiryDate: string | null;
       amount: number;
@@ -588,10 +598,11 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       lineItems?: LineItemInput[];
     };
   }>("/estimates", async (req) => {
-    const { customerId, jobId, number, issueDate, expiryDate, downPayment, jobDescription, lineItems } = req.body;
+    const { customerId, jobId, issueDate, expiryDate, downPayment, jobDescription, lineItems } = req.body;
     const amount = lineItems && lineItems.length > 0 ? lineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0) : req.body.amount;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
+      const number = req.body.number?.trim() || (await nextDocNumber(tx, tenant.id, "EST"));
       const [row] = await tx`
         insert into estimates (tenant_id, customer_id, job_id, number, issue_date, expiry_date, amount, down_payment, job_description)
         values (${tenant.id}, ${customerId}, ${jobId ?? null}, ${number}, ${issueDate}, ${expiryDate}, ${amount}, ${downPayment ?? 0}, ${jobDescription ?? null})
@@ -621,7 +632,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       }[];
 
       const [tenant] = await tx`select current_tenant_id() as id`;
-      const invoiceNumber = `INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${estimate.number.replace(/[^A-Za-z0-9]/g, "").slice(-4)}`;
+      const invoiceNumber = await nextDocNumber(tx, tenant.id, "INV");
       const [invoice] = await tx`
         insert into invoices (tenant_id, customer_id, job_id, number, issue_date, amount, status, down_payment, job_description)
         values (${tenant.id}, ${estimate.customer_id}, ${estimate.job_id}, ${invoiceNumber}, current_date, ${estimate.amount}, 'Draft', ${estimate.down_payment}, ${estimate.job_description})

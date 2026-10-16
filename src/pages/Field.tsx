@@ -366,13 +366,11 @@ export default function Field() {
     const issueDate = new Date().toISOString().slice(0, 10);
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 14);
-    const number = `INV-${issueDate.replace(/-/g, "")}-${currentJob.id.slice(0, 4).toUpperCase()}`;
 
     try {
       const invoice = await invoicingApi.create({
         customerId: currentJob.customer_id,
         jobId: currentJob.id,
-        number,
         issueDate,
         dueDate: dueDate.toISOString().slice(0, 10),
         amount: currentJob.amount,
@@ -464,7 +462,14 @@ export default function Field() {
         {visibleJobs.map((job, idx) => (
           <Fragment key={job.id}>
           {idx === dayJobs.length && (
-            <p className="text-xs font-semibold text-[#64748B] uppercase pt-2">{t("No date set")}</p>
+            <div className="pt-2">
+              <p className="text-xs font-semibold text-[#64748B] uppercase">{t("No date set")}</p>
+              {/* Client video 2026-10-16: "flipping through the dates... not changing the job
+                  list... I believe these names should change" -- these jobs have no scheduled
+                  date at all, so they stay here no matter which day is selected above; ask the
+                  office to schedule them (Jobs & Dispatch > Schedule) to move them into a day. */}
+              <p className="text-[11px] text-[#94A3B8]">{t("These jobs aren't scheduled yet, so they stay here no matter what date you pick above. Ask the office to schedule them.")}</p>
+            </div>
           )}
           <button
             key={job.id}

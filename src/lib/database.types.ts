@@ -385,6 +385,7 @@ export type Database = {
           maintenance_priority: boolean
           manufacturer: string | null
           name: string
+          photo_urls: Json
           pos_enabled: boolean
           price: number | null
           qbo_accounts: Json
@@ -1136,6 +1137,7 @@ export type Database = {
           id: string
           item_sku: string | null
           labor_sku: string | null
+          number: string | null
           recurring_job_id: string | null
           scheduled_date: string | null
           scheduled_time: string | null
@@ -1228,6 +1230,7 @@ export type Database = {
       payments: {
         Row: {
           amount: number
+          check_number: string | null
           customer_id: string | null
           id: string
           invoice_id: string | null
@@ -1345,6 +1348,7 @@ export type Database = {
           customer_id: string | null
           id: string
           note: string | null
+          number: string | null
           payment_method: string | null
           subtotal: number
           tax: number

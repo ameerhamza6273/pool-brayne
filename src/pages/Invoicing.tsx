@@ -101,6 +101,7 @@ export default function Invoicing() {
   const [bulkInvoiceCustomerId, setBulkInvoiceCustomerId] = useState("");
   const [bulkInvoiceSelected, setBulkInvoiceSelected] = useState<Set<string>>(new Set());
   const [bulkPayMethod, setBulkPayMethod] = useState<"Card" | "Check" | "Email">("Card");
+  const [bulkCheckNumber, setBulkCheckNumber] = useState("");
   const [bulkCollecting, setBulkCollecting] = useState(false);
   const navigate = useNavigate();
   const { tenantId } = useAuth();
@@ -175,10 +176,11 @@ export default function Invoicing() {
 
   const handleCreateInvoice = async () => {
     if (!newInvoice.customerId || !newInvoice.issueDate) return;
-    const number = `INV-${newInvoice.issueDate.replace(/-/g, "")}-${String(invoices.length + 1).padStart(3, "0")}`;
+    // Client SMS 2026-10-16: "numbers only" -- the server now assigns a sequential INV-0001 (see
+    // backend/src/lib/numbering.ts), replacing this date-based guess (the same duplicate-number
+    // bug class already found and fixed once for PO numbers).
     await invoicingApi.create({
       customerId: newInvoice.customerId,
-      number,
       issueDate: newInvoice.issueDate,
       dueDate: newInvoice.dueDate || null,
       amount: parseFloat(newInvoice.amount) || 0,
@@ -225,10 +227,8 @@ export default function Invoicing() {
 
   const handleCreateEstimate = async () => {
     if (!newEstimate.customerId || !newEstimate.issueDate) return;
-    const number = `EST-${newEstimate.issueDate.replace(/-/g, "")}-${String(estimates.length + 1).padStart(3, "0")}`;
     await invoicingApi.createEstimate({
       customerId: newEstimate.customerId,
-      number,
       issueDate: newEstimate.issueDate,
       expiryDate: newEstimate.expiryDate || null,
       amount: parseFloat(newEstimate.amount) || 0,
@@ -405,21 +405,20 @@ export default function Invoicing() {
     const ids = Array.from(bulkInvoiceSelected);
     if (ids.length === 0) return;
     setBulkCollecting(true);
-    await invoicingApi.bulkCollect(ids, bulkPayMethod as "Card" | "Check", opaqueData);
+    await invoicingApi.bulkCollect(ids, bulkPayMethod as "Card" | "Check", opaqueData, bulkCheckNumber.trim() || null);
     await loadInvoicing();
     setBulkInvoiceSelected(new Set());
     setBulkCollecting(false);
+    setBulkCheckNumber("");
     setBulkOpen(false);
   };
 
   const handleCreateBulkInvoice = async () => {
     const selectedJobs = bulkJobs.filter((j) => bulkSelected.has(j.id));
     if (!bulkForm.customerId || selectedJobs.length === 0) return;
-    const number = `INV-${bulkForm.end.replace(/-/g, "")}-${String(invoices.length + 1).padStart(3, "0")}`;
     const invoice = await invoicingApi.createBulk({
       customerId: bulkForm.customerId,
       jobIds: selectedJobs.map((j) => j.id),
-      number,
       issueDate: bulkForm.end,
     });
     setBulkForm({ customerId: "", start: "", end: "" });
@@ -625,6 +624,10 @@ export default function Invoicing() {
                           onCharge={(opaqueData) => handleBulkCollect(opaqueData)}
                         />
                       ) : (
+                        <>
+                        {bulkPayMethod === "Check" && (
+                          <Input placeholder={t("Check #")} value={bulkCheckNumber} onChange={(e) => setBulkCheckNumber(e.target.value)} />
+                        )}
                         <Button
                           className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white"
                           onClick={() => (bulkPayMethod === "Email" ? handleBulkEmail() : handleBulkCollect())}
@@ -632,6 +635,7 @@ export default function Invoicing() {
                         >
                           {bulkPayMethod === "Email" ? t("Email Selected Invoices") : t("Collect Payment (Check)")}
                         </Button>
+                        </>
                       )}
                     </>
                   )}

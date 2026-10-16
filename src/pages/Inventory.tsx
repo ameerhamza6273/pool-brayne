@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { averyLabelsPdfUrl, zebraLabelsPdfUrl } from "@/lib/label-pdf";
-import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText, Mail, Star } from "lucide-react";
+import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText, Mail, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,8 @@ import { invoicingApi, type VendorBill } from "@/lib/api/invoicing";
 import { reportsApi, type VendorBillDueRow } from "@/lib/api/reports";
 import type { Database } from "@/lib/database.types";
 import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff, SupplierLocation, CategoryTaxonomyRow, PoLineItemInput } from "@/lib/api/inventory";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
@@ -92,6 +94,7 @@ const printZebraLabels = (
 
 export default function Inventory() {
   const { t } = useLanguage();
+  const { tenantId } = useAuth();
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -110,7 +113,23 @@ export default function Inventory() {
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "",
     barcode: "", defaultDistributor: "", unit: "", taxable: true, reorderThreshold: "", storeQuantity: "",
     subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false,
+    photoUrls: [] as string[],
   });
+  // Client SMS 2026-10-16: "upload a max of two pics for each inventory item" -- same upload
+  // pattern as every other photo field in the app (direct-from-browser Supabase Storage upload,
+  // see CLAUDE.md > Architecture). Shared by Add Product and Edit Product.
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const uploadItemPhoto = async (file: File, current: string[], set: (urls: string[]) => void) => {
+    if (current.length >= 2 || !file.type.startsWith("image/")) return;
+    setUploadingPhoto(true);
+    const path = `${tenantId}/inventory/photo-${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage.from("job-attachments").upload(path, file);
+    if (!error) {
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      set([...current, data.publicUrl]);
+    }
+    setUploadingPhoto(false);
+  };
   const [categoryTaxonomy, setCategoryTaxonomy] = useState<CategoryTaxonomyRow[]>([]);
   // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
   // inventory (2,600+ items) was imported.
@@ -141,12 +160,13 @@ export default function Inventory() {
     name: "", sku: "", category: "Chemicals", unitCost: "", price: "",
     shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "",
     subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false,
+    photoUrls: [] as string[],
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
   // QA sweep 2026-09-30: this used to be a client-guessed, user-editable "PO Number" field
   // (`purchaseOrders.length + 2`, drifts from reality) that produced real duplicate PO numbers --
   // the backend now assigns the real number atomically, so there's nothing to track/edit here.
-  const [newPo, setNewPo] = useState({ supplierId: "", locationId: "", paymentTerms: "Net 30" });
+  const [newPo, setNewPo] = useState({ supplierId: "", locationId: "", paymentTerms: "Net 30", number: "" });
   const [poError, setPoError] = useState("");
   const [newPoLocations, setNewPoLocations] = useState<SupplierLocation[]>([]);
   const [newPoLineItems, setNewPoLineItems] = useState<PoLineItemInput[]>([]);
@@ -229,8 +249,9 @@ export default function Inventory() {
       subSubSubcategory: newProduct.subSubSubcategory || null,
       isInventory: newProduct.isInventory,
       maintenancePriority: newProduct.maintenancePriority,
+      photoUrls: newProduct.photoUrls,
     });
-    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false });
+    setNewProduct({ name: "", sku: "", category: "Chemicals", unitCost: "", price: "", shortDescription: "", longDescription: "", department: "", subDepartment: "", manufacturer: "", reorderThreshold: "", subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false, photoUrls: [] });
     setAddOpen(false);
     loadInventory();
   };
@@ -278,6 +299,7 @@ export default function Inventory() {
       subSubSubcategory: item.sub_sub_subcategory ?? "",
       isInventory: item.is_inventory,
       maintenancePriority: item.maintenance_priority,
+      photoUrls: (item.photo_urls as string[] | null) ?? [],
     });
   };
 
@@ -305,6 +327,7 @@ export default function Inventory() {
       subSubSubcategory: editProductDraft.subSubSubcategory || null,
       isInventory: editProductDraft.isInventory,
       maintenancePriority: editProductDraft.maintenancePriority,
+      photoUrls: editProductDraft.photoUrls,
     });
     setEditProductItem(null);
     loadInventory();
@@ -321,8 +344,9 @@ export default function Inventory() {
       locationId: newPo.locationId || null,
       lineItems: newPoLineItems.filter((li) => li.description.trim()),
       paymentTerms: newPo.paymentTerms,
+      number: newPo.number.trim() || undefined,
     });
-    setNewPo({ supplierId: "", locationId: "", paymentTerms: "Net 30" });
+    setNewPo({ supplierId: "", locationId: "", paymentTerms: "Net 30", number: "" });
     setNewPoLocations([]);
     setNewPoLineItems([]);
     setPoOpen(false);
@@ -729,6 +753,26 @@ export default function Inventory() {
                   <span className="text-sm text-[#0F172A]">{t("Maintenance line item")}</span>
                 </label>
                 <p className="text-xs text-[#64748B] -mt-2">{t("Shows under \"Maintenance\" (instead of Material) in the line-item picker on Estimates, Invoices, and Jobs.")}</p>
+                {/* Client SMS 2026-10-16: "upload a max of two pics for each inventory item". */}
+                <div>
+                  <Label>{t("Photos")} ({newProduct.photoUrls.length}/2)</Label>
+                  <div className="mt-1 flex gap-2 flex-wrap">
+                    {newProduct.photoUrls.map((url, i) => (
+                      <div key={url} className="relative w-20 h-20 rounded-lg border border-[#E2E8F0] overflow-hidden">
+                        <img src={url} alt="" className="w-full h-full object-cover" />
+                        <button type="button" className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5" onClick={() => setNewProduct((p) => ({ ...p, photoUrls: p.photoUrls.filter((_, j) => j !== i) }))}>
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {newProduct.photoUrls.length < 2 && (
+                      <label className="w-20 h-20 rounded-lg border border-dashed border-[#E2E8F0] flex items-center justify-center text-[#64748B] text-xs cursor-pointer hover:bg-[#F8FAFC]">
+                        {uploadingPhoto ? t("Uploading...") : t("Add Photo")}
+                        <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={(e) => { if (e.target.files?.[0]) uploadItemPhoto(e.target.files[0], newProduct.photoUrls, (urls) => setNewProduct((p) => ({ ...p, photoUrls: urls }))); e.target.value = ""; }} />
+                      </label>
+                    )}
+                  </div>
+                </div>
                 <Button className="w-full bg-[#0891B2] text-white" onClick={handleAddProduct}>{t("Save Product")}</Button>
               </div>
             </DialogContent>
@@ -842,8 +886,12 @@ export default function Inventory() {
                       <td className="py-3 px-4 text-[#64748B]">{p.item_number ?? "—"}</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3" title={p.short_description ?? undefined}>
-                          <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0">
-                            <Package className="w-4 h-4 text-[#64748B]" />
+                          <div className="w-8 h-8 rounded-lg bg-[#F1F5F9] flex items-center justify-center shrink-0 overflow-hidden">
+                            {Array.isArray(p.photo_urls) && p.photo_urls.length > 0 ? (
+                              <img src={p.photo_urls[0] as string} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Package className="w-4 h-4 text-[#64748B]" />
+                            )}
                           </div>
                           <div>
                             <span className="font-medium text-[#0F172A]">{p.name}</span>
@@ -1026,14 +1074,20 @@ export default function Inventory() {
 
         <TabsContent value="purchase" className="mt-4 space-y-3">
           <div className="flex justify-end">
-            <Dialog open={poOpen} onOpenChange={setPoOpen}>
+            <Dialog open={poOpen} onOpenChange={(open) => { setPoOpen(open); if (open) inventoryApi.nextPoNumber().then((r) => setNewPo((p) => ({ ...p, number: r.number }))); }}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("New PO")}</Button>
               </DialogTrigger>
               <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  {/* QA sweep 2026-09-30: PO Number is now assigned by the server, not typed here
-                      (a user-editable guess caused real duplicate PO numbers). */}
+                  {/* QA sweep 2026-09-30: made server-assigned (not typed) to stop duplicate PO
+                      numbers (date+count guessed client-side). Client SMS 2026-10-16: "when
+                      creating a po to a vendor allow us to change it if we need to" -- editable
+                      again, prefilled with the server's own next suggestion (peek-only, doesn't
+                      reserve it); the server still falls back to a fresh number on a conflict. */}
+                  <div><Label>{t("PO Number")}</Label>
+                    <Input className="mt-1" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} />
+                  </div>
                   <div><Label>{t("Vendor")}</Label>
                     <div className="mt-1">
                       <SearchableSelect
@@ -1601,6 +1655,25 @@ export default function Inventory() {
             <div className="flex items-center justify-between rounded-lg border border-[#E2E8F0] px-3 py-2.5">
               <Label className="cursor-pointer" htmlFor="edit-taxable">{t("Taxable")}</Label>
               <Switch id="edit-taxable" checked={editProductDraft.taxable} onCheckedChange={(v) => setEditProductDraft((p) => ({ ...p, taxable: v }))} />
+            </div>
+            <div>
+              <Label>{t("Photos")} ({editProductDraft.photoUrls.length}/2)</Label>
+              <div className="mt-1 flex gap-2 flex-wrap">
+                {editProductDraft.photoUrls.map((url, i) => (
+                  <div key={url} className="relative w-20 h-20 rounded-lg border border-[#E2E8F0] overflow-hidden">
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <button type="button" className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5" onClick={() => setEditProductDraft((p) => ({ ...p, photoUrls: p.photoUrls.filter((_, j) => j !== i) }))}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {editProductDraft.photoUrls.length < 2 && (
+                  <label className="w-20 h-20 rounded-lg border border-dashed border-[#E2E8F0] flex items-center justify-center text-[#64748B] text-xs cursor-pointer hover:bg-[#F8FAFC]">
+                    {uploadingPhoto ? t("Uploading...") : t("Add Photo")}
+                    <input type="file" accept="image/*" className="hidden" disabled={uploadingPhoto} onChange={(e) => { if (e.target.files?.[0]) uploadItemPhoto(e.target.files[0], editProductDraft.photoUrls, (urls) => setEditProductDraft((p) => ({ ...p, photoUrls: urls }))); e.target.value = ""; }} />
+                  </label>
+                )}
+              </div>
             </div>
             <Button className="w-full bg-[#0891B2] text-white" onClick={saveEditProduct}>{t("Save Changes")}</Button>
           </div>

@@ -81,7 +81,7 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
     const total = Number(o.total);
     const methods = data.payments.length > 1 ? `${t("Split")} (${data.payments.map((p) => t(p.method)).join(" + ")})` : t(data.payments[0]?.method ?? o.payment_method ?? "");
     const ok = printReceipt({
-      number: receiptNumber(o.id),
+      number: receiptNumber(o.id, o.number),
       date: new Date(o.created_at),
       customer: o.customer_name ?? t("Walk-in"),
       lines: data.items.map((i) => ({ name: i.description, sku: i.sku ?? "", itemNumber: i.item_number, qty: Number(i.quantity), price: Number(i.unit_price) })),
@@ -103,7 +103,7 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
     <Dialog open={orderId !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("Receipt")} {orderId ? receiptNumber(orderId) : ""}</DialogTitle>
+          <DialogTitle>{t("Receipt")} {orderId ? receiptNumber(orderId, o?.number) : ""}</DialogTitle>
         </DialogHeader>
         {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
         {!data && !error && <p className="text-sm text-[#64748B] py-6 text-center">{t("Loading...")}</p>}

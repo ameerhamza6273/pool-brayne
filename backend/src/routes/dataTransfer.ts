@@ -202,6 +202,40 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
         return result;
       }
 
+      // ---------------------------------------------------------------- directory (phone contacts)
+      // Client SMS 2026-10-16: "download" of their real sales-rep/manufacturer-rep contact list
+      // (name, description/role, phone, email), same matched-by-name/update-only-changed-fields
+      // pattern as vendors above. Re-importing an updated copy of the same file later is safe.
+      if (dataset === "directory") {
+        const existing = (await tx`select id, name, role, description, phone, email from directory_contacts`) as unknown as Record<string, string | null>[];
+        const byName = new Map(existing.map((c) => [lc(c.name), c]));
+        const news: Record<string, unknown>[] = [];
+        const seen = new Set<string>();
+        for (const [i, row] of rows.entries()) {
+          const name = str(row.name);
+          if (!name) { addError(result, `Row ${i + 2}: a name is required`); continue; }
+          const cand: Record<string, string | null> = { description: str(row.description), phone: str(row.phone), email: str(row.email) };
+          const found = byName.get(lc(name));
+          if (found) {
+            const patch: Record<string, unknown> = {};
+            for (const [col, val] of Object.entries(cand)) if (val !== null && val !== found[col]) patch[col] = val;
+            if (Object.keys(patch).length === 0) { result.skipped++; continue; }
+            await tx`update directory_contacts set ${tx(patch)} where id = ${found.id as string}`;
+            result.updated++;
+          } else if (seen.has(lc(name))) {
+            result.skipped++;
+          } else {
+            seen.add(lc(name));
+            news.push({ tenant_id: tenantId, name, ...cand });
+          }
+        }
+        for (let i = 0; i < news.length; i += 300) {
+          await tx`insert into directory_contacts ${tx(news.slice(i, i + 300), "tenant_id", "name", "description", "phone", "email")}`;
+        }
+        result.created += news.length;
+        return result;
+      }
+
       // ---------------------------------------------------------------- inventory categories
       if (dataset === "inventory-categories") {
         const existing = (await tx`select category, subcategory, sub_subcategory, sub_sub_subcategory from category_taxonomy`) as unknown as Record<string, string | null>[];

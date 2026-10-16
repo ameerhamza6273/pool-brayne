@@ -889,7 +889,7 @@ export default function CustomerDetail() {
                             </div>
                             <div>
                               <p className="text-sm font-medium text-[#0F172A]">{new Date(sale.created_at).toLocaleDateString()}</p>
-                              <p className="text-xs text-[#64748B]">{receiptNumber(sale.id)} · {sale.payment_method || t("In-store sale")}</p>
+                              <p className="text-xs text-[#64748B]">{receiptNumber(sale.id, sale.number)} · {sale.payment_method || t("In-store sale")}</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-3">

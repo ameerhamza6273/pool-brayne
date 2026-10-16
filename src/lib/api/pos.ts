@@ -7,11 +7,14 @@ type PosOrder = Database["public"]["Tables"]["pos_orders"]["Row"] & { customers:
 export type PosOrderDetail = {
   order: Database["public"]["Tables"]["pos_orders"]["Row"] & { customer_name: string | null; cashier_name: string | null };
   items: { id: string; item_id: string | null; description: string; quantity: number; unit_price: number; amount: number; serial_number: string | null; sku: string | null; item_number: number | null }[];
-  payments: { method: string; amount: number }[];
+  payments: { method: string; amount: number; check_number: string | null }[];
 };
 
-// Same receipt number everywhere (POS, customer page, reprints).
-export const receiptNumber = (orderId: string) => `POS-${orderId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+// Same receipt number everywhere (POS, customer page, reprints). Client SMS 2026-10-16: "numbers
+// only" -- orders placed since then carry a real sequential `number` (POS-0001, assigned
+// server-side, see numbering.ts); older orders have none, so they keep the old uuid-derived
+// fallback rather than suddenly relabeling history.
+export const receiptNumber = (orderId: string, number?: string | null) => number || `POS-${orderId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
 export type SalesReport = {
   qtyByProduct: { description: string; qty: number; revenue: number }[];
@@ -42,7 +45,7 @@ export const posApi = {
     tax: number;
     total: number;
     note?: string | null;
-    payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[];
+    payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null }[];
     items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null; taxable: boolean }[];
-  }) => api.post<{ id: string }>("/api/pos/checkout", data),
+  }) => api.post<{ id: string; number: string }>("/api/pos/checkout", data),
 };

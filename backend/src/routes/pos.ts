@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 import { chargeOpaqueData } from "../lib/authorizenet.js";
+import { nextDocNumber } from "../lib/numbering.js";
 
 type Item = { id: string };
 type Stock = { item_id: string; quantity: number };
@@ -81,7 +82,7 @@ export default async function posRoutes(app: FastifyInstance) {
       if (!order) return reply.code(404).send({ error: "Sale not found" });
       const [items, payments] = await Promise.all([
         tx`select i.*, ii.sku, ii.item_number from pos_order_items i left join inventory_items ii on ii.id = i.item_id where i.order_id = ${order.id} order by i.id`,
-        tx`select method, amount from pos_order_payments where order_id = ${order.id}`,
+        tx`select method, amount, check_number from pos_order_payments where order_id = ${order.id}`,
       ]);
       return { order, items, payments };
     });
@@ -150,7 +151,8 @@ export default async function posRoutes(app: FastifyInstance) {
       tax: number;
       total: number;
       note?: string | null;
-      payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string } }[];
+      // Client SMS 2026-10-16: check-method tender lines carry their own check #.
+      payments: { method: string; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null }[];
       items: { id: string | null; name: string; qty: number; price: number; isService: boolean; serialNumber?: string | null; taxable: boolean }[];
     };
   }>("/checkout", async (req, reply) => {
@@ -193,7 +195,7 @@ export default async function posRoutes(app: FastifyInstance) {
       // decline on any card leaves nothing behind. Cash/ACH/Check stay simulated (no real bank
       // processor wired up for those). Client request 2026-09-03: "use more than one payment type
       // or multiple credit cards" -- each tender line gets its own charge/transaction id.
-      const chargedPayments: { method: string; amount: number; providerTransactionId: string | null }[] = [];
+      const chargedPayments: { method: string; amount: number; providerTransactionId: string | null; checkNumber: string | null }[] = [];
       for (const p of payments) {
         if (p.method === "Card") {
           if (!p.opaqueData) {
@@ -205,9 +207,9 @@ export default async function posRoutes(app: FastifyInstance) {
             reply.code(400).send({ error: result.error });
             return;
           }
-          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: result.transactionId });
+          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: result.transactionId, checkNumber: null });
         } else {
-          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: null });
+          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: null, checkNumber: p.method === "Check" ? (p.checkNumber?.trim() || null) : null });
         }
       }
 
@@ -226,16 +228,20 @@ export default async function posRoutes(app: FastifyInstance) {
           const [walkin] = await tx`select id from customers where name ~* '^walk[[:space:]-]?in$' limit 1` as unknown as { id: string }[];
           if (walkin) resolvedCustomerId = walkin.id;
         }
+        // Client SMS 2026-10-16: "numbers only" numbering -- POS "receipt number" used to be
+        // derived from the order's uuid (lib/api/pos.ts receiptNumber()), never a real stored
+        // sequential number.
+        const number = await nextDocNumber(tx, tenant.id, "POS");
         const [order] = await tx`
-          insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id, note)
-          values (${tenant.id}, ${resolvedCustomerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId}, ${note || null})
-          returning id
+          insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id, note, number)
+          values (${tenant.id}, ${resolvedCustomerId}, ${req.userId}, ${subtotal}, ${tax}, ${total}, ${summaryMethod}, ${summaryTransactionId}, ${note || null}, ${number})
+          returning id, number
         `;
 
         for (const p of chargedPayments) {
           await tx`
-            insert into pos_order_payments (tenant_id, order_id, method, amount, provider_transaction_id)
-            values (${tenant.id}, ${order.id}, ${p.method}, ${p.amount}, ${p.providerTransactionId})
+            insert into pos_order_payments (tenant_id, order_id, method, amount, provider_transaction_id, check_number)
+            values (${tenant.id}, ${order.id}, ${p.method}, ${p.amount}, ${p.providerTransactionId}, ${p.checkNumber})
           `;
         }
 
@@ -260,7 +266,7 @@ export default async function posRoutes(app: FastifyInstance) {
         }
 
         savedId = order.id as string;
-        return { id: order.id };
+        return { id: order.id, number: order.number };
       });
     } finally {
       settle(savedId);

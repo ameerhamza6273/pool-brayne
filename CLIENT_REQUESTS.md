@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-10-06 (email/pay-link infrastructure + notification emails built, waiting on SMTP password; Dialpad click-to-call solved — just needs 2 minutes in their own Dialpad admin, see item 11; Other Reminders now editable + its own Invoicing tab; per-line-item sales tax toggle on POS/Estimates/Invoices; top search bar now real; recurring-job map duplication bug found and fixed; Inventory Type (Inventory/Non-Inventory) per item; 3rd "Maintenance" line-item category; Settings Save Changes feedback + real Upload Logo; top-header nav still waiting on the client)
+Last updated: 2026-10-16 (check # on payments; PO/Invoice/Estimate/POS/Job numbering standardized to sequential "PREFIX-0001" + PO number editable again at creation; a real Documents card on the Data page; up to 2 photos per inventory item; Directory (phone contacts) now reachable from tech view + a Data-page quick-add card + CSV import, real contact file imported; mobile header's missing logout menu fixed; see items 12-13)
 
 ---
 
@@ -247,6 +247,29 @@ Last updated: 2026-10-06 (email/pay-link infrastructure + notification emails bu
 | *(same doc)* "+ New Vendor Bill — Create New Vendor Bill doesn't work" | ✅ fixed — real bug | Inventory › Vendor Bills. Two causes: Issue Date started blank and the Create button silently did nothing when Vendor / Bill Number / Issue Date was empty (no message at all); and a bill number had to be unique across *all* vendors, so a second vendor's bill #1001 failed with no message. Now Issue Date defaults to today, required fields are starred, missing fields are named in red, and bill numbers only need to be unique per vendor (a real duplicate says so) |
 | *(same doc)* Timesheets: "APPROVE WEEK – button doesn't work (not sure if I'm doing it right?)" | ✅ fixed (feedback) | It did work — it only approves people who have hours that week, and most weeks so far have none, so clicking changed nothing and said nothing. The button now shows how many are waiting (e.g. Approve Week **2**), is greyed out with "Nothing to approve this week" when there's nothing, and confirms "Approved: 2 employees" (or shows the error) after clicking |
 | *(same doc)* Library: "NO CATEGORY / NO MANUFACTURER – not filtering properly" | ✅ fixed | Those two dropdowns at the top right were for tagging the *next upload*, not filters — now labelled "Tag new uploads:". The real filters (next to search) gained **No category** / **No manufacturer** options to find untagged documents, and list every tag actually used |
+
+## 12. 2026-10-16 SMS batch
+
+| Request | Status | Where to find it |
+|---|---|---|
+| "When receiving a check payment allow us to put a check #" | ✅ built | Collect Payment on an Invoice (new **Check** tab), Bulk Invoice's Manual Check option, and POS's Check tender all have a Check # field now, saved on the payment record |
+| "Point of sale, allow us to type in quantity to sell" | ✅ already built (2026-10-15) | POS cart — click the quantity number to type one directly; +/- still works too |
+| "Under vendor we need an email(s) to send Purchase orders" | ✅ already built (2026-10-15) | Inventory › Vendors › **Locations** — add named contacts with email, star one Default |
+| "Po, invoice, est, pos numbers should only be numbers only" (PO-XXXX / INV-XXXX / EST-XXXX / POS-XXXX / JOB-XXXX) | ✅ built | Every new PO, Invoice, Estimate, POS sale, and Job now gets a real sequential number in that format (assigned by the server, can't collide); jobs never had a number at all before, now shown on the Job page's title. Numbers already issued before this change keep their old format |
+| "(When creating a po to a vendor allow us to change it if we need to)" | ✅ built | New PO dialog's PO Number field is editable again, pre-filled with the suggested next number |
+| "Under data I need a document section for pdf's" | ✅ built | Data › Import/Export page — new **Documents** card (upload/open/delete PDFs), next to the existing document-type-label editor. Same files are also browsable from the full Library page |
+| "Need to be able to upload a max of two pics for each inventory item" | ✅ built | Inventory › Add/Edit Product — **Photos** section, up to 2; the first photo also shows as a thumbnail on the Catalog list |
+| "Need to set up a phone contact under data, with name/description/phone number/email, also make this visible in tech view" | ✅ built | This is the existing **Directory** feature (built 2026-09-02 — its own purpose was already "for techs to look up on the road", it just wasn't actually reachable from a tech login until now). Added Description + Email fields and editing; a quick-add **Phone Contacts** card is also on the Data page now; Directory is a real nav item in Technician Field |
+
+## 13. 2026-10-16 (Directory Contacts file + 2 video transcripts)
+
+| Request | Status | Where to find it |
+|---|---|---|
+| "Directory CONTACTS.xlsx" — real sales-rep/manufacturer-rep contact list | ✅ imported | All 49 contacts are in **Directory** now. Most of the names/phones were already there from an earlier import but missing their role/description and email — filled those in rather than creating duplicates. Also added a reusable **Directory** import/export option on the Data page (so an updated copy of this file can be re-imported anytime) |
+| *(video, Adam Kono's phone)* "Flipping through the dates... not changing the job list... I believe these names should change" | 🟡 explained, not a bug | Checked Adam's real jobs: several are genuinely unscheduled (`scheduled_date` empty) — that's why they always show under "No date set" no matter which day you pick (built that way on purpose 2026-10-15, so an unscheduled job never gets lost). Added a short note under that heading explaining why; the actual fix is scheduling those jobs from the office's Schedule |
+| *(video)* "Tech view does not allow anybody to log out... the drop down here is not available in the phone view" | ✅ fixed — real bug | The phone/mobile header's account icon had no menu behind it at all (the desktop version's does) — tapping it did nothing. Now opens the same Log out menu everywhere |
+
+**Found while importing, not touched (flagging for you to clean up if you want — one-at-a-time delete in Directory, same as before):** a few contacts are duplicated under slightly different names with the same phone number — "KEVIN LEWIS PENTAIR" (listed twice, identical), "Mitch Cox" vs "Mitch Cox (SPECK PUMP)", and "POOL BUILDERS (PBS)" vs "POOL BUILDERS (PBS) NORCROSS".
 
 ## Not built (deliberately, no client request yet)
 

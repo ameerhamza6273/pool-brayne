@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type postgres from "postgres";
 import { withTenantContext } from "../db.js";
+import { nextDocNumber } from "../lib/numbering.js";
 
 type RecurringJob = {
   id: string;
@@ -53,9 +54,10 @@ function nextOccurrenceDate(fromDate: string, rj: Pick<RecurringJob, "frequency"
 async function generateOccurrence(tx: postgres.TransactionSql, tenantId: string, rj: RecurringJob, scheduledDate: string) {
   const oneShot = rj.next_job_notes?.trim();
   const description = oneShot ? [rj.description, `Note (this job only): ${oneShot}`].filter(Boolean).join("\n\n") : rj.description;
+  const number = await nextDocNumber(tx, tenantId, "JOB");
   const [job] = await tx`
-    insert into jobs (tenant_id, customer_id, tech_id, type, status, stage, scheduled_date, scheduled_time, description, tech_notes, address, amount, recurring_job_id, selected_form_ids)
-    values (${tenantId}, ${rj.customer_id}, ${rj.tech_id}, ${rj.job_type}, ${rj.tech_id ? "Booked" : "Lead"}, ${rj.tech_id ? "booked" : "lead"}, ${scheduledDate}, ${rj.start_time}, ${description}, ${rj.tech_notes}, ${rj.address}, ${rj.amount}, ${rj.id}, ${tx.json(rj.selected_form_ids ?? [])})
+    insert into jobs (tenant_id, customer_id, tech_id, type, status, stage, scheduled_date, scheduled_time, description, tech_notes, address, amount, recurring_job_id, selected_form_ids, number)
+    values (${tenantId}, ${rj.customer_id}, ${rj.tech_id}, ${rj.job_type}, ${rj.tech_id ? "Booked" : "Lead"}, ${rj.tech_id ? "booked" : "lead"}, ${scheduledDate}, ${rj.start_time}, ${description}, ${rj.tech_notes}, ${rj.address}, ${rj.amount}, ${rj.id}, ${tx.json(rj.selected_form_ids ?? [])}, ${number})
     on conflict (recurring_job_id, scheduled_date) where recurring_job_id is not null do nothing
     returning *
   `;

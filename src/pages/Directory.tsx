@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, Phone, BookUser, Search } from "lucide-react";
+import { Plus, Trash2, Pencil, Phone, Mail, BookUser, Search } from "lucide-react";
 import { matchesQuery } from "@/lib/search";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,15 +11,20 @@ import { useLanguage } from "@/lib/language-context";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 
 // Client request 2026-09-02: a field Directory of sales-rep names/phone numbers for techs to
-// look up on the road.
+// look up on the road. Client SMS 2026-10-16: added Description + Email, and edit (previously
+// add/delete only), and made the page itself reachable from a field-only login.
+const emptyContact = { name: "", role: "", phone: "", description: "", email: "" };
+
 export default function Directory() {
   const { t } = useLanguage();
   const [contacts, setContacts] = useState<DirectoryContact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [editContact, setEditContact] = useState<DirectoryContact | null>(null);
   const [search, setSearch] = useState("");
   const [viewMode, setViewMode] = useViewMode("directory");
-  const [newContact, setNewContact] = useState({ name: "", role: "", phone: "" });
+  const [newContact, setNewContact] = useState(emptyContact);
+  const [draft, setDraft] = useState(emptyContact);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -33,9 +38,27 @@ export default function Directory() {
 
   const handleAdd = async () => {
     if (!newContact.name) return;
-    await directoryApi.create({ name: newContact.name, role: newContact.role || null, phone: newContact.phone || null });
-    setNewContact({ name: "", role: "", phone: "" });
+    await directoryApi.create({
+      name: newContact.name, role: newContact.role || null, phone: newContact.phone || null,
+      description: newContact.description || null, email: newContact.email || null,
+    });
+    setNewContact(emptyContact);
     setAddOpen(false);
+    load();
+  };
+
+  const openEdit = (c: DirectoryContact) => {
+    setEditContact(c);
+    setDraft({ name: c.name, role: c.role ?? "", phone: c.phone ?? "", description: c.description ?? "", email: c.email ?? "" });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editContact || !draft.name) return;
+    await directoryApi.update(editContact.id, {
+      name: draft.name, role: draft.role || null, phone: draft.phone || null,
+      description: draft.description || null, email: draft.email || null,
+    });
+    setEditContact(null);
     load();
   };
 
@@ -59,8 +82,9 @@ export default function Directory() {
             <DialogHeader><DialogTitle>{t("Add Directory Contact")}</DialogTitle></DialogHeader>
             <div className="space-y-4 pt-2">
               <div><Label>{t("Name")}</Label><Input className="mt-1" value={newContact.name} onChange={(e) => setNewContact((p) => ({ ...p, name: e.target.value }))} /></div>
-              <div><Label>{t("Role")}</Label><Input className="mt-1" placeholder={t("e.g. Sales Rep")} value={newContact.role} onChange={(e) => setNewContact((p) => ({ ...p, role: e.target.value }))} /></div>
+              <div><Label>{t("Description")}</Label><Input className="mt-1" placeholder={t("e.g. Sales Rep, Plumber, Electrician...")} value={newContact.description} onChange={(e) => setNewContact((p) => ({ ...p, description: e.target.value }))} /></div>
               <div><Label>{t("Phone")}</Label><Input className="mt-1" value={newContact.phone} onChange={(e) => setNewContact((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
+              <div><Label>{t("Email")}</Label><Input className="mt-1" type="email" value={newContact.email} onChange={(e) => setNewContact((p) => ({ ...p, email: e.target.value }))} /></div>
               <Button className="w-full bg-[#0891B2] text-white" onClick={handleAdd}>{t("Save Contact")}</Button>
             </div>
           </DialogContent>
@@ -71,7 +95,7 @@ export default function Directory() {
       <div className="flex items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-          <Input placeholder={t("Search name, role, or phone...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+          <Input placeholder={t("Search name, description, phone, or email...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
         </div>
         <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
@@ -85,27 +109,32 @@ export default function Directory() {
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Name")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Role")}</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Phone")}</th>
-                  <th className="w-10 py-3 px-4"></th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Email")}</th>
+                  <th className="w-16 py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody>
-                {contacts.filter((c) => matchesQuery(search, [c.name, c.role, c.phone])).map((c) => (
+                {contacts.filter((c) => matchesQuery(search, [c.name, c.role, c.description, c.phone, c.email])).map((c) => (
                   <tr key={c.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                     <td className="py-3 px-4 font-medium text-[#0F172A]">{c.name}</td>
-                    <td className="py-3 px-4 text-[#64748B]">{c.role ?? "—"}</td>
+                    <td className="py-3 px-4 text-[#64748B]">{c.description ?? c.role ?? "—"}</td>
                     <td className="py-3 px-4">
                       {c.phone ? <a href={`tel:${c.phone}`} className="text-[#0891B2] hover:underline">{c.phone}</a> : <span className="text-[#64748B]">—</span>}
                     </td>
-                    <td className="py-3 px-4 text-right">
+                    <td className="py-3 px-4">
+                      {c.email ? <a href={`mailto:${c.email}`} className="text-[#0891B2] hover:underline">{c.email}</a> : <span className="text-[#64748B]">—</span>}
+                    </td>
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <button className="text-[#64748B] hover:text-[#0891B2] mr-1" onClick={() => openEdit(c)}><Pencil className="w-4 h-4" /></button>
                       <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => handleDelete(c.id)}><Trash2 className="w-4 h-4" /></button>
                     </td>
                   </tr>
                 ))}
-                {contacts.length === 0 && <tr><td colSpan={4} className="py-8 text-center text-[#64748B]">{t("No directory contacts yet")}</td></tr>}
-                {contacts.length > 0 && !contacts.some((c) => matchesQuery(search, [c.name, c.role, c.phone])) && (
-                  <tr><td colSpan={4} className="py-8 text-center text-[#64748B]">{t("No contacts match your search")}</td></tr>
+                {contacts.length === 0 && <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{t("No directory contacts yet")}</td></tr>}
+                {contacts.length > 0 && !contacts.some((c) => matchesQuery(search, [c.name, c.role, c.description, c.phone, c.email])) && (
+                  <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{t("No contacts match your search")}</td></tr>
                 )}
               </tbody>
             </table>
@@ -115,33 +144,56 @@ export default function Directory() {
 
       {!isLoading && viewMode === "cards" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {contacts.filter((c) => matchesQuery(search, [c.name, c.role, c.phone])).map((c) => (
+          {contacts.filter((c) => matchesQuery(search, [c.name, c.role, c.description, c.phone, c.email])).map((c) => (
             <div key={c.id} className="bg-white rounded-xl p-4 border border-[#E2E8F0] shadow-sm flex items-start gap-3">
               <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0">
                 <BookUser className="w-5 h-5 text-[#0891B2]" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-[#0F172A]">{c.name}</p>
-                {c.role && <p className="text-xs text-[#64748B]">{c.role}</p>}
+                {(c.description || c.role) && <p className="text-xs text-[#64748B]">{c.description ?? c.role}</p>}
                 {c.phone && (
                   <a href={`tel:${c.phone}`} className="text-sm text-[#0891B2] flex items-center gap-1.5 mt-1 hover:underline">
                     <Phone className="w-3.5 h-3.5" /> {c.phone}
                   </a>
                 )}
+                {c.email && (
+                  <a href={`mailto:${c.email}`} className="text-sm text-[#0891B2] flex items-center gap-1.5 mt-0.5 hover:underline">
+                    <Mail className="w-3.5 h-3.5" /> {c.email}
+                  </a>
+                )}
               </div>
-              <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => handleDelete(c.id)}>
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col gap-1">
+                <button className="text-[#64748B] hover:text-[#0891B2]" onClick={() => openEdit(c)}>
+                  <Pencil className="w-4 h-4" />
+                </button>
+                <button className="text-[#64748B] hover:text-[#DC2626]" onClick={() => handleDelete(c.id)}>
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
           {contacts.length === 0 && (
             <div className="col-span-full text-center py-12 text-[#64748B]">{t("No directory contacts yet")}</div>
           )}
-          {contacts.length > 0 && !contacts.some((c) => matchesQuery(search, [c.name, c.role, c.phone])) && (
+          {contacts.length > 0 && !contacts.some((c) => matchesQuery(search, [c.name, c.role, c.description, c.phone, c.email])) && (
             <div className="col-span-full text-center py-12 text-[#64748B]">{t("No contacts match your search")}</div>
           )}
         </div>
       )}
+
+      <Dialog open={!!editContact} onOpenChange={(open) => !open && setEditContact(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{t("Edit Directory Contact")}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div><Label>{t("Name")}</Label><Input className="mt-1" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} /></div>
+            <div><Label>{t("Description")}</Label><Input className="mt-1" placeholder={t("e.g. Sales Rep, Plumber, Electrician...")} value={draft.description} onChange={(e) => setDraft((p) => ({ ...p, description: e.target.value }))} /></div>
+            <div><Label>{t("Phone")}</Label><Input className="mt-1" value={draft.phone} onChange={(e) => setDraft((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} /></div>
+            <div><Label>{t("Email")}</Label><Input className="mt-1" type="email" value={draft.email} onChange={(e) => setDraft((p) => ({ ...p, email: e.target.value }))} /></div>
+            <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveEdit}>{t("Save Changes")}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

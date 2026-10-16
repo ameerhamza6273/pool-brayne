@@ -91,7 +91,7 @@ export const invoicingApi = {
   create: (data: {
     customerId: string;
     jobId?: string | null;
-    number: string;
+    number?: string;
     issueDate: string;
     dueDate: string | null;
     amount: number;
@@ -103,14 +103,14 @@ export const invoicingApi = {
 
   // Client doc 2026-10-05: bulk/"Combine Completed Jobs" invoices now copy each job's real line
   // items server-side (grouped by job_id) instead of one flattened line per job client-side.
-  createBulk: (data: { customerId: string; jobIds: string[]; number: string; issueDate: string }) =>
+  createBulk: (data: { customerId: string; jobIds: string[]; number?: string; issueDate: string }) =>
     api.post<Invoice>("/api/invoices/bulk", data),
 
-  collectPayment: (id: string, method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }) =>
-    api.patch<Invoice>(`/api/invoices/${id}/collect-payment`, { method, opaqueData }),
+  collectPayment: (id: string, method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }, checkNumber?: string | null) =>
+    api.patch<Invoice>(`/api/invoices/${id}/collect-payment`, { method, opaqueData, checkNumber }),
 
-  bulkCollect: (invoiceIds: string[], method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }) =>
-    api.post<Invoice[]>("/api/invoices/bulk-collect", { invoiceIds, method, opaqueData }),
+  bulkCollect: (invoiceIds: string[], method: "Card" | "ACH" | "Check", opaqueData?: { dataDescriptor: string; dataValue: string }, checkNumber?: string | null) =>
+    api.post<Invoice[]>("/api/invoices/bulk-collect", { invoiceIds, method, opaqueData, checkNumber }),
 
   recurringBilling: () => api.get<RecurringBilling[]>("/api/invoices/recurring-billing/list"),
 
@@ -126,7 +126,7 @@ export const invoicingApi = {
   createEstimate: (data: {
     customerId: string;
     jobId?: string | null;
-    number: string;
+    number?: string;
     issueDate: string;
     expiryDate: string | null;
     amount: number;

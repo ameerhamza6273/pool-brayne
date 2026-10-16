@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Download, Upload, FileSpreadsheet, Users, Package, Boxes, Layers, Factory, BookOpen, CheckCircle2, AlertCircle, FileText, Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,11 @@ import { dataTransferApi, type ImportResult } from "@/lib/api/dataTransfer";
 import { downloadCsv, normalizeHeader, parseCsv, toCsv } from "@/lib/csv";
 import { useLanguage } from "@/lib/language-context";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
+import { libraryApi, type LibraryDocument } from "@/lib/api/library";
+import { directoryApi, type DirectoryContact } from "@/lib/api/directory";
+import { formatPhoneInput } from "@/lib/phone";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth-context";
 
 // Client SMS 2026-09-21: "Under Data: need import and export fields with csv file -- Customer list,
 // Inventory list, Vendor list, Inventory Categories, Inventory Manufacture list, Library Category list,
@@ -129,6 +134,17 @@ const datasets: Dataset[] = [
     sample: { manufacturer: "Pentair" },
     fetchRows: async () => (await configListsApi.all()).library_manufacturers.map((i) => ({ manufacturer: i.label })),
   },
+  {
+    key: "directory",
+    title: "Directory (Phone Contacts)",
+    description: "Sales rep / manufacturer rep phone numbers for techs to look up. Matched by name.",
+    icon: FileText,
+    columns: ["name", "description", "phone", "email"],
+    required: [["name"]],
+    filename: "directory.csv",
+    sample: { name: "Mike Schmidt Hayward", description: "Hayward Rep", phone: "(770) 557-4017", email: "" },
+    fetchRows: async () => (await directoryApi.list()) as unknown as Record<string, unknown>[],
+  },
 ];
 
 // Client video 2026-09-25: "Need a Document List / Folder for PDFs under Data" -- the document types offered
@@ -185,6 +201,143 @@ function DocumentListCard() {
           {items.length === 0 && <p className="text-xs text-[#64748B]">{t("No document types yet.")}</p>}
         </div>
         {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Client SMS 2026-10-16: "Under data I need a document section for pdf's" -- a real place to
+// upload/browse/delete PDFs right on the Data page, not just the type-label editor above (which
+// only names the categories a document can be tagged with, it never held files). Reuses the same
+// document store the Library page already provides (library_documents + the job-attachments
+// bucket's "library/" prefix, see CLAUDE.md > Architecture) rather than building a second one.
+function DocumentsCard() {
+  const { t } = useLanguage();
+  const { tenantId } = useAuth();
+  const [docs, setDocs] = useState<LibraryDocument[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { libraryApi.list().then(setDocs); }, []);
+
+  const handleUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of Array.from(files)) {
+        const path = `${tenantId}/library/${Date.now()}-${file.name}`;
+        const { error: uploadErr } = await supabase.storage.from("job-attachments").upload(path, file);
+        if (uploadErr) { setError(uploadErr.message); continue; }
+        const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+        const doc = await libraryApi.add({ name: file.name, category: null, manufacturer: null, url: data.publicUrl, filename: file.name });
+        setDocs((prev) => [doc, ...prev]);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await libraryApi.remove(id);
+    setDocs((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  return (
+    <Card className="border-[#E2E8F0] shadow-sm">
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0"><FileText className="w-5 h-5 text-[#0891B2]" /></div>
+            <div>
+              <h3 className="font-semibold text-[#0F172A]">{t("Documents")}</h3>
+              <p className="text-xs text-[#64748B] mt-0.5">{t("PDFs and other files, shared across the app (also browsable from Library).")}</p>
+            </div>
+          </div>
+          <label>
+            <Button asChild size="sm" className="h-9 gap-1.5 bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={uploading}>
+              <span><Upload className="w-3.5 h-3.5" /> {uploading ? t("Uploading...") : t("Upload")}</span>
+            </Button>
+            <input type="file" multiple className="hidden" disabled={uploading} onChange={(e) => { handleUpload(e.target.files); e.target.value = ""; }} />
+          </label>
+        </div>
+        {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
+        <div className="max-h-[260px] overflow-y-auto space-y-1">
+          {docs.map((d) => (
+            <div key={d.id} className="flex items-center gap-2 rounded-md border border-[#F1F5F9] px-3 py-1.5 text-sm">
+              <FileText className="w-4 h-4 text-[#64748B] shrink-0" />
+              <a href={d.url} target="_blank" rel="noreferrer" className="flex-1 truncate text-[#0891B2] hover:underline">{d.name}</a>
+              <button className="p-1 rounded text-[#DC2626] hover:bg-[#DC2626]/10" title={t("Delete")} onClick={() => handleDelete(d.id)}><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+          {docs.length === 0 && <p className="text-xs text-[#64748B]">{t("No documents uploaded yet.")}</p>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Client SMS 2026-10-16: "need to set up a phone contact under data, with name / description /
+// phone number / email, also make this visible in tech view" -- same contacts as the Directory
+// page (directory_contacts, built 2026-09-02 "for techs to look up on the road"), just a second,
+// quicker entry point right on the Data page rather than a second contacts system. The "visible in
+// tech view" half is handled separately (Directory itself is now reachable from a field-only
+// login, see auth-context.tsx + AppShell.tsx).
+function PhoneContactsCard() {
+  const { t } = useLanguage();
+  const [contacts, setContacts] = useState<DirectoryContact[]>([]);
+  const [form, setForm] = useState({ name: "", description: "", phone: "", email: "" });
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { directoryApi.list().then(setContacts); }, []);
+
+  const handleAdd = async () => {
+    if (!form.name.trim()) return;
+    setError(null);
+    try {
+      const row = await directoryApi.create({ name: form.name.trim(), role: null, phone: form.phone || null, description: form.description || null, email: form.email || null });
+      setContacts((prev) => [...prev, row].sort((a, b) => a.name.localeCompare(b.name)));
+      setForm({ name: "", description: "", phone: "", email: "" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Save failed");
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await directoryApi.remove(id);
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  return (
+    <Card className="border-[#E2E8F0] shadow-sm">
+      <CardContent className="p-5 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0"><FileText className="w-5 h-5 text-[#0891B2]" /></div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-[#0F172A]">{t("Phone Contacts")}</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">{t("Sales reps, vendors, or anyone techs may need to call — also visible in Technician Field (full list/search on the Directory page).")}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Input className="h-9" placeholder={t("Name")} value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
+          <Input className="h-9" placeholder={t("Description")} value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
+          <Input className="h-9" placeholder={t("Phone")} value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))} />
+          <Input className="h-9" type="email" placeholder={t("Email")} value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} />
+        </div>
+        <Button className="h-9 gap-1.5 bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={!form.name.trim()} onClick={handleAdd}><Plus className="w-4 h-4" /> {t("Add Contact")}</Button>
+        {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
+        <div className="max-h-[260px] overflow-y-auto space-y-1">
+          {contacts.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 rounded-md border border-[#F1F5F9] px-3 py-1.5 text-sm">
+              <div className="flex-1 min-w-0 truncate">
+                <span className="text-[#0F172A] font-medium">{c.name}</span>
+                {(c.description || c.role) && <span className="text-[#64748B]"> — {c.description ?? c.role}</span>}
+              </div>
+              <button className="p-1 rounded text-[#DC2626] hover:bg-[#DC2626]/10" title={t("Delete")} onClick={() => handleDelete(c.id)}><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+          {contacts.length === 0 && <p className="text-xs text-[#64748B]">{t("No phone contacts yet.")}</p>}
+        </div>
       </CardContent>
     </Card>
   );
@@ -281,7 +434,11 @@ export default function DataTransfer() {
         <ViewToggle mode={viewMode} onChange={setViewMode} />
       </div>
 
-      <DocumentListCard />
+      <div className="grid md:grid-cols-2 gap-4">
+        <DocumentsCard />
+        <DocumentListCard />
+        <PhoneContactsCard />
+      </div>
 
       {viewMode === "table" && (
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
