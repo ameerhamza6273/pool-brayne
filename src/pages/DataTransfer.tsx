@@ -150,6 +150,9 @@ const datasets: Dataset[] = [
 // Client video 2026-09-25: "Need a Document List / Folder for PDFs under Data" -- the document types offered
 // when uploading a document on a Job / Estimate / Field job (was a fixed 4-item list, so a "Curing Process"
 // upload was saved as "Sand Change Form"). Renaming a type here doesn't change documents already uploaded.
+// Client video 2026-10-16: confused this card for the one that uploads PDFs ("I click add, nothing
+// happens" -- typed nothing into the label field, since they expected a file picker) -- it only ever
+// edits the type *names*, never held files. Renamed + pointed at the real DocumentsCard above it.
 function DocumentListCard() {
   const { t } = useLanguage();
   const { lists, addItem, updateItem, removeItem } = useConfigLists();
@@ -175,8 +178,8 @@ function DocumentListCard() {
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0"><FileText className="w-5 h-5 text-[#0891B2]" /></div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-[#0F172A]">{t("Document List")}</h3>
-            <p className="text-xs text-[#64748B] mt-0.5">{t("The document types you can pick when uploading a document on a Job or Estimate. Add your own (e.g. Curing Process); \"Use file name\" is always available too.")}</p>
+            <h3 className="font-semibold text-[#0F172A]">{t("Document Type Labels")}</h3>
+            <p className="text-xs text-[#64748B] mt-0.5">{t("This only names the categories a document can be tagged with (e.g. Curing Process) when uploading on a Job or Estimate -- to actually upload a PDF, use the Documents card above.")}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -217,6 +220,16 @@ function DocumentsCard() {
   const [docs, setDocs] = useState<LibraryDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Client video 2026-10-16: could upload/delete a PDF here but never rename it once uploaded.
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
+  const saveEdit = async () => {
+    if (!editing || !editing.name.trim()) return;
+    const d = docs.find((x) => x.id === editing.id);
+    if (!d) return;
+    const updated = await libraryApi.update(editing.id, { name: editing.name.trim(), category: d.category, manufacturer: d.manufacturer });
+    setDocs((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
+    setEditing(null);
+  };
 
   useEffect(() => { libraryApi.list().then(setDocs); }, []);
 
@@ -263,10 +276,18 @@ function DocumentsCard() {
         </div>
         {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
         <div className="max-h-[260px] overflow-y-auto space-y-1">
-          {docs.map((d) => (
+          {docs.map((d) => editing?.id === d.id ? (
+            <div key={d.id} className="flex items-center gap-1.5">
+              <Input autoFocus className="h-8 text-sm" value={editing.name} onChange={(e) => setEditing({ id: d.id, name: e.target.value })}
+                onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditing(null); }} />
+              <button className="p-1.5 rounded text-[#16A34A] hover:bg-[#16A34A]/10" title={t("Save")} disabled={!editing.name.trim()} onClick={saveEdit}><Check className="w-4 h-4" /></button>
+              <button className="p-1.5 rounded text-[#64748B] hover:bg-[#F1F5F9]" title={t("Cancel")} onClick={() => setEditing(null)}><X className="w-4 h-4" /></button>
+            </div>
+          ) : (
             <div key={d.id} className="flex items-center gap-2 rounded-md border border-[#F1F5F9] px-3 py-1.5 text-sm">
               <FileText className="w-4 h-4 text-[#64748B] shrink-0" />
               <a href={d.url} target="_blank" rel="noreferrer" className="flex-1 truncate text-[#0891B2] hover:underline">{d.name}</a>
+              <button className="p-1 rounded text-[#64748B] hover:text-[#0891B2]" title={t("Edit")} onClick={() => setEditing({ id: d.id, name: d.name })}><Pencil className="w-3.5 h-3.5" /></button>
               <button className="p-1 rounded text-[#DC2626] hover:bg-[#DC2626]/10" title={t("Delete")} onClick={() => handleDelete(d.id)}><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           ))}

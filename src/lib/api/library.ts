@@ -17,7 +17,7 @@ export const libraryApi = {
   add: (data: { name: string; category: string | null; manufacturer: string | null; url: string; filename: string | null }) =>
     api.post<LibraryDocument>("/api/library", data),
 
-  update: (id: string, data: { category: string | null; manufacturer: string | null }) =>
+  update: (id: string, data: { name?: string; category: string | null; manufacturer: string | null }) =>
     api.patch<LibraryDocument>(`/api/library/${id}`, data),
 
   remove: (id: string) => api.del(`/api/library/${id}`),

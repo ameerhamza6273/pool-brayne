@@ -24,18 +24,19 @@ export function isFieldOnlyRole(role: StaffRole | null): boolean {
 /** Client video 2026-10-15: "give a few more options here under permissions rather than just one
  * field. Customer lookup, a few others so you can look at history." Extra pages an admin can turn
  * on per field-only person (profiles.permissions, Settings > Team). */
-export type FieldPermission = "customers" | "library";
+export type FieldPermission = "customers" | "library" | "directory";
 export const FIELD_PERMISSIONS: { key: FieldPermission; label: string; paths: string[] }[] = [
   { key: "customers", label: "Customer Lookup (history, notes, invoices)", paths: ["/customers"] },
   { key: "library", label: "Library", paths: ["/library"] },
+  // Dev feedback 2026-10-16: Directory was made always-open the same day it was built, but the
+  // dev wants it controlled per-tech like the other two instead.
+  { key: "directory", label: "Directory (phone contacts)", paths: ["/directory"] },
 ];
 
-/** Can a field-only login open this path? /field and /directory always (Directory is just
- * sales-rep/vendor phone numbers, not customer data -- client SMS 2026-10-16 asked for it to be
- * visible in tech view, and its own original purpose comment already says it's for techs); anything
- * else only if granted. */
+/** Can a field-only login open this path? /field always; anything else (including Directory) only
+ * if granted via FIELD_PERMISSIONS. */
 export function fieldRoleCanOpen(pathname: string, permissions: string[]): boolean {
-  if (pathname === "/field" || pathname === "/directory") return true;
+  if (pathname === "/field") return true;
   return FIELD_PERMISSIONS.some((p) => permissions.includes(p.key) && p.paths.some((base) => pathname === base || pathname.startsWith(base + "/")));
 }
 

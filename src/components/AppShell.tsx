@@ -122,10 +122,9 @@ export default function AppShell() {
     { path: "/field", label: "Technician Field", icon: Phone },
     ...(permissions.includes("customers") ? [{ path: "/customers", label: "Customer Lookup", icon: Users }] : []),
     ...(permissions.includes("library") ? [{ path: "/library", label: "Library", icon: BookOpen }] : []),
-    // Client SMS 2026-10-16: "make this visible in tech view" -- always on (not a per-tech
-    // permission toggle like the two above), since Directory is just sales-rep/vendor phone
-    // numbers, not customer data.
-    { path: "/directory", label: "Directory", icon: BookUser },
+    // Dev feedback 2026-10-16: Directory is now a per-tech permission toggle too (Settings > Team),
+    // not always-on -- same pattern as Customer Lookup/Library above.
+    ...(permissions.includes("directory") ? [{ path: "/directory", label: "Directory", icon: BookUser }] : []),
   ];
   const visibleNavSections: (NavLink | NavGroup)[] = fieldOnly ? fieldLinks : navSections;
   const visibleFlatNavLinks: NavLink[] = fieldOnly ? fieldLinks : flatNavLinks;

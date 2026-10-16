@@ -60,7 +60,7 @@ export default async function profilesRoutes(app: FastifyInstance) {
   app.patch<{ Params: { id: string }; Body: { name: string; role: string; permissions?: string[] } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     const { name, role } = req.body;
-    const allowed = ["customers", "library"];
+    const allowed = ["customers", "library", "directory"];
     const permissions = Array.isArray(req.body.permissions) ? req.body.permissions.filter((p) => allowed.includes(p)) : null;
     return withTenantContext(req.userId, async (tx) => {
       const [caller] = await tx`select role from profiles where id = ${req.userId} limit 1` as unknown as { role: string }[];

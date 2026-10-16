@@ -28,16 +28,16 @@ export default async function libraryRoutes(app: FastifyInstance) {
 
   // Client meeting 2026-09: "go into each one of these PDFs and say, this is the category and
   // this is what it is" — tagging happens after upload too, not just at upload time.
-  app.patch<{ Params: { id: string }; Body: { category: string | null; manufacturer: string | null } }>("/:id", async (req) => {
+  // Client video 2026-10-16: the Data > Documents card could upload/delete a PDF but never rename
+  // it -- `name` is optional (undefined leaves it unchanged) so Library's existing category/
+  // manufacturer-only tagging call keeps working unchanged.
+  app.patch<{ Params: { id: string }; Body: { name?: string; category: string | null; manufacturer: string | null } }>("/:id", async (req) => {
     const { id } = req.params;
-    const { category, manufacturer } = req.body;
+    const { name, category, manufacturer } = req.body;
     return withTenantContext(req.userId, async (tx) => {
-      const [row] = await tx`
-        update library_documents
-        set category = ${category}, manufacturer = ${manufacturer}
-        where id = ${id}
-        returning *
-      `;
+      const [row] = name !== undefined
+        ? await tx`update library_documents set name = ${name}, category = ${category}, manufacturer = ${manufacturer} where id = ${id} returning *`
+        : await tx`update library_documents set category = ${category}, manufacturer = ${manufacturer} where id = ${id} returning *`;
       return row;
     });
   });
