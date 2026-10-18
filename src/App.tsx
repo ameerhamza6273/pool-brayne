@@ -32,6 +32,7 @@ import PublicForm from "@/pages/PublicForm";
 import PublicEstimate from "@/pages/PublicEstimate";
 import PublicInvoice from "@/pages/PublicInvoice";
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmProvider } from "@/components/ConfirmDialog";
 
 // Client feedback 2026-09-11: "Allow us to set up permission: Admin / Tech view / Contractor
 // view" -- technician/contractor accounts are restricted to the Field page; every other route
@@ -94,9 +95,11 @@ function App() {
   return (
     <AuthProvider>
       <LanguageProvider>
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <ConfirmProvider>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ConfirmProvider>
         <Toaster />
       </LanguageProvider>
     </AuthProvider>

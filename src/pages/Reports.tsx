@@ -19,51 +19,12 @@ import { customersApi } from "@/lib/api/customers";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
 import { toCsv, downloadCsv } from "@/lib/csv";
+import { useSort, SortTh } from "@/components/SortableTh";
 
 // Client request 2026-09-02 ("Need a reports section"): item movement, customer deposits,
 // invoices total-due per customer, recurring reminder-job types, inventory valuation, plus the
 // sales-tax report that already existed on the POS page (reused here from the same endpoint).
 const reportTabs = ["sales-tax", "sales-analysis", "movement", "deposits", "due", "reminders", "valuation"];
-
-// Client meeting 2026-09: "a lot of these reports here may be a way to sort these reports by
-// clicking higher to lower." Generic click-to-sort for every report table on this page.
-function useSort<T>(rows: T[], getValue: (row: T, key: string) => string | number | null) {
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const sorted = sortKey
-    ? [...rows].sort((a, b) => {
-        const av = getValue(a, sortKey);
-        const bv = getValue(b, sortKey);
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        const cmp = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
-        return sortDir === "asc" ? cmp : -cmp;
-      })
-    : rows;
-  const toggleSort = (key: string) => {
-    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir("asc"); }
-  };
-  return { sorted, sortKey, sortDir, toggleSort };
-}
-
-function SortTh({ label, sortKey, active, dir, onClick, align = "left" }: {
-  label: string; sortKey: string; active: string | null; dir: "asc" | "desc";
-  onClick: (key: string) => void; align?: "left" | "right" | "center";
-}) {
-  const isActive = active === sortKey;
-  return (
-    <th
-      className={`py-3 px-4 text-xs font-semibold text-[#64748B] uppercase cursor-pointer select-none hover:text-[#0891B2] ${align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"}`}
-      onClick={() => onClick(sortKey)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {isActive && <span className="text-[10px]">{dir === "asc" ? "▲" : "▼"}</span>}
-      </span>
-    </th>
-  );
-}
 
 export default function Reports() {
   const { t } = useLanguage();

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { inventoryApi } from "@/lib/api/inventory";
 import { useLanguage } from "@/lib/language-context";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
+import { useSort, sortHeader } from "@/components/SortableTh";
 
 // Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list") — distinct
 // manufacturers already recorded on inventory items, with a count each; clicking one jumps to
@@ -24,6 +25,7 @@ export default function Manufacturers() {
     });
   }, []);
 
+  const mfrSort = useSort(manufacturers.filter((m) => m.manufacturer.toLowerCase().includes(search.toLowerCase())), (m, key) => (m as unknown as Record<string, string | number | null>)[key]);
   return (
     <div className="space-y-4">
       <div>
@@ -47,12 +49,11 @@ export default function Manufacturers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Manufacturer")}</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Items")}</th>
+                  {(() => { const th = sortHeader(mfrSort, t); return (<>{th("manufacturer", "Manufacturer")}{th("item_count", "Items", "right")}</>); })()}
                 </tr>
               </thead>
               <tbody>
-                {manufacturers.filter((m) => m.manufacturer.toLowerCase().includes(search.toLowerCase())).map((m) => (
+                {mfrSort.sorted.map((m) => (
                   <tr
                     key={m.manufacturer}
                     onClick={() => navigate(`/inventory?search=${encodeURIComponent(m.manufacturer)}`)}
@@ -73,7 +74,7 @@ export default function Manufacturers() {
 
       {!isLoading && viewMode === "cards" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {manufacturers.filter((m) => m.manufacturer.toLowerCase().includes(search.toLowerCase())).map((m) => (
+          {mfrSort.sorted.map((m) => (
             <button
               key={m.manufacturer}
               onClick={() => navigate(`/inventory?search=${encodeURIComponent(m.manufacturer)}`)}

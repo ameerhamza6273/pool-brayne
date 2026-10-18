@@ -25,6 +25,7 @@ import { useLanguage } from "@/lib/language-context";
 import { isLaborCategory } from "@/lib/labor";
 import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Job = Database["public"]["Tables"]["jobs"]["Row"] & { customers: { name: string; address: string | null } | null };
 
@@ -44,6 +45,7 @@ export default function Field() {
   const navigate = useNavigate();
   const { profileId, tenantId, user, role } = useAuth();
   const { t, lang } = useLanguage();
+  const confirm = useConfirm();
   const fieldOnly = isFieldOnlyRole(role);
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -174,6 +176,7 @@ export default function Field() {
   };
 
   const handleDeletePhoto = async (photoId: string) => {
+    if (!(await confirm({ title: "Delete this photo?" }))) return;
     if (!currentJob) return;
     await jobsApi.deleteAttachment(currentJob.id, photoId);
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));

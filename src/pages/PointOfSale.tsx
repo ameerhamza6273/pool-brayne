@@ -24,6 +24,7 @@ import { useLanguage } from "@/lib/language-context";
 import { useTaxRate } from "@/hooks/use-tax-rate";
 import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
+import { useSort, sortHeader } from "@/components/SortableTh";
 
 type InventoryItem = Database["public"]["Tables"]["inventory_items"]["Row"];
 type PosOrder = Database["public"]["Tables"]["pos_orders"]["Row"] & { customers: { name: string } | null; item_count: number };
@@ -254,7 +255,9 @@ export default function PointOfSale() {
     return matchesSearch && matchesCat && matchesManufacturer;
   });
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginatedProducts = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const productSort = useSort(filtered, (p, key) => (p as unknown as Record<string, string | number | null>)[key]);
+  const transactionSort = useSort(transactions, (tx, key) => key === "customer" ? tx.customers?.name ?? "Walk-in" : (tx as unknown as Record<string, string | number | null>)[key]);
+  const paginatedProducts = productSort.sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   useEffect(() => {
     setPage(1);
   }, [search, category, manufacturer]);
@@ -652,12 +655,7 @@ export default function PointOfSale() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Item #")}</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("SKU")}</th>
-                      <th className="text-left py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Category")}</th>
-                      <th className="text-right py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Stock")}</th>
-                      <th className="text-right py-2 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Price")}</th>
+                      {(() => { const th = sortHeader(productSort, t); return (<>{th("item_number", "Item #")}{th("name", "Product")}{th("sku", "SKU")}{th("category", "Category")}{th("stock", "Stock", "right")}{th("price", "Price", "right")}</>); })()}
                     </tr>
                   </thead>
                   <tbody>
@@ -951,18 +949,12 @@ export default function PointOfSale() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
-                <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64728B] uppercase">{t("Items")}</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Subtotal")}</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Tax")}</th>
-                <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
-                <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Payment")}</th>
+                {(() => { const th = sortHeader(transactionSort, t); return (<>{th("created_at", "Date")}{th("customer", "Customer")}{th("item_count", "Items", "right")}{th("subtotal", "Subtotal", "right")}{th("tax", "Tax", "right")}{th("total", "Total", "right")}{th("payment_method", "Payment", "center")}</>); })()}
                 <th className="py-3 px-4" />
               </tr>
             </thead>
             <tbody>
-              {transactions.map((tx) => (
+              {transactionSort.sorted.map((tx) => (
                 <tr key={tx.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => setOpenOrderId(tx.id)}>
                   <td className="py-3 px-4 text-[#64748B]">
                     {new Date(tx.created_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}

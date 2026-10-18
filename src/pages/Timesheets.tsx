@@ -17,6 +17,8 @@ import { useLanguage } from "@/lib/language-context";
 import ClockCard from "@/components/ClockCard";
 import TimeRequestDialog from "@/components/TimeRequestDialog";
 import type { Database } from "@/lib/database.types";
+import { useSort, sortHeader } from "@/components/SortableTh";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Timesheet = Database["public"]["Tables"]["timesheets"]["Row"] & { profiles: { name: string; role: string; employment_type: string } | null };
 type JobCosting = Database["public"]["Tables"]["job_costing"]["Row"] & { profiles: { name: string } | null };
@@ -54,6 +56,7 @@ type EntryDraft = { id: string | null; employeeId: string; clockIn: string; cloc
 export default function Timesheets() {
   const { user, profileId, role } = useAuth();
   const { t, lang } = useLanguage();
+  const confirm = useConfirm();
   // Dates follow the chosen language (they used to always print in English).
   const locale = lang === "es" ? "es-US" : "en-US";
   // Request dates are date-only keys ("2026-09-25") -- shown like the rest of the page, in the chosen language.
@@ -164,6 +167,9 @@ export default function Timesheets() {
   const estPayroll = totalHours * 28 + totalOT * 42;
   const detailRow = rows.find((r) => r.id === detailFor) ?? null;
   const shownRequests = requests.filter((r) => requestFilter === "All" || r.status === "Pending");
+  const rowSort = useSort(rows, (r, key) => key === "approved" ? (r.approved ? 1 : 0) : (r as unknown as Record<string, string | number | null>)[key]);
+  const requestSort = useSort(shownRequests, (rq, key) => key === "dates" ? rq.start_date ?? rq.created_at : (rq as unknown as Record<string, string | number | null>)[key]);
+  const costingSort = useSort(jobCosting, (jc, key) => key === "tech" ? jc.profiles?.name : (jc as unknown as Record<string, string | number | null>)[key]);
   const pendingCount = requests.filter((r) => r.status === "Pending").length;
 
   const handleApprove = async (row: (typeof rows)[number]) => {
@@ -227,6 +233,7 @@ export default function Timesheets() {
     setSaving(false);
   };
   const deleteEntry = async (e: TimeEntry) => {
+    if (!(await confirm({ title: "Delete this time entry?" }))) return;
     setEntries((prev) => prev.filter((x) => x.id !== e.id)); // disappears at once, the reload confirms it
     await timesheetsApi.deleteEntry(e.id);
     loadTimesheets();
@@ -301,20 +308,18 @@ export default function Timesheets() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Employee")}</th>
+                  {(() => { const th = sortHeader(rowSort, t); return (<>{th("name", "Employee")}</>); })()}
                   {weekDates.map((d) => (
                     <th key={localKey(d)} className="text-center py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">
                       {t(DAY_LABELS[d.getDay()])}<div className="text-[10px] font-normal normal-case">{d.getMonth() + 1}/{d.getDate()}</div>
                     </th>
                   ))}
-                  <th className="text-right py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
-                  <th className="text-right py-3 px-2 text-xs font-semibold text-[#64748B] uppercase">{t("OT")}</th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                  {(() => { const th = sortHeader(rowSort, t); return (<>{th("total", "Total", "right")}{th("ot", "OT", "right")}{th("approved", "Status", "center")}</>); })()}
                   <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {rowSort.sorted.map((r) => (
                   <tr key={r.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => setDetailFor(r.id)} title={t("Click to see and edit this week's times")}>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
@@ -378,17 +383,12 @@ export default function Timesheets() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Employee")}</th>
-                  <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Type")}</th>
-                  <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Dates")}</th>
-                  <th className="text-right py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Hours")}</th>
-                  <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Notes")}</th>
-                  <th className="text-center py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                  {(() => { const th = sortHeader(requestSort, t); return (<>{th("employee_name", "Employee")}{th("request_type", "Type")}{th("dates", "Dates")}{th("hours", "Hours", "right")}{th("notes", "Notes")}{th("status", "Status", "center")}</>); })()}
                   <th className="text-center py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Action")}</th>
                 </tr>
               </thead>
               <tbody>
-                {shownRequests.map((rq) => (
+                {requestSort.sorted.map((rq) => (
                   <tr key={rq.id} className="border-b border-[#F1F5F9] last:border-0 align-top">
                     <td className="py-2 px-4 font-medium text-[#0F172A]">{rq.employee_name ?? "—"}</td>
                     <td className="py-2 px-4">{t(rq.request_type)}</td>
@@ -411,7 +411,7 @@ export default function Timesheets() {
                           </>
                         )}
                         {(isOffice || (rq.employee_id === profileId && rq.status === "Pending")) && (
-                          <button className="p-1 rounded text-[#94A3B8] hover:text-[#DC2626]" title={t("Delete request")} onClick={async () => { await timesheetsApi.deleteRequest(rq.id); loadTimesheets(); }}>
+                          <button className="p-1 rounded text-[#94A3B8] hover:text-[#DC2626]" title={t("Delete request")} onClick={async () => { if (!(await confirm({ title: "Delete this request?", name: rq.employee_name }))) return; await timesheetsApi.deleteRequest(rq.id); loadTimesheets(); }}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         )}
@@ -438,14 +438,11 @@ export default function Timesheets() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Tech")}</th>
-                    <th className="text-left py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Job")}</th>
-                    <th className="text-right py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Hours")}</th>
-                    <th className="text-right py-2 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Labor Cost")}</th>
+                    {(() => { const th = sortHeader(costingSort, t); return (<>{th("tech", "Tech")}{th("job_label", "Job")}{th("hours", "Hours", "right")}{th("labor_cost", "Labor Cost", "right")}</>); })()}
                   </tr>
                 </thead>
                 <tbody>
-                  {jobCosting.map((jc) => (
+                  {costingSort.sorted.map((jc) => (
                     <tr key={jc.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-2 px-4 font-medium text-[#0F172A]">{jc.profiles?.name ?? "—"}</td>
                       <td className="py-2 px-4 text-sm text-[#64748B] truncate max-w-[200px]">{jc.job_label}</td>

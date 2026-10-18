@@ -16,6 +16,7 @@ import PoLineItemsEditor from "@/components/PoLineItemsEditor";
 import { inventoryApi } from "@/lib/api/inventory";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
+import { useSort, sortHeader } from "@/components/SortableTh";
 import { isLaborCategory } from "@/lib/labor";
 import { useConfigLists } from "@/hooks/use-config-lists";
 import { invoicingApi, type VendorBill } from "@/lib/api/invoicing";
@@ -24,6 +25,7 @@ import type { Database } from "@/lib/database.types";
 import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff, SupplierLocation, CategoryTaxonomyRow, PoLineItemInput } from "@/lib/api/inventory";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
@@ -94,6 +96,7 @@ const printZebraLabels = (
 
 export default function Inventory() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const { tenantId } = useAuth();
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
@@ -219,7 +222,11 @@ export default function Inventory() {
   const [newBillSaving, setNewBillSaving] = useState(false);
   // Client PDF 2026-09-15: "Ability to search by PO number" on the Pay Invoices / Vendor Bills tab.
   const [billSearch, setBillSearch] = useState("");
-  const [billSort, setBillSort] = useState<{ key: "amount" | "vendor" | null; dir: "asc" | "desc" }>({ key: null, dir: "asc" });
+  // Client video 2026-10-18: "under purchase orders ... make these spinnable as well and maybe a
+  // search field" -- every Inventory tab's columns sort, PO / Variance / Write-Offs got search.
+  const [poSearch, setPoSearch] = useState("");
+  const [varianceSearch, setVarianceSearch] = useState("");
+  const [writeoffSearch, setWriteoffSearch] = useState("");
   // Client video 2026-10-16: "spin the item number report here to make a numerical order" --
   // the Catalog table's column headers were plain text, not clickable, on every column.
   type CatalogSortKey = "item_number" | "name" | "sku" | "category" | "manufacturer" | "storeQty" | "vehicleQty" | "total" | "reorder_threshold" | "unit_cost" | "price" | "status";
@@ -423,6 +430,7 @@ export default function Inventory() {
 
   // Client SMS 2026-09-09: "able to edit and delete vendors from list".
   const handleDeleteSupplier = async (s: Supplier) => {
+    if (!(await confirm({ title: "Delete this vendor?", name: s.name }))) return;
     await inventoryApi.deleteSupplier(s.id);
     loadInventory();
   };
@@ -447,6 +455,7 @@ export default function Inventory() {
   };
 
   const handleRemoveLocation = async (locationId: string) => {
+    if (!(await confirm({ title: "Remove this vendor contact?", name: supplierLocations.find((l) => l.id === locationId)?.label }))) return;
     if (!locationsSupplier) return;
     await inventoryApi.removeSupplierLocation(locationId);
     setSupplierLocations(await inventoryApi.getSupplierLocations(locationsSupplier.id));
@@ -603,20 +612,10 @@ export default function Inventory() {
   const dynamicCategories = ["All", ...Array.from(new Set(items.map((i) => i.category))).sort()];
 
   // Client PDF 2026-09-15: "sort by amount or vendors" + "search by PO number" on Pay Invoices.
-  const filteredVendorBills = vendorBills
-    .filter((b) => matchesQuery(billSearch, [b.number, b.suppliers?.name, b.po_number]))
-    .sort((a, b) => {
-      if (billSort.key === "amount") return billSort.dir === "asc" ? a.amount - b.amount : b.amount - a.amount;
-      if (billSort.key === "vendor") {
-        const cmp = (a.suppliers?.name ?? "").localeCompare(b.suppliers?.name ?? "");
-        return billSort.dir === "asc" ? cmp : -cmp;
-      }
-      return 0;
-    });
-
-  const toggleBillSort = (key: "amount" | "vendor") => {
-    setBillSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
-  };
+  const billSort = useSort(
+    vendorBills.filter((b) => matchesQuery(billSearch, [b.number, b.suppliers?.name, b.po_number])),
+    (x, key) => key === "vendor" ? x.suppliers?.name : (x as unknown as Record<string, string | number | null>)[key]);
+  const filteredVendorBills = billSort.sorted;
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -716,6 +715,19 @@ export default function Inventory() {
     if (writeoffTo && day > writeoffTo) return false;
     return true;
   });
+
+  const writeoffSort = useSort(
+    filteredWriteoffs.filter((w) => matchesQuery(writeoffSearch, [w.inventory_items?.name, w.reason, w.note])),
+    (x, key) => key === "product" ? x.inventory_items?.name : (x as unknown as Record<string, string | number | null>)[key]);
+  const vendorSort = useSort(
+    suppliers.filter((sp) => matchesQuery(vendorSearch, [sp.name, sp.contact, sp.phone, (sp as Supplier & { address: string | null }).address])),
+    (x, key) => (x as unknown as Record<string, string | number | null>)[key]);
+  const poSort = useSort(
+    purchaseOrders.filter((po) => matchesQuery(poSearch, [po.number, po.suppliers?.name, po.locations?.label, po.status, po.order_date, po.payment_terms])),
+    (x, key) => key === "vendor" ? x.suppliers?.name : (x as unknown as Record<string, string | number | null>)[key]);
+  const varianceSort = useSort(
+    varianceData.filter((v) => matchesQuery(varianceSearch, [v.inventory_items?.name])),
+    (x, key) => key === "product" ? x.inventory_items?.name : key === "flagged" ? (x.flagged ? 1 : 0) : (x as unknown as Record<string, string | number | null>)[key]);
 
   const totalValue = items.reduce((sum, p) => sum + p.total * p.unit_cost, 0);
   const lowStock = items.filter((p) => p.status === "Low").length;
@@ -1035,21 +1047,14 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vendor")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Address")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Contact")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Phone")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Lead Time")}</th>
+                    {(() => { const th = sortHeader(vendorSort, t); return (<>
+                    {th("name", "Vendor")}{th("address", "Address")}{th("contact", "Contact")}{th("phone", "Phone")}{th("lead_time", "Lead Time", "right")}
+                  </>); })()}
                     <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {suppliers.filter((s) => {
-                    const q = vendorSearch.toLowerCase();
-                    if (!q) return true;
-                    const address = (s as Supplier & { address: string | null }).address;
-                    return [s.name, s.contact, s.phone, address].filter(Boolean).some((f) => (f as string).toLowerCase().includes(q));
-                  }).map((s) => (
+                  {vendorSort.sorted.map((s) => (
                     <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A] cursor-pointer" onClick={() => openEditSupplier(s)}>{s.name}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{(s as Supplier & { address: string | null }).address}</td>
@@ -1121,7 +1126,11 @@ export default function Inventory() {
         </TabsContent>
 
         <TabsContent value="purchase" className="mt-4 space-y-3">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+              <Input placeholder={t("Search PO #, vendor, status, date...")} value={poSearch} onChange={(e) => setPoSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+            </div>
             <Dialog open={poOpen} onOpenChange={(open) => { setPoOpen(open); if (open) inventoryApi.nextPoNumber().then((r) => setNewPo((p) => ({ ...p, number: r.number }))); }}>
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("New PO")}</Button>
@@ -1249,19 +1258,14 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("PO Number")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Vendor")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Items")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Total")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Terms")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Received")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {(() => { const th = sortHeader(poSort, t); return (<>
+                    {th("number", "PO Number")}{th("vendor", "Vendor")}{th("item_count", "Items", "right")}{th("total", "Total", "right")}{th("order_date", "Date")}{th("payment_terms", "Terms")}{th("received_date", "Received")}{th("status", "Status", "center")}
+                  </>); })()}
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {purchaseOrders.map((po) => (
+                  {poSort.sorted.map((po) => (
                     <tr key={po.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => openPoDetail(po)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{po.number}</td>
                       <td className="py-3 px-4 text-[#64748B]">{po.suppliers?.name ?? "—"}{po.locations?.label ? <span className="text-xs text-[#94A3B8]"> · {po.locations.label}</span> : null}</td>
@@ -1356,23 +1360,9 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Bill #")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("PO #")}</th>
-                    <th
-                      className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase cursor-pointer select-none hover:text-[#0891B2]"
-                      onClick={() => toggleBillSort("vendor")}
-                    >
-                      <span className="inline-flex items-center gap-1">{t("Vendor")}{billSort.key === "vendor" && <span className="text-[10px]">{billSort.dir === "asc" ? "▲" : "▼"}</span>}</span>
-                    </th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Due Date")}</th>
-                    <th
-                      className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase cursor-pointer select-none hover:text-[#0891B2]"
-                      onClick={() => toggleBillSort("amount")}
-                    >
-                      <span className="inline-flex items-center gap-1 justify-end">{t("Amount")}{billSort.key === "amount" && <span className="text-[10px]">{billSort.dir === "asc" ? "▲" : "▼"}</span>}</span>
-                    </th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {(() => { const th = sortHeader(billSort, t); return (<>
+                      {th("number", "Bill #")}{th("po_number", "PO #")}{th("vendor", "Vendor")}{th("issue_date", "Issue Date")}{th("due_date", "Due Date")}{th("amount", "Amount", "right")}{th("status", "Status", "center")}
+                    </>); })()}
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
@@ -1406,21 +1396,23 @@ export default function Inventory() {
           </div>
         </TabsContent>
 
-        <TabsContent value="variance" className="mt-4">
+        <TabsContent value="variance" className="mt-4 space-y-3">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+            <Input placeholder={t("Search product...")} value={varianceSearch} onChange={(e) => setVarianceSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+          </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Expected")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Actual")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Variance %")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Flag")}</th>
+                    {(() => { const th = sortHeader(varianceSort, t); return (<>
+                    {th("product", "Product")}{th("expected", "Expected", "right")}{th("actual", "Actual", "right")}{th("variance_pct", "Variance %", "right")}{th("flagged", "Flag", "center")}
+                  </>); })()}
                   </tr>
                 </thead>
                 <tbody>
-                  {varianceData.map((v) => (
+                  {varianceSort.sorted.map((v) => (
                     <tr key={v.id} className={`border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] ${v.flagged ? "bg-[#F59E0B]/5" : ""}`}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{v.inventory_items?.name ?? "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{v.expected}</td>
@@ -1443,6 +1435,10 @@ export default function Inventory() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             {/* Client SMS 2026-09-21: search write-offs by reason code and date range. */}
             <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-56">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+                <Input placeholder={t("Search product or note...")} value={writeoffSearch} onChange={(e) => setWriteoffSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+              </div>
               <Select value={writeoffReasonFilter} onValueChange={setWriteoffReasonFilter}>
                 <SelectTrigger className="h-10 w-48 bg-white border-[#E2E8F0]"><SelectValue placeholder={t("Reason")} /></SelectTrigger>
                 <SelectContent>
@@ -1508,15 +1504,13 @@ export default function Inventory() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Product")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Qty")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Reason")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Note")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                    {(() => { const th = sortHeader(writeoffSort, t); return (<>
+                    {th("product", "Product")}{th("quantity", "Qty", "right")}{th("reason", "Reason")}{th("note", "Note")}{th("created_at", "Date")}
+                  </>); })()}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredWriteoffs.map((w) => (
+                  {writeoffSort.sorted.map((w) => (
                     <tr key={w.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{w.inventory_items?.name ?? "—"}</td>
                       <td className="text-right py-3 px-4 text-[#0F172A]">{w.quantity}</td>
@@ -1525,7 +1519,7 @@ export default function Inventory() {
                       <td className="py-3 px-4 text-[#64748B]">{new Date(w.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))}
-                  {filteredWriteoffs.length === 0 && (
+                  {writeoffSort.sorted.length === 0 && (
                     <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{writeoffs.length === 0 ? t("No write-offs yet") : t("No write-offs match your filters")}</td></tr>
                   )}
                 </tbody>

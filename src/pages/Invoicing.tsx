@@ -4,6 +4,7 @@ import { Search, Plus, BookOpen, CreditCard, Repeat, CheckCircle2, Clock, AlertT
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { matchesQuery } from "@/lib/search";
+import { useSort, sortHeader } from "@/components/SortableTh";
 import { customerOption } from "@/lib/customer-options";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,6 +29,7 @@ import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEdito
 import { useLanguage } from "@/lib/language-context";
 import { useTaxRate } from "@/hooks/use-tax-rate";
 import type { Database } from "@/lib/database.types";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches
 // what InvoiceDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
@@ -61,9 +63,16 @@ const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits
 
 export default function Invoicing() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const taxRate = useTaxRate();
   const [search, setSearch] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
+  // Client video 2026-10-18: search box on every Invoicing tab ("a search field for a customer name
+  // or estimate number") + every column sortable.
+  const [estimateSearch, setEstimateSearch] = useState("");
+  const [reminderSearch, setReminderSearch] = useState("");
+  const [taskSearch, setTaskSearch] = useState("");
+  const [recurringSearch, setRecurringSearch] = useState("");
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -281,6 +290,7 @@ export default function Invoicing() {
   };
 
   const handleDeleteReminder = async (id: string) => {
+    if (!(await confirm({ title: "Delete this reminder?", name: reminders.find((r) => r.id === id)?.label }))) return;
     await reportsApi.deleteReminder(id);
     loadInvoicing();
   };
@@ -427,10 +437,24 @@ export default function Invoicing() {
     navigate(`/invoicing/${invoice.id}`);
   };
 
-  const filtered = invoices.filter((inv) =>
-    inv.number.toLowerCase().includes(search.toLowerCase()) ||
-    (inv.customers?.name ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = invoices.filter((inv) => matchesQuery(search, [inv.number, inv.customers?.name, inv.job_description, inv.status, inv.issue_date]));
+  const invoiceSort = useSort(filtered, (inv, key) =>
+    key === "customer" ? inv.customers?.name : key === "amount" ? (inv.total ?? inv.amount) : key === "sync" ? (inv.qbo_invoice_id ? 1 : 0) : (inv as unknown as Record<string, string | number | null>)[key]);
+  const estimateSort = useSort(
+    estimates.filter((est) => matchesQuery(estimateSearch, [est.number, est.customers?.name, est.status, est.issue_date])),
+    (est, key) => key === "customer" ? est.customers?.name : key === "amount" ? (est.total ?? est.amount) : (est as unknown as Record<string, string | number | null>)[key]);
+  const reminderSort = useSort(
+    remindersFiltered.filter((r) => matchesQuery(reminderSearch, [r.customers?.name, r.label, r.customers?.phone])),
+    (r, key) => key === "customer" ? r.customers?.name : (r as unknown as Record<string, string | number | null>)[key]);
+  const taskSort = useSort(
+    tasks.filter((task) => matchesQuery(taskSearch, [task.type, task.customers?.name, task.address, task.profiles?.name, task.status, task.notes, task.start_date])),
+    (task, key) => key === "customer" ? task.customers?.name : key === "tech" ? task.profiles?.name : key === "photos" ? task.photos?.length ?? 0 : (task as unknown as Record<string, string | number | null>)[key]);
+  const recurringSort = useSort(
+    recurringBilling.filter((rb) => matchesQuery(recurringSearch, [rb.customers?.name, rb.frequency, rb.status, String(rb.amount)])),
+    (rb, key) => key === "customer" ? rb.customers?.name : (rb as unknown as Record<string, string | number | null>)[key]);
+  const paymentSort = useSort(
+    payments.filter((pay) => matchesQuery(paymentSearch, [pay.customers?.name, pay.invoices?.number, String(pay.amount), pay.paid_at, pay.method])),
+    (pay, key) => key === "invoice" ? pay.invoices?.number : key === "customer" ? pay.customers?.name : (pay as unknown as Record<string, string | number | null>)[key]);
 
   // QA sweep 2026-09-30: these summed the stored pre-tax `amount`, which never matched the real
   // Total on the invoice document/charge -- `total` (backend-computed, materials-only tax) is what
@@ -875,26 +899,22 @@ export default function Invoicing() {
         <TabsContent value="all" className="mt-4 space-y-3">
           <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-            <Input placeholder={t("Search invoices...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+            <Input placeholder={t("Search invoice #, customer, description...")} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
           </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Invoice #")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Due Date")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Sync")}</th>
+                    {(() => { const th = sortHeader(invoiceSort, t); return (<>
+                    {th("number", "Invoice #")}{th("customer", "Customer")}{th("job_description", "Description")}{th("issue_date", "Issue Date")}{th("due_date", "Due Date")}
+                    {th("amount", "Amount", "right")}{th("status", "Status", "center")}{th("sync", "Sync", "center")}
+                  </>); })()}
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((inv) => (
+                  {invoiceSort.sorted.map((inv) => (
                     <tr key={inv.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => navigate(`/invoicing/${inv.id}`)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{inv.number}</td>
                       <td className="py-3 px-4 text-[#64748B]">{inv.customers?.name ?? "—"}</td>
@@ -923,23 +943,24 @@ export default function Invoicing() {
           </div>
         </TabsContent>
 
-        <TabsContent value="estimates" className="mt-4">
+        <TabsContent value="estimates" className="mt-4 space-y-3">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+            <Input placeholder={t("Search estimate #, customer, status...")} value={estimateSearch} onChange={(e) => setEstimateSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+          </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Estimate #")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Issue Date")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Expires")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {(() => { const th = sortHeader(estimateSort, t); return (<>
+                    {th("number", "Estimate #")}{th("customer", "Customer")}{th("issue_date", "Issue Date")}{th("expiry_date", "Expires")}{th("amount", "Amount", "right")}{th("status", "Status", "center")}
+                  </>); })()}
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {estimates.map((est) => (
+                  {estimateSort.sorted.map((est) => (
                     <tr key={est.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => navigate(`/invoicing/estimates/${est.id}`)}>
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{est.number}</td>
                       <td className="py-3 px-4 text-[#64748B]">{est.customers?.name ?? "—"}</td>
@@ -962,8 +983,8 @@ export default function Invoicing() {
                       </td>
                     </tr>
                   ))}
-                  {estimates.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{t("No estimates yet")}</td></tr>
+                  {estimateSort.sorted.length === 0 && (
+                    <tr><td colSpan={7} className="py-8 text-center text-[#64748B]">{estimates.length === 0 ? t("No estimates yet") : t("No matches")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -973,6 +994,11 @@ export default function Invoicing() {
 
         <TabsContent value="other-reminders" className="mt-4 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center flex-wrap gap-2">
+            <div className="relative w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+              <Input placeholder={t("Search customer or reminder...")} value={reminderSearch} onChange={(e) => setReminderSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+            </div>
             <div className="flex border border-[#E2E8F0] rounded-lg overflow-hidden text-sm">
               {(["30", "60", "90", "all"] as const).map((r) => {
                 const active = remindersRange === r;
@@ -982,6 +1008,7 @@ export default function Invoicing() {
                   </button>
                 );
               })}
+            </div>
             </div>
             <Dialog open={reminderOpen} onOpenChange={(open) => { setReminderOpen(open); if (!open) { setEditingReminderId(null); setReminderDraft({ customerId: "", label: "", frequencyMonths: "", nextDue: "" }); } }}>
               <DialogTrigger asChild>
@@ -1010,15 +1037,14 @@ export default function Invoicing() {
             <table className="w-full text-sm">
               <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr>
-                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Customer")}</th>
-                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Reminder Type")}</th>
-                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Frequency")}</th>
-                  <th className="text-left py-3 px-4 font-medium text-[#64748B]">{t("Next Due")}</th>
-                  <th className="text-right py-3 px-4 font-medium text-[#64748B]">{t("Actions")}</th>
+                  {(() => { const th = sortHeader(reminderSort, t); return (<>
+                    {th("customer", "Customer")}{th("label", "Reminder Type")}{th("frequency_months", "Frequency")}{th("next_due", "Next Due")}
+                  </>); })()}
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Actions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {remindersFiltered.map((r) => {
+                {reminderSort.sorted.map((r) => {
                   const overdue = new Date(r.next_due) <= new Date();
                   return (
                     <tr key={r.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer" onClick={() => handleOpenReminderEdit(r)}>
@@ -1044,7 +1070,7 @@ export default function Invoicing() {
                     </tr>
                   );
                 })}
-                {remindersFiltered.length === 0 && (
+                {reminderSort.sorted.length === 0 && (
                   <tr><td colSpan={5} className="py-8 text-center text-[#64748B]">{reminders.length === 0 ? t("No reminder types set up yet") : t("No reminders due in this range")}</td></tr>
                 )}
               </tbody>
@@ -1053,7 +1079,11 @@ export default function Invoicing() {
         </TabsContent>
 
         <TabsContent value="tasks" className="mt-4 space-y-3">
-          <div className="flex justify-end">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="relative w-full max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+              <Input placeholder={t("Search customer, address, tech, type, status...")} value={taskSearch} onChange={(e) => setTaskSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+            </div>
             <Dialog
               open={newTaskOpen}
               onOpenChange={(open) => {
@@ -1170,18 +1200,14 @@ export default function Invoicing() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Type")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Address")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Tech")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Dates")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Photos")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {(() => { const th = sortHeader(taskSort, t); return (<>
+                    {th("type", "Type")}{th("customer", "Customer")}{th("address", "Address")}{th("tech", "Tech")}{th("start_date", "Dates")}{th("photos", "Photos", "center")}{th("status", "Status", "center")}
+                  </>); })()}
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((task) => (
+                  {taskSort.sorted.map((task) => (
                     <tr key={task.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{t(task.type)}</td>
                       <td className="py-3 px-4 text-[#64748B]">{task.customers?.name ?? "—"}</td>
@@ -1206,8 +1232,8 @@ export default function Invoicing() {
                       </td>
                     </tr>
                   ))}
-                  {tasks.length === 0 && (
-                    <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">{t("No tasks yet")}</td></tr>
+                  {taskSort.sorted.length === 0 && (
+                    <tr><td colSpan={8} className="py-8 text-center text-[#64748B]">{tasks.length === 0 ? t("No tasks yet") : t("No matches")}</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1215,21 +1241,23 @@ export default function Invoicing() {
           </div>
         </TabsContent>
 
-        <TabsContent value="recurring" className="mt-4">
+        <TabsContent value="recurring" className="mt-4 space-y-3">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
+            <Input placeholder={t("Search customer, frequency, status...")} value={recurringSearch} onChange={(e) => setRecurringSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+          </div>
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Frequency")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Next Charge")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {(() => { const th = sortHeader(recurringSort, t); return (<>
+                    {th("customer", "Customer")}{th("frequency", "Frequency")}{th("amount", "Amount", "right")}{th("next_charge", "Next Charge")}{th("status", "Status", "center")}
+                  </>); })()}
                   </tr>
                 </thead>
                 <tbody>
-                  {recurringBilling.map((rb) => (
+                  {recurringSort.sorted.map((rb) => (
                     <tr key={rb.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A]">{rb.customers?.name ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{t(rb.frequency)}</td>
@@ -1257,16 +1285,13 @@ export default function Invoicing() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Invoice")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Amount")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Method")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {(() => { const th = sortHeader(paymentSort, t); return (<>
+                    {th("invoice", "Invoice")}{th("customer", "Customer")}{th("amount", "Amount", "right")}{th("paid_at", "Date")}{th("method", "Method")}{th("status", "Status", "center")}
+                  </>); })()}
                   </tr>
                 </thead>
                 <tbody>
-                  {payments.filter((pay) => matchesQuery(paymentSearch, [pay.customers?.name, pay.invoices?.number, String(pay.amount), pay.paid_at, pay.method])).map((pay) => {
+                  {paymentSort.sorted.map((pay) => {
                     const method = paymentMethods[pay.method ?? ""] || { icon: CreditCard, label: pay.method ?? "—" };
                     const MethodIcon = method.icon;
                     return (

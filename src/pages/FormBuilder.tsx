@@ -11,6 +11,8 @@ import { formTemplatesApi, type FormTemplate, type FormField, type FormFieldType
 import { useLanguage } from "@/lib/language-context";
 import { useConfigLists } from "@/hooks/use-config-lists";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
+import { useSort, sortHeader } from "@/components/SortableTh";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 const fieldTypeLabels: Record<FormFieldType, string> = {
   text: "Short Text",
@@ -30,6 +32,7 @@ const emptyField = (): FormField => ({ id: `field_${Date.now()}_${Math.random().
 // optionally suggest itself for a job type via `appliesTo`).
 export default function FormBuilder() {
   const { t: translate } = useLanguage();
+  const confirm = useConfirm();
   const { lists: configLists } = useConfigLists();
   const [templates, setTemplates] = useState<FormTemplate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -91,10 +94,12 @@ export default function FormBuilder() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!(await confirm({ title: "Delete this form?", name: templates.find((tpl) => tpl.id === id)?.name }))) return;
     await formTemplatesApi.remove(id);
     setTemplates((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const templateSort = useSort(templates, (tpl, key) => key === "fields" ? tpl.fields.length : key === "customer_visible" || key === "required" ? (tpl[key] ? 1 : 0) : (tpl as unknown as Record<string, string | number | null>)[key]);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -202,16 +207,12 @@ export default function FormBuilder() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Form")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Applies To")}</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Fields")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Visibility")}</th>
-                  <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{translate("Required")}</th>
+                  {(() => { const th = sortHeader(templateSort, translate); return (<>{th("name", "Form")}{th("applies_to", "Applies To")}{th("fields", "Fields", "right")}{th("customer_visible", "Visibility")}{th("required", "Required", "center")}</>); })()}
                   <th className="w-20 py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody>
-                {templates.map((tpl) => (
+                {templateSort.sorted.map((tpl) => (
                   <tr key={tpl.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                     <td className="py-3 px-4 font-medium text-[#0F172A]">{tpl.name}</td>
                     <td className="py-3 px-4 text-[#64748B]">{tpl.applies_to ? translate(tpl.applies_to) : "—"}</td>

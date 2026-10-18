@@ -22,6 +22,8 @@ import type { ConfigListKey, ConfigListItem } from "@/lib/api/configLists";
 import { useAuth, FIELD_PERMISSIONS } from "@/lib/auth-context";
 import { Checkbox } from "@/components/ui/checkbox";
 import { supabase } from "@/lib/supabase";
+import { useSort, sortHeader } from "@/components/SortableTh";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Integration = Database["public"]["Tables"]["integrations"]["Row"];
@@ -97,6 +99,7 @@ function AddListItemRow({ onAdd, placeholder, showColor, big }: {
 
 export default function Settings() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const [isLoading, setIsLoading] = useState(true);
   // Client SMS 2026-09-09: "able to add, edit, delete techs" -- there's no email service wired
   // (no SendGrid) for a real invite link, so an admin sets the new tech's password directly and
@@ -141,7 +144,11 @@ export default function Settings() {
   // Client PDF 2026-09-18: Job Types/Statuses, Estimate Statuses, Call Types/Sources,
   // Reschedule Types, Cancellation Reasons -- previously hardcoded arrays with non-functional
   // Add/Delete buttons, now DB-backed and editable.
-  const { lists: configLists, addItem: addConfigItem, updateItem: updateConfigItem, removeItem: removeConfigItem } = useConfigLists();
+  const { lists: configLists, addItem: addConfigItem, updateItem: updateConfigItem, removeItem: removeConfigItemNow } = useConfigLists();
+  const removeConfigItem = async (key: Parameters<typeof removeConfigItemNow>[0], id: string) => {
+    if (!(await confirm({ title: "Delete this item?", name: configLists[key]?.find((i) => i.id === id)?.label }))) return;
+    return removeConfigItemNow(key, id);
+  };
   // Client SMS 2026-09-21: one shared Edit dialog for all 7 lists (label, plus color for the lists that have one).
   const [editingConfig, setEditingConfig] = useState<{ key: ConfigListKey; id: string; label: string; color: string | null } | null>(null);
   const [editConfigSaving, setEditConfigSaving] = useState(false);
@@ -229,6 +236,7 @@ export default function Settings() {
   };
 
   const handleDeleteTech = async (m: Profile) => {
+    if (!(await confirm({ title: "Delete this team member?", name: m.name }))) return;
     await profilesApi.remove(m.id);
     loadSettings();
   };
@@ -314,6 +322,7 @@ export default function Settings() {
     await loadSettings();
   };
 
+  const teamSort = useSort(teamMembers, (u, key) => (u as unknown as Record<string, string | number | null>)[key]);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -567,16 +576,12 @@ export default function Settings() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("User")}</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Email")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Role")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Type")}</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                    {(() => { const th = sortHeader(teamSort, t); return (<>{th("name", "User")}{th("email", "Email")}{th("role", "Role", "center")}{th("employment_type", "Type", "center")}{th("status", "Status", "center")}</>); })()}
                     <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {teamMembers.map((u) => (
+                  {teamSort.sorted.map((u) => (
                     <tr key={u.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">

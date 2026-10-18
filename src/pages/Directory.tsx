@@ -9,6 +9,8 @@ import { directoryApi, type DirectoryContact } from "@/lib/api/directory";
 import { formatPhoneInput } from "@/lib/phone";
 import { useLanguage } from "@/lib/language-context";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
+import { useSort, sortHeader } from "@/components/SortableTh";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // Client request 2026-09-02: a field Directory of sales-rep names/phone numbers for techs to
 // look up on the road. Client SMS 2026-10-16: added Description + Email, and edit (previously
@@ -17,6 +19,7 @@ const emptyContact = { name: "", role: "", phone: "", description: "", email: ""
 
 export default function Directory() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const [contacts, setContacts] = useState<DirectoryContact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
@@ -63,10 +66,12 @@ export default function Directory() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!(await confirm({ title: "Delete this contact?", name: contacts.find((c) => c.id === id)?.name }))) return;
     await directoryApi.remove(id);
     setContacts((prev) => prev.filter((c) => c.id !== id));
   };
 
+  const contactSort = useSort(contacts.filter((c) => matchesQuery(search, [c.name, c.role, c.description, c.phone, c.email])), (c, key) => (c as unknown as Record<string, string | number | null>)[key]);
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -108,15 +113,12 @@ export default function Directory() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Name")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Description")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Phone")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Email")}</th>
+                  {(() => { const th = sortHeader(contactSort, t); return (<>{th("name", "Name")}{th("description", "Description")}{th("phone", "Phone")}{th("email", "Email")}</>); })()}
                   <th className="w-16 py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody>
-                {contacts.filter((c) => matchesQuery(search, [c.name, c.role, c.description, c.phone, c.email])).map((c) => (
+                {contactSort.sorted.map((c) => (
                   <tr key={c.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                     <td className="py-3 px-4 font-medium text-[#0F172A]">{c.name}</td>
                     <td className="py-3 px-4 text-[#64748B]">{c.description ?? c.role ?? "—"}</td>
@@ -144,7 +146,7 @@ export default function Directory() {
 
       {!isLoading && viewMode === "cards" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {contacts.filter((c) => matchesQuery(search, [c.name, c.role, c.description, c.phone, c.email])).map((c) => (
+          {contactSort.sorted.map((c) => (
             <div key={c.id} className="bg-white rounded-xl p-4 border border-[#E2E8F0] shadow-sm flex items-start gap-3">
               <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center shrink-0">
                 <BookUser className="w-5 h-5 text-[#0891B2]" />

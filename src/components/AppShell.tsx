@@ -11,6 +11,7 @@ import NotificationsPanel from "@/components/NotificationsPanel";
 import LanguageToggle from "@/components/LanguageToggle";
 import { searchApi, type GlobalSearchResult } from "@/lib/api/search";
 import { cn } from "@/lib/utils";
+import { useNewVersionAvailable } from "@/hooks/use-new-version";
 
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -199,10 +200,17 @@ export default function AppShell() {
     if (p === "/invoicing" && pathname.startsWith("/invoicing/estimates/")) return false;
     return (pathname === p || pathname.startsWith(p + "/")) && !search;
   };
+  const newVersion = useNewVersionAvailable();
   const isGroupActive = (group: NavGroup) => group.items.some((item) => isActive(item.path));
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex">
+      {newVersion && (
+        <div className="fixed bottom-20 lg:bottom-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 rounded-full bg-[#0C2A3A] text-white text-sm shadow-lg pl-4 pr-1.5 py-1.5 print:hidden">
+          <span>{t("A new version of Clear Pool CRM is available.")}</span>
+          <button className="rounded-full bg-[#0891B2] hover:bg-[#0E7490] px-3 py-1 font-medium" onClick={() => window.location.reload()}>{t("Reload")}</button>
+        </div>
+      )}
       {/* Desktop Sidebar */}
       <aside
         className={cn(

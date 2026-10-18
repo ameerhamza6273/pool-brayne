@@ -36,6 +36,8 @@ import { tasksApi, type FreeformTask } from "@/lib/api/tasks";
 import type { Database } from "@/lib/database.types";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useSort, sortHeader } from "@/components/SortableTh";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -91,6 +93,7 @@ const stopIcon = (label: string, color: string, approx: boolean) =>
 
 export default function Jobs() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const { lists: configLists } = useConfigLists();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<"pipeline" | "dispatch" | "schedule" | "map">(
@@ -410,6 +413,7 @@ export default function Jobs() {
   };
 
   const handleDeleteRecurring = async (rj: RecurringJob) => {
+    if (!(await confirm({ title: "Delete this recurring series?", name: rj.customers?.name }))) return;
     await recurringJobsApi.remove(rj.id);
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
   };
@@ -460,6 +464,7 @@ export default function Jobs() {
     (effTech === "all" || (effTech === "unassigned" ? !rj.tech_id : rj.tech_id === effTech)) &&
     (typeFilter === "all" || rj.job_type === typeFilter);
   const recurringFiltered = recurringJobs.filter((rj) => matchesQuery(recSearch, [rj.customers?.name, rj.profiles?.name, repeatsOn(rj), rj.job_type, rj.frequency]));
+  const recurringSort = useSort(recurringFiltered, (rj, key) => key === "customer" ? rj.customers?.name : key === "tech" ? rj.profiles?.name : key === "active" ? (rj.active ? 1 : 0) : (rj as unknown as Record<string, string | number | null>)[key]);
   const typeColors = Object.fromEntries(configLists.job_types.map((jt) => [jt.label, jt.color ?? unassignedColor]));
 
   // Client SMS 2026-09-30 ("Maps still not working"): Map only ever plotted real `jobs` table rows,
@@ -1331,19 +1336,12 @@ export default function Jobs() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Job Type")}</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Technician")}</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Repeats")}</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Time")}</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Since")}</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Ends")}</th>
-                      <th className="text-center py-2.5 px-3 text-xs font-semibold text-[#64748B] uppercase">{t("Status")}</th>
+                      {(() => { const th = sortHeader(recurringSort, t); return (<>{th("customer", "Customer")}{th("job_type", "Job Type")}{th("tech", "Technician")}{th("frequency", "Repeats")}{th("start_time", "Time")}{th("start_date", "Since")}{th("end_date", "Ends")}{th("active", "Status", "center")}</>); })()}
                       <th className="py-2.5 px-3"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {recurringFiltered.map((rj) => (
+                    {recurringSort.sorted.map((rj) => (
                       <tr key={rj.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                         <td className="py-2.5 px-3 font-medium text-[#0F172A]">{rj.customers?.name ?? "—"}</td>
                         <td className="py-2.5 px-3 text-[#64748B]">{t(rj.job_type)}</td>

@@ -33,6 +33,7 @@ import AddressAutocomplete from "@/components/AddressAutocomplete";
 import { geocodeAddress, geocodeApproximate } from "@/lib/geocode";
 import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type ServiceHistory = Database["public"]["Tables"]["job_service_history"]["Row"];
@@ -68,6 +69,7 @@ export default function CustomerDetail() {
   // record itself, and links into pages a field login can't open (jobs, full invoice) are hidden.
   const readOnly = isFieldOnlyRole(role);
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [history, setHistory] = useState<ServiceHistory[]>([]);
   const [notes, setNotes] = useState<CustomerNote[]>([]);
@@ -297,6 +299,7 @@ export default function CustomerDetail() {
   };
 
   const handleDeleteReminder = async (reminderId: string) => {
+    if (!(await confirm({ title: "Delete this reminder?", name: reminders.find((r) => r.id === reminderId)?.label }))) return;
     await reportsApi.deleteReminder(reminderId);
     load();
   };
@@ -375,6 +378,7 @@ export default function CustomerDetail() {
   };
 
   const handleDeletePhoto = async (attachmentId: string, url: string) => {
+    if (!(await confirm({ title: "Delete this photo?" }))) return;
     if (!id) return;
     const marker = "/customer-attachments/";
     const idx = url.indexOf(marker);

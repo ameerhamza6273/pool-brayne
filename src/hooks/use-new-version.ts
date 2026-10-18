@@ -1,0 +1,32 @@
+import { useEffect, useState } from "react";
+
+// Client videos 2026-10-18: a phone tab still showed the old grey "Map view" box days after the
+// real map shipped, and Inventory columns "were spinnable yesterday, not now ... I signed out and
+// back in and it was spinnable" -- both were browser tabs left open on an older deploy (a
+// single-page app never reloads its code on its own). Every few minutes, and whenever the tab
+// comes back into view, compare the deployed index.html's main script with the one this tab
+// loaded; when they differ, AppShell offers a one-click reload.
+const SCRIPT_RE = /\/assets\/index-[^"']+\.js/;
+const CHECK_EVERY_MS = 5 * 60 * 1000;
+
+export function useNewVersionAvailable() {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+    const current = Array.from(document.scripts).map((s) => s.src.match(SCRIPT_RE)?.[0]).find(Boolean);
+    if (!current) return;
+    let stopped = false;
+    const check = async () => {
+      if (stopped || document.visibilityState !== "visible") return;
+      try {
+        const html = await (await fetch(`/?v=${Date.now()}`, { cache: "no-store" })).text();
+        const deployed = html.match(SCRIPT_RE)?.[0];
+        if (deployed && deployed !== current) setAvailable(true);
+      } catch { /* offline -- try again next time */ }
+    };
+    const timer = window.setInterval(check, CHECK_EVERY_MS);
+    document.addEventListener("visibilitychange", check);
+    return () => { stopped = true; window.clearInterval(timer); document.removeEventListener("visibilitychange", check); };
+  }, []);
+  return available;
+}

@@ -6,6 +6,7 @@ import { matchesQuery } from "@/lib/search";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { jobsApi, type JobForm } from "@/lib/api/jobs";
 import { useLanguage } from "@/lib/language-context";
+import { useSort, sortHeader } from "@/components/SortableTh";
 
 // Sidebar restructure (client PDF 2026-09-06, "Employee section > Forms") — every submitted
 // form (built-in or custom, via the Form Builder) across the whole tenant. Job-scoped and
@@ -25,6 +26,7 @@ export default function Forms() {
     });
   }, []);
 
+  const formSort = useSort(forms.filter((f) => matchesQuery(search, [f.template_name, f.type, f.customer_name, f.job_type, f.submitted_by_name])), (f, key) => (f as unknown as Record<string, string | number | null>)[key]);
   return (
     <div className="space-y-4">
       <div>
@@ -49,15 +51,11 @@ export default function Forms() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Form")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Job Type")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Submitted")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Submitted By")}</th>
+                  {(() => { const th = sortHeader(formSort, t); return (<>{th("template_name", "Form")}{th("customer_name", "Customer")}{th("job_type", "Job Type")}{th("submitted_at", "Submitted")}{th("submitted_by_name", "Submitted By")}</>); })()}
                 </tr>
               </thead>
               <tbody>
-                {forms.filter((f) => matchesQuery(search, [f.template_name, f.type, f.customer_name, f.job_type, f.submitted_by_name])).map((f) => (
+                {formSort.sorted.map((f) => (
                   <tr key={f.id} onClick={() => navigate(`/jobs/${f.job_id}`)} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC] cursor-pointer">
                     <td className="py-3 px-4 font-medium text-[#0F172A]">{f.template_name ?? f.type}</td>
                     <td className="py-3 px-4 text-[#64748B]">{f.customer_name ?? "—"}</td>
@@ -75,7 +73,7 @@ export default function Forms() {
 
       {!isLoading && viewMode === "cards" && (
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm divide-y divide-[#F1F5F9]">
-          {forms.filter((f) => matchesQuery(search, [f.template_name, f.type, f.customer_name, f.job_type, f.submitted_by_name])).map((f) => (
+          {formSort.sorted.map((f) => (
             <button
               key={f.id}
               onClick={() => navigate(`/jobs/${f.job_id}`)}

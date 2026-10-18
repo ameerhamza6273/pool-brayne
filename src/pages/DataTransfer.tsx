@@ -17,6 +17,7 @@ import { directoryApi, type DirectoryContact } from "@/lib/api/directory";
 import { formatPhoneInput } from "@/lib/phone";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // Client SMS 2026-09-21: "Under Data: need import and export fields with csv file -- Customer list,
 // Inventory list, Vendor list, Inventory Categories, Inventory Manufacture list, Library Category list,
@@ -155,7 +156,12 @@ const datasets: Dataset[] = [
 // edits the type *names*, never held files. Renamed + pointed at the real DocumentsCard above it.
 function DocumentListCard() {
   const { t } = useLanguage();
-  const { lists, addItem, updateItem, removeItem } = useConfigLists();
+  const confirm = useConfirm();
+  const { lists, addItem, updateItem, removeItem: removeItemNow } = useConfigLists();
+  const removeItem = async (key: Parameters<typeof removeItemNow>[0], id: string) => {
+    if (!(await confirm({ title: "Delete this item?", name: lists[key]?.find((i) => i.id === id)?.label }))) return;
+    return removeItemNow(key, id);
+  };
   const [newLabel, setNewLabel] = useState("");
   const [editing, setEditing] = useState<{ id: string; label: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -216,6 +222,7 @@ function DocumentListCard() {
 // bucket's "library/" prefix, see CLAUDE.md > Architecture) rather than building a second one.
 function DocumentsCard() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const { tenantId } = useAuth();
   const [docs, setDocs] = useState<LibraryDocument[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -252,6 +259,7 @@ function DocumentsCard() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!(await confirm({ title: "Delete this document?", name: docs.find((d) => d.id === id)?.name }))) return;
     await libraryApi.remove(id);
     setDocs((prev) => prev.filter((d) => d.id !== id));
   };
@@ -306,6 +314,7 @@ function DocumentsCard() {
 // login, see auth-context.tsx + AppShell.tsx).
 function PhoneContactsCard() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   const [contacts, setContacts] = useState<DirectoryContact[]>([]);
   const [form, setForm] = useState({ name: "", description: "", phone: "", email: "" });
   const [error, setError] = useState<string | null>(null);
@@ -325,6 +334,7 @@ function PhoneContactsCard() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!(await confirm({ title: "Delete this contact?", name: contacts.find((c) => c.id === id)?.name }))) return;
     await directoryApi.remove(id);
     setContacts((prev) => prev.filter((c) => c.id !== id));
   };

@@ -43,6 +43,7 @@ import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type JobRow = Database["public"]["Tables"]["jobs"]["Row"] & {
   customers: { name: string; phone: string | null; email: string | null } | null;
@@ -177,6 +178,7 @@ export default function JobDetail() {
   const [noteSavedAt, setNoteSavedAt] = useState<number | null>(null);
   const [partsUsed, setPartsUsed] = useState<JobPartUsed[]>([]);
   const { lang, setLang, t } = useLanguage();
+  const confirm = useConfirm();
   const taxRate = useTaxRate();
   const { states: trStates, translateDebounced } = useTranslator();
 
@@ -243,6 +245,7 @@ export default function JobDetail() {
   };
 
   const removeKnownIssue = async (index: number) => {
+    if (!(await confirm({ title: "Remove this known issue?" }))) return;
     if (!job?.customer_id) return;
     const next = knownIssues.filter((_, i) => i !== index);
     setKnownIssues(next);
@@ -274,6 +277,7 @@ export default function JobDetail() {
   };
 
   const removeEquipmentItem = async (index: number) => {
+    if (!(await confirm({ title: "Remove this equipment?" }))) return;
     if (!job?.customer_id) return;
     const next = equipmentItems.filter((_, i) => i !== index);
     setEquipmentItems(next);
@@ -328,6 +332,7 @@ export default function JobDetail() {
   };
 
   const handleRemoveCrew = async (profileId: string) => {
+    if (!(await confirm({ title: "Remove this crew member from the job?" }))) return;
     if (!id) return;
     await jobsApi.removeCrewMember(id, profileId);
     jobsApi.getCrew(id).then(setCrew);

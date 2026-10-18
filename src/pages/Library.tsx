@@ -12,6 +12,8 @@ import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { useLanguage } from "@/lib/language-context";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { matchesQuery } from "@/lib/search";
+import { useSort, sortHeader } from "@/components/SortableTh";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 // Sidebar restructure (client PDF 2026-09-06, "Employee section > Library") — a generic
 // tenant document repository (SOPs, price sheets, training material), reusing the same
@@ -23,6 +25,7 @@ import { matchesQuery } from "@/lib/search";
 // not just at upload time.
 export default function Library() {
   const { t } = useLanguage();
+  const confirm = useConfirm();
   // Client video 2026-10-15: technicians granted "Library" (Settings > Team) browse/open only.
   const readOnly = isFieldOnlyRole(useAuth().role);
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
@@ -73,6 +76,7 @@ export default function Library() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!(await confirm({ title: "Delete this document?", name: documents.find((d) => d.id === id)?.name }))) return;
     await libraryApi.remove(id);
     setDocuments((prev) => prev.filter((d) => d.id !== id));
   };
@@ -104,6 +108,7 @@ export default function Library() {
     return matchesSearch && matchesCategory && matchesManufacturer;
   });
 
+  const docSort = useSort(filtered, (d, key) => key === "name" ? d.name : (d as unknown as Record<string, string | number | null>)[key]);
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -166,16 +171,12 @@ export default function Library() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Document")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Category")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Manufacturer")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Uploaded By")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Date")}</th>
+                  {(() => { const th = sortHeader(docSort, t); return (<>{th("name", "Document")}{th("category", "Category")}{th("manufacturer", "Manufacturer")}{th("uploaded_by_name", "Uploaded By")}{th("created_at", "Date")}</>); })()}
                   <th className="w-20 py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((d) => (
+                {docSort.sorted.map((d) => (
                   <tr key={d.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                     <td className="py-3 px-4">
                       <a href={d.url} target="_blank" rel="noreferrer" className="font-medium text-[#0891B2] hover:underline break-words flex items-center gap-2"><FileText className="w-4 h-4 shrink-0" /> {d.name}</a>

@@ -14,6 +14,7 @@ import { useLanguage } from "@/lib/language-context";
 import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
+import { useSort, sortHeader } from "@/components/SortableTh";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 
@@ -95,7 +96,8 @@ export default function Customers() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const customerSort = useSort(filtered, (c, key) => key === "type" ? c.tags.join(" ") : (c as unknown as Record<string, string | number | null>)[key]);
+  const paginated = customerSort.sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   useEffect(() => {
     setPage(1);
   }, [search, tagFilter, viewMode]);
@@ -267,12 +269,7 @@ export default function Customers() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#E2E8F0] bg-[#F8FAFC]">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Customer")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Phone")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Type")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Address")}</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Last Service")}</th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("LTV")}</th>
+                  {(() => { const th = sortHeader(customerSort, t); return (<>{th("name", "Customer")}{th("phone", "Phone")}{th("type", "Type")}{th("address", "Address")}{th("last_service", "Last Service")}{th("lifetime_value", "LTV", "right")}</>); })()}
                   <th className="text-center py-3 px-4 text-xs font-semibold text-[#64748B] uppercase">{t("Actions")}</th>
                 </tr>
               </thead>
