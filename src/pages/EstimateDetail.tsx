@@ -301,7 +301,7 @@ export default function EstimateDetail() {
           </div>
         </div>
         {estimate.status !== "Converted" && !editing ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" className="h-9 border-[#E2E8F0] gap-2" onClick={handleStartEdit}>
               <Pencil className="w-4 h-4" /> {t("Edit")}
             </Button>

@@ -258,17 +258,17 @@ export default function InvoiceDetail() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3 print:hidden">
+      <div className="flex flex-wrap items-center gap-3 print:hidden">
         <button onClick={() => navigate("/invoicing")} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{invoice.number}</h1>
             <Badge className={`${statusColors[invoice.status]} text-[10px] px-1.5 py-0`}>{t(invoice.status)}</Badge>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {invoice.status !== "Paid" && invoice.status !== "Written Off" && (
             <Dialog open={writeOffOpen} onOpenChange={setWriteOffOpen}>
               <DialogTrigger asChild>

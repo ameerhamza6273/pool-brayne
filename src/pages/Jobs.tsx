@@ -1434,62 +1434,64 @@ export default function Jobs() {
             </DialogContent>
           </Dialog>
 
-          <Dialog open={!!editRecurring} onOpenChange={(open) => !open && setEditRecurring(null)}>
-            <DialogContent className="max-h-[85vh] overflow-y-auto">
-              <DialogHeader><DialogTitle>{t("Edit Recurring Job")} — {editRecurring?.customers?.name}</DialogTitle></DialogHeader>
-              <div className="space-y-4 pt-2">
-                <div>
-                  <Label>{t("Technician")}</Label>
-                  <Select value={editRecurringDraft.techId} onValueChange={(v) => setEditRecurringDraft((p) => ({ ...p, techId: v }))}>
-                    <SelectTrigger className="mt-1"><SelectValue placeholder={t("Unassigned")} /></SelectTrigger>
-                    <SelectContent>{technicians.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>{t("Amount")}</Label>
-                  <Input type="number" className="mt-1" value={editRecurringDraft.amount} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, amount: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>{t("End Date")}</Label>
-                  <Input type="date" className="mt-1" value={editRecurringDraft.endDate} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, endDate: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>{t("Standard start time")}</Label>
-                  <Input type="time" className="mt-1" value={editRecurringDraft.startTime} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, startTime: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>{t("Tech-Only Notes (carries to every occurrence)")}</Label>
-                  <Input className="mt-1" value={editRecurringDraft.techNotes} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, techNotes: e.target.value }))} />
-                </div>
-                <div>
-                  <Label>{t("Notes for this job only")}</Label>
-                  <Input className="mt-1" value={editRecurringDraft.nextJobNotes} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, nextJobNotes: e.target.value }))} />
-                </div>
-                {formTemplates.length > 0 && (
-                  <div>
-                    <Label>{t("Forms for all jobs")}</Label>
-                    <div className="mt-1 border border-[#E2E8F0] rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto">
-                      {formTemplates.map((tpl) => (
-                        <label key={tpl.id} className="flex items-center gap-2 text-sm py-1 px-1.5 rounded hover:bg-[#F8FAFC] cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={editRecurringDraft.selectedFormIds.includes(tpl.id)}
-                            onChange={() => setEditRecurringDraft((p) => ({ ...p, selectedFormIds: p.selectedFormIds.includes(tpl.id) ? p.selectedFormIds.filter((x) => x !== tpl.id) : [...p.selectedFormIds, tpl.id] }))}
-                          />
-                          <span className="flex-1">{t(tpl.name)}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveRecurring}>{t("Save Changes")}</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
         </div>
       )}
 
       {/* Map View — jobs on a map, scrollable by day; also shows each tech's daily route */}
+      {/* Edit Recurring lives outside the tab panels so the Map tab (projected stops) can open it too. */}
+      <Dialog open={!!editRecurring} onOpenChange={(open) => !open && setEditRecurring(null)}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{t("Edit Recurring Job")} — {editRecurring?.customers?.name}</DialogTitle></DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label>{t("Technician")}</Label>
+              <Select value={editRecurringDraft.techId} onValueChange={(v) => setEditRecurringDraft((p) => ({ ...p, techId: v }))}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder={t("Unassigned")} /></SelectTrigger>
+                <SelectContent>{technicians.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>{t("Amount")}</Label>
+              <Input type="number" className="mt-1" value={editRecurringDraft.amount} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, amount: e.target.value }))} />
+            </div>
+            <div>
+              <Label>{t("End Date")}</Label>
+              <Input type="date" className="mt-1" value={editRecurringDraft.endDate} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, endDate: e.target.value }))} />
+            </div>
+            <div>
+              <Label>{t("Standard start time")}</Label>
+              <Input type="time" className="mt-1" value={editRecurringDraft.startTime} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, startTime: e.target.value }))} />
+            </div>
+            <div>
+              <Label>{t("Tech-Only Notes (carries to every occurrence)")}</Label>
+              <Input className="mt-1" value={editRecurringDraft.techNotes} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, techNotes: e.target.value }))} />
+            </div>
+            <div>
+              <Label>{t("Notes for this job only")}</Label>
+              <Input className="mt-1" value={editRecurringDraft.nextJobNotes} onChange={(e) => setEditRecurringDraft((p) => ({ ...p, nextJobNotes: e.target.value }))} />
+            </div>
+            {formTemplates.length > 0 && (
+              <div>
+                <Label>{t("Forms for all jobs")}</Label>
+                <div className="mt-1 border border-[#E2E8F0] rounded-lg p-2 space-y-1 max-h-32 overflow-y-auto">
+                  {formTemplates.map((tpl) => (
+                    <label key={tpl.id} className="flex items-center gap-2 text-sm py-1 px-1.5 rounded hover:bg-[#F8FAFC] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editRecurringDraft.selectedFormIds.includes(tpl.id)}
+                        onChange={() => setEditRecurringDraft((p) => ({ ...p, selectedFormIds: p.selectedFormIds.includes(tpl.id) ? p.selectedFormIds.filter((x) => x !== tpl.id) : [...p.selectedFormIds, tpl.id] }))}
+                      />
+                      <span className="flex-1">{t(tpl.name)}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Button className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white" onClick={handleSaveRecurring}>{t("Save Changes")}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {activeTab === "map" && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
@@ -1511,7 +1513,7 @@ export default function Jobs() {
                 <Badge className="bg-[#F1F5F9] text-[#64748B] text-[10px]">{locatedCount} / {mapJobs.length} {t("on map")}</Badge>
               </div>
             </div>
-            <div ref={mapContainerRef} className="w-full h-[calc(100vh-340px)] min-h-[480px] rounded-lg overflow-hidden" />
+            <div ref={mapContainerRef} className="relative z-0 w-full h-[calc(100vh-340px)] min-h-[480px] rounded-lg overflow-hidden" />
           </div>
 
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4 space-y-4 lg:max-h-[calc(100vh-260px)] lg:min-h-[560px] overflow-y-auto">

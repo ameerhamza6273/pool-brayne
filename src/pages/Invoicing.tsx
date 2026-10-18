@@ -397,7 +397,14 @@ export default function Invoicing() {
 
   const customerOptions = customers.map(customerOption);
   const customersWithOpenInvoices = customers.filter((c) => invoices.some((i) => i.customer_id === c.id && i.status !== "Paid"));
-  const customersWithOpenInvoicesOptions = customersWithOpenInvoices.map((c) => ({ value: c.id, label: c.name }));
+  // QA 2026-10-18: arriving here from "Combine Completed Jobs" with a customer who has no open
+  // invoices left the picker blank ("Select customer") -- keep that customer's name showing.
+  const bulkPicked = bulkInvoiceCustomerId && !customersWithOpenInvoices.some((c) => c.id === bulkInvoiceCustomerId)
+    ? customers.find((c) => c.id === bulkInvoiceCustomerId) : undefined;
+  const customersWithOpenInvoicesOptions = [
+    ...(bulkPicked ? [{ value: bulkPicked.id, label: bulkPicked.name }] : []),
+    ...customersWithOpenInvoices.map((c) => ({ value: c.id, label: c.name })),
+  ];
   const openInvoicesForCustomer = invoices.filter((i) => i.customer_id === bulkInvoiceCustomerId && i.status !== "Paid");
   const toggleBulkInvoice = (id: string) => {
     setBulkInvoiceSelected((prev) => {
@@ -504,7 +511,7 @@ export default function Invoicing() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-[#0F172A]">{t("Invoicing")}</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Client PDF 2026-09-05: top-right button order "New Estimate - New Task - New
               Invoice" -- achieved with CSS order rather than physically relocating each dialog's
               JSX (New Task's full dialog lives in the Tasks tab below; this button just switches

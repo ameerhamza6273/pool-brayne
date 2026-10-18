@@ -790,7 +790,7 @@ export default function CustomerDetail() {
         </div>
         <div className="lg:col-span-2">
           <Tabs defaultValue={initialTab} className="w-full">
-            <TabsList className="bg-white border border-[#E2E8F0] w-full justify-start h-10 p-1 rounded-lg mb-4">
+            <TabsList className="bg-white border border-[#E2E8F0] w-full justify-start h-10 p-1 rounded-lg mb-4 flex-wrap h-auto">
               <TabsTrigger value="history" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Service History")}</TabsTrigger>
               <TabsTrigger value="notes" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Notes")}</TabsTrigger>
               <TabsTrigger value="invoices" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4">{t("Invoices")}</TabsTrigger>

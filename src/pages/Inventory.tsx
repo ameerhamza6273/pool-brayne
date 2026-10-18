@@ -866,7 +866,7 @@ export default function Inventory() {
 
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg">
+        <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="catalog" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Package className="w-4 h-4" /> {t("Catalog")}
           </TabsTrigger>
