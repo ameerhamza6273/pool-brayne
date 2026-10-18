@@ -21,6 +21,7 @@ import { customerOption } from "@/lib/customer-options";
 import type { Database } from "@/lib/database.types";
 import { profilesApi } from "@/lib/api/profiles";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useConfigLists } from "@/hooks/use-config-lists";
 
 type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
 type LineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
@@ -58,6 +59,11 @@ export default function EstimateDetail() {
   const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [converting, setConverting] = useState(false);
+  // Convert-to-Job dialog (client video 2026-10-18) -- declared up here, before the early return.
+  const [convertJobOpen, setConvertJobOpen] = useState(false);
+  const [convertJob, setConvertJob] = useState({ date: "", time: "", techId: "", jobType: "" });
+  const configLists = useConfigLists();
+  const [convertTechs, setConvertTechs] = useState<{ id: string; name: string }[]>([]);
   const [documents, setDocuments] = useState<EstimateAttachment[]>([]);
   const [docsUploading, setDocsUploading] = useState(false);
   const [photos, setPhotos] = useState<EstimateAttachment[]>([]);
@@ -212,11 +218,8 @@ export default function EstimateDetail() {
   // Client question 2026-09-03: "How to convert an estimate to a Job".
   // Client video 2026-10-18: a converted job had no date and nowhere obvious to set one -- ask
   // for date / time / tech right here (all optional; the Job page can still schedule it later).
-  const [convertJobOpen, setConvertJobOpen] = useState(false);
-  const [convertJob, setConvertJob] = useState({ date: "", time: "", techId: "" });
-  const [convertTechs, setConvertTechs] = useState<{ id: string; name: string }[]>([]);
   const openConvertToJob = () => {
-    setConvertJob({ date: "", time: "", techId: "" });
+    setConvertJob({ date: "", time: "", techId: "", jobType: configLists.lists.job_types[0]?.label ?? "" });
     setConvertJobOpen(true);
     profilesApi.list().then((rows) => setConvertTechs((rows ?? []).map((p) => ({ id: p.id, name: p.name })))).catch(() => {});
   };
@@ -224,7 +227,7 @@ export default function EstimateDetail() {
     if (!id) return;
     setConverting(true);
     const { jobId } = await invoicingApi.convertEstimateToJob(id, {
-      date: convertJob.date || null, time: convertJob.time || null, techId: convertJob.techId || null,
+      date: convertJob.date || null, time: convertJob.time || null, techId: convertJob.techId || null, jobType: convertJob.jobType || null,
     });
     navigate(`/jobs/${jobId}`, { state: { openSchedule: !convertJob.date } });
   };
@@ -573,6 +576,12 @@ export default function EstimateDetail() {
                 <label className="text-sm font-medium text-[#0F172A]">{t("Time (optional)")}</label>
                 <Input type="time" className="mt-1" value={convertJob.time} onChange={(e) => setConvertJob((p) => ({ ...p, time: e.target.value }))} />
               </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-[#0F172A]">{t("Job Type")}</label>
+              <select className="mt-1 w-full h-10 rounded-md border border-[#E2E8F0] bg-white px-3 text-sm" value={convertJob.jobType} onChange={(e) => setConvertJob((p) => ({ ...p, jobType: e.target.value }))}>
+                {configLists.lists.job_types.map((jt) => <option key={jt.id} value={jt.label}>{t(jt.label)}</option>)}
+              </select>
             </div>
             <div>
               <label className="text-sm font-medium text-[#0F172A]">{t("Technician")}</label>

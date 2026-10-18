@@ -50,6 +50,7 @@ export default function Field() {
   const [myJobs, setMyJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const jobDetailRef = useRef<HTMLDivElement>(null);
   const [jobStatus, setJobStatus] = useState<"dispatched" | "en_route" | "arrived" | "completed">("dispatched");
   // label: "before" / "after" / "internal" for photos taken in this view; anything else (no label)
   // is a photo that was already on the job before the tech got there.
@@ -476,7 +477,7 @@ export default function Field() {
           )}
           <button
             key={job.id}
-            onClick={() => selectJob(job)}
+            onClick={() => { selectJob(job); window.setTimeout(() => jobDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); }}
             className={`w-full text-left p-3 rounded-xl border transition-all ${
               activeJobId === job.id ? "border-[#0891B2] bg-[#0891B2]/5" : "border-[#E2E8F0] bg-white hover:bg-[#F8FAFC]"
             }`}
@@ -503,7 +504,7 @@ export default function Field() {
 
       {/* Active Job Detail */}
       {currentJob && (
-        <Card className="border-[#E2E8F0] shadow-sm">
+        <Card ref={jobDetailRef} className="border-[#E2E8F0] shadow-sm scroll-mt-20">
           <CardContent className="p-4 space-y-4">
             {/* Status Bar */}
             <div className="flex items-center gap-2">

@@ -891,4 +891,5 @@ export const esDictionary: Record<string, string> = {
   "Cloning...": "Clonando...",
   "Pick when and who — or leave blank and schedule it later from the job page.": "Elija cuándo y quién, o déjelo en blanco y prográmelo después desde la página del trabajo.",
   "Search technicians...": "Buscar técnicos...",
+  "Change job type": "Cambiar tipo de trabajo",
 };

@@ -706,7 +706,18 @@ export default function JobDetail() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.number ?? job.id.slice(0, 8).toUpperCase()}</h1>
-            <Badge className="text-[10px] px-1.5 py-0" style={typeBadgeStyle(job.type, configLists.job_types)}>{t(job.type)}</Badge>
+            {/* Client video 2026-10-18 (phone): a job converted from an estimate "is still locked in
+                as an estimate" -- its job type was literally saved as "Estimate". Editable here. */}
+            <Select value={job.type} onValueChange={async (v) => { await jobsApi.update(job.id, { type: v }); loadJob(); }}>
+              <SelectTrigger className="h-6 w-auto gap-1 px-2 text-[10px] font-semibold border-0 rounded-full" style={typeBadgeStyle(job.type, configLists.job_types)} title={t("Change job type")}>
+                <SelectValue>{t(job.type)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {[...new Set([...configLists.job_types.map((jt) => jt.label), job.type])].map((label) => (
+                  <SelectItem key={label} value={label}>{t(label)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Badge className={`${statusBadge(job.status, configLists.job_statuses)} text-[10px] px-1.5 py-0`}>{t(jobStatusDisplayLabel(job.status))}</Badge>
           </div>
         </div>

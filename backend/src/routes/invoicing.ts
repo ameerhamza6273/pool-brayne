@@ -657,9 +657,9 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   // Client question 2026-09-03: "How to convert an estimate to a Job" — mirrors
   // convert-to-invoice above, but creates a real dispatchable job (with its own line items)
   // instead of a bill.
-  app.post<{ Params: { id: string }; Body: { date?: string | null; time?: string | null; techId?: string | null } }>("/estimates/:id/convert-to-job", async (req) => {
+  app.post<{ Params: { id: string }; Body: { date?: string | null; time?: string | null; techId?: string | null; jobType?: string | null } }>("/estimates/:id/convert-to-job", async (req) => {
     const { id } = req.params;
-    const { date = null, time = null, techId = null } = req.body ?? {};
+    const { date = null, time = null, techId = null, jobType = null } = req.body ?? {};
     return withTenantContext(req.userId, async (tx) => {
       const [estimate] = await tx`select * from estimates where id = ${id} limit 1`;
       if (!estimate) throw new Error("Estimate not found");
@@ -683,7 +683,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const number = await nextDocNumber(tx, tenant.id, "JOB");
       const [job] = await tx`
         insert into jobs (tenant_id, customer_id, type, status, stage, description, address, amount, scheduled_date, scheduled_time, tech_id, number)
-        values (${tenant.id}, ${estimate.customer_id}, 'Estimate', 'Booked', 'booked', ${estimate.job_description}, ${customer?.address ?? null}, ${estimate.amount}, ${date || null}, ${time || null}, ${techId || null}, ${number})
+        values (${tenant.id}, ${estimate.customer_id}, ${jobType?.trim() || "Repair"}, 'Booked', 'booked', ${estimate.job_description}, ${customer?.address ?? null}, ${estimate.amount}, ${date || null}, ${time || null}, ${techId || null}, ${number})
         returning *
       `;
       for (const [sortIdx, li] of estimateLineItems.entries()) {
