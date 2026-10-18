@@ -657,8 +657,9 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   // Client question 2026-09-03: "How to convert an estimate to a Job" — mirrors
   // convert-to-invoice above, but creates a real dispatchable job (with its own line items)
   // instead of a bill.
-  app.post<{ Params: { id: string } }>("/estimates/:id/convert-to-job", async (req) => {
+  app.post<{ Params: { id: string }; Body: { date?: string | null; time?: string | null; techId?: string | null } }>("/estimates/:id/convert-to-job", async (req) => {
     const { id } = req.params;
+    const { date = null, time = null, techId = null } = req.body ?? {};
     return withTenantContext(req.userId, async (tx) => {
       const [estimate] = await tx`select * from estimates where id = ${id} limit 1`;
       if (!estimate) throw new Error("Estimate not found");
@@ -677,9 +678,12 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const [customer] = await tx`select address from customers where id = ${estimate.customer_id} limit 1`;
 
       const [tenant] = await tx`select current_tenant_id() as id`;
+      // Client video 2026-10-18: date / time / tech can be picked while converting (all optional),
+      // and the job gets a real JOB-#### number like every other job (it used to show its uuid).
+      const number = await nextDocNumber(tx, tenant.id, "JOB");
       const [job] = await tx`
-        insert into jobs (tenant_id, customer_id, type, status, stage, description, address, amount)
-        values (${tenant.id}, ${estimate.customer_id}, 'Estimate', 'Booked', 'booked', ${estimate.job_description}, ${customer?.address ?? null}, ${estimate.amount})
+        insert into jobs (tenant_id, customer_id, type, status, stage, description, address, amount, scheduled_date, scheduled_time, tech_id, number)
+        values (${tenant.id}, ${estimate.customer_id}, 'Estimate', 'Booked', 'booked', ${estimate.job_description}, ${customer?.address ?? null}, ${estimate.amount}, ${date || null}, ${time || null}, ${techId || null}, ${number})
         returning *
       `;
       for (const [sortIdx, li] of estimateLineItems.entries()) {

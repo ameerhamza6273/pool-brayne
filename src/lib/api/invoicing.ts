@@ -143,7 +143,8 @@ export const invoicingApi = {
 
   convertEstimateToInvoice: (id: string) => api.post<{ invoiceId: string }>(`/api/invoices/estimates/${id}/convert-to-invoice`, {}),
 
-  convertEstimateToJob: (id: string) => api.post<{ jobId: string }>(`/api/invoices/estimates/${id}/convert-to-job`, {}),
+  convertEstimateToJob: (id: string, schedule?: { date: string | null; time: string | null; techId: string | null }) =>
+    api.post<{ jobId: string }>(`/api/invoices/estimates/${id}/convert-to-job`, schedule ?? {}),
 
   getEstimateAttachments: (id: string) => api.get<EstimateAttachment[]>(`/api/invoices/estimates/${id}/attachments`),
 

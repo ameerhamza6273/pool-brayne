@@ -881,4 +881,14 @@ export const esDictionary: Record<string, string> = {
   "Delete this request?": "¿Eliminar esta solicitud?",
   "Enter the check number": "Ingrese el número de cheque",
   "Total:": "Total:",
+  // Job scheduling / convert-to-job (2026-10-18)
+  "Schedule": "Programar",
+  "Schedule Job": "Programar trabajo",
+  "Save Schedule": "Guardar programación",
+  "Not scheduled yet": "Aún no programado",
+  "Change date / time": "Cambiar fecha / hora",
+  "Time (optional)": "Hora (opcional)",
+  "Cloning...": "Clonando...",
+  "Pick when and who — or leave blank and schedule it later from the job page.": "Elija cuándo y quién, o déjelo en blanco y prográmelo después desde la página del trabajo.",
+  "Search technicians...": "Buscar técnicos...",
 };

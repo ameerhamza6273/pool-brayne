@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import {
   ArrowLeft, MapPin, Clock, User, Wrench, FileText, Camera,
   Plus, CheckCircle2, Circle, Send, Signature, Truck, DollarSign,
@@ -152,7 +152,18 @@ export default function JobDetail() {
   const [activeTab, setActiveTab] = useState("trip_details");
   const [noteText, setNoteText] = useState("");
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  const [rescheduleAt, setRescheduleAt] = useState("");
+  // Client video 2026-10-18: "it's not allowing me to select a date ... I can only reschedule, I
+  // cannot schedule" -- a job converted from an estimate has no date, and the only way in was
+  // "Reschedule" in the ⋯ menu (one datetime box). Now the Scheduled tile itself opens this panel,
+  // titled "Schedule Job" when there's no date yet, with separate date + (optional) time.
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
+  const [cloning, setCloning] = useState(false);
+  const location = useLocation();
+  const wantsSchedule = !!(location.state as { openSchedule?: boolean } | null)?.openSchedule;
+  useEffect(() => {
+    if (wantsSchedule && job && !job.scheduled_date) { setRescheduleDate(""); setRescheduleTime(""); setRescheduleOpen(true); }
+  }, [wantsSchedule, job?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [rescheduleScope, setRescheduleScope] = useState<"temporary" | "permanent">("temporary");
   // Client meeting 2026-09-14: "write off a job... customer refuses to pay" -- modeled on the
@@ -553,9 +564,39 @@ export default function JobDetail() {
     }
   };
 
+  const openSchedule = () => {
+    setRescheduleDate(job?.scheduled_date ?? "");
+    setRescheduleTime(job?.scheduled_time ? job.scheduled_time.slice(0, 5) : "");
+    setRescheduleOpen(true);
+  };
+
+  // Clone Job used to just navigate to /jobs -- it never copied anything. Now a real copy (same
+  // customer, type, tech, description, address, line items), no date, opened with Schedule ready.
+  const handleCloneJob = async () => {
+    if (!job || cloning) return;
+    setCloning(true);
+    try {
+      const copy = await jobsApi.create({
+        customerId: job.customer_id,
+        jobType: job.type,
+        techId: job.tech_id ?? null,
+        date: null,
+        time: null,
+        description: job.description ?? null,
+        address: job.address ?? null,
+        amount: Number(job.amount ?? 0),
+        lineItems: jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type, quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes })),
+      });
+      navigate(`/jobs/${copy.id}`, { state: { openSchedule: true } });
+    } finally {
+      setCloning(false);
+    }
+  };
+
   const handleReschedule = async () => {
-    if (!job || !rescheduleAt) return;
-    const [date, time] = rescheduleAt.split("T");
+    if (!job || !rescheduleDate) return;
+    const date = rescheduleDate;
+    const time = rescheduleTime || null;
     await jobsApi.update(job.id, { scheduled_date: date, scheduled_time: time });
     // Client PDF 2026-09-05: a "permanent" move also updates the recurring template so future
     // occurrences generate on the new day; "temporary" only touches this one job (above).
@@ -564,7 +605,8 @@ export default function JobDetail() {
       await recurringJobsApi.update(job.recurring_job_id, { dayOfWeek: newDay, dayOfMonth: new Date(`${date}T00:00:00`).getDate() });
     }
     setRescheduleOpen(false);
-    setRescheduleAt("");
+    setRescheduleDate("");
+    setRescheduleTime("");
     setRescheduleReason("");
     setRescheduleScope("temporary");
     loadJob();
@@ -698,11 +740,11 @@ export default function JobDetail() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={() => setRescheduleOpen(true)}>
-                <RotateCw className="w-4 h-4 mr-2" /> {t("Reschedule")}
+              <DropdownMenuItem onClick={openSchedule}>
+                <RotateCw className="w-4 h-4 mr-2" /> {job.scheduled_date ? t("Reschedule") : t("Schedule")}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/jobs")}>
-                <Copy className="w-4 h-4 mr-2" /> {t("Clone Job")}
+              <DropdownMenuItem onClick={handleCloneJob} disabled={cloning}>
+                <Copy className="w-4 h-4 mr-2" /> {cloning ? t("Cloning...") : t("Clone Job")}
               </DropdownMenuItem>
               {job.recurring_job_id ? (
                 <DropdownMenuItem onClick={() => setOneTimeOpen(true)}>
@@ -847,10 +889,10 @@ export default function JobDetail() {
           <CardContent className="p-4 space-y-3">
             <div className="flex items-center gap-2">
               <RotateCw className="w-4 h-4 text-[#F59E0B]" />
-              <h3 className="font-semibold text-[#0F172A] text-sm">{t("Reschedule Job")}</h3>
+              <h3 className="font-semibold text-[#0F172A] text-sm">{job.scheduled_date ? t("Reschedule Job") : t("Schedule Job")}</h3>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {job.scheduled_date && <div>
                 <Label className="text-xs">{t("Reschedule Type")}</Label>
                 <Select value={rescheduleReason} onValueChange={setRescheduleReason}>
                   <SelectTrigger className="mt-1 h-9"><SelectValue placeholder={t("Select reason")} /></SelectTrigger>
@@ -860,10 +902,14 @@ export default function JobDetail() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>}
+              <div>
+                <Label className="text-xs">{t("Date")}</Label>
+                <Input type="date" className="mt-1 h-9" value={rescheduleDate} onChange={(e) => setRescheduleDate(e.target.value)} />
               </div>
               <div>
-                <Label className="text-xs">{t("New Date & Time")}</Label>
-                <Input type="datetime-local" className="mt-1 h-9" value={rescheduleAt} onChange={(e) => setRescheduleAt(e.target.value)} />
+                <Label className="text-xs">{t("Time (optional)")}</Label>
+                <Input type="time" className="mt-1 h-9" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} />
               </div>
             </div>
             <Textarea placeholder={t("Reschedule notes...")} className="text-sm" rows={2} />
@@ -890,7 +936,7 @@ export default function JobDetail() {
               </div>
             )}
             <div className="flex gap-2">
-              <Button size="sm" className="bg-[#F59E0B] hover:bg-[#D97706] text-white" disabled={!rescheduleAt} onClick={handleReschedule}>{t("Confirm Reschedule")}</Button>
+              <Button size="sm" className="bg-[#F59E0B] hover:bg-[#D97706] text-white" disabled={!rescheduleDate} onClick={handleReschedule}>{job.scheduled_date ? t("Confirm Reschedule") : t("Save Schedule")}</Button>
               <Button size="sm" variant="outline" onClick={() => setRescheduleOpen(false)}>{t("Cancel")}</Button>
             </div>
           </CardContent>
@@ -922,9 +968,19 @@ export default function JobDetail() {
                   <div className="w-10 h-10 rounded-lg bg-[#0891B2]/10 flex items-center justify-center">
                     <Clock className="w-5 h-5 text-[#0891B2]" />
                   </div>
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-xs text-[#64748B]">{t("Scheduled")}</p>
-                    <p className="font-medium text-[#0F172A]">{job.scheduled_date} at {job.scheduled_time}</p>
+                    <button type="button" onClick={openSchedule} className="font-medium text-left hover:text-[#0891B2] inline-flex items-center gap-1.5" title={t("Change date / time")}>
+                      {job.scheduled_date ? (
+                        <span className="text-[#0F172A]">
+                          {new Date(`${job.scheduled_date}T00:00:00`).toLocaleDateString(lang === "es" ? "es-US" : "en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}
+                          {job.scheduled_time ? ` · ${new Date(`2000-01-01T${job.scheduled_time}`).toLocaleTimeString(lang === "es" ? "es-US" : "en-US", { hour: "numeric", minute: "2-digit" })}` : ""}
+                        </span>
+                      ) : (
+                        <span className="text-[#B45309]">{t("Not scheduled yet")} · <span className="text-[#0891B2] underline">{t("Schedule")}</span></span>
+                      )}
+                      <Pencil className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
+                    </button>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
