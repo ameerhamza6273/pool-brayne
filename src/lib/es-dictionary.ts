@@ -843,4 +843,11 @@ export const esDictionary: Record<string, string> = {
   "Tag new uploads:": "Etiquetar nuevas subidas:",
   "No category": "Sin categoría",
   "No manufacturer": "Sin fabricante",
+  // Item Movement "Totals by Item" (2026-10-18)
+  "Totals by Item": "Totales por artículo",
+  "Every Transaction": "Cada transacción",
+  "Ext Price": "Precio ext.",
+  "Ext Cost": "Costo ext.",
+  "Written Off": "Dado de baja",
+  "Receipt / Job #": "Recibo / Trabajo #",
 };

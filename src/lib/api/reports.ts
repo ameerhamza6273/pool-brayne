@@ -1,6 +1,7 @@
 import { api } from "@/lib/apiClient";
 
 export type ItemMovementRow = {
+  item_id: string; item_number: string | null; ref_number: string | null; customer_name: string | null;
   item: string; description: string | null; sku: string; category: string; location: string | null;
   movement_date: string; ref_id: string | null; ref_type: "pos" | "job" | "writeoff";
   cost: number; price: number | null; qty: number; total_cost: number; total_price: number | null;

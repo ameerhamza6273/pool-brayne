@@ -47,9 +47,9 @@ export default async function reportsRoutes(app: FastifyInstance) {
 
       // POS: one row per tender (split payments), falling back to the order itself for older
       // orders saved before per-tender rows existed.
-      type PosPay = { order_id: string; payment_id: string | null; amount: number; paid_date: string; method: string | null; txn: string | null; check_number: string | null; card_brand: string | null; card_last4: string | null; subtotal: number; tax: number; total: number; customer_name: string | null; phone: string | null };
+      type PosPay = { order_id: string; pos_number: string | null; payment_id: string | null; amount: number; paid_date: string; method: string | null; txn: string | null; check_number: string | null; card_brand: string | null; card_last4: string | null; subtotal: number; tax: number; total: number; customer_name: string | null; phone: string | null };
       const posPayments = await tx`
-        select o.id as order_id, pp.id as payment_id, coalesce(pp.amount, o.total) as amount,
+        select o.id as order_id, o.number as pos_number, pp.id as payment_id, coalesce(pp.amount, o.total) as amount,
           (coalesce(pp.created_at, o.created_at) at time zone ${zone})::date as paid_date,
           coalesce(pp.method, o.payment_method) as method, coalesce(pp.provider_transaction_id, o.provider_transaction_id) as txn,
           pp.check_number, pp.card_brand, pp.card_last4,
@@ -127,7 +127,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
         const amount = Number(p.amount);
         const salesCheck = round(Number(p.total));
         rows.push({
-          key: `pos-${p.payment_id ?? p.order_id}`, kind: "pos" as const, refId: p.order_id, number: null,
+          key: `pos-${p.payment_id ?? p.order_id}`, kind: "pos" as const, refId: p.order_id, number: p.pos_number,
           paidDate: p.paid_date, jobType: "Point of Sale", status: "Delivered",
           accountNumber: p.phone, customerName: p.customer_name,
           paymentType: paymentType(p.method, amount), paymentMode: paymentMode(p.method, p.check_number, p.card_brand, p.card_last4), amount: round(amount),
@@ -299,38 +299,40 @@ export default async function reportsRoutes(app: FastifyInstance) {
       const [sales, jobUse, writeoffs] = await Promise.all([
         tx`
           select
-            ii.name as item, poi.description, ii.sku, ii.category,
+            ii.id as item_id, ii.item_number::text as item_number, ii.name as item, poi.description, ii.sku, ii.category,
             (select il.name from inventory_stock ist join inventory_locations il on il.id = ist.location_id
              where ist.item_id = ii.id order by ist.quantity desc limit 1) as location,
-            po.created_at::date as movement_date, po.id as ref_id, 'pos' as ref_type,
+            po.created_at::date as movement_date, po.id as ref_id, 'pos' as ref_type, po.number as ref_number, pc.name as customer_name,
             ii.unit_cost as cost, poi.unit_price as price, poi.quantity as qty,
             (ii.unit_cost * poi.quantity) as total_cost, (poi.unit_price * poi.quantity) as total_price,
             'Sale' as movement_type
           from pos_order_items poi
           join pos_orders po on po.id = poi.order_id
           join inventory_items ii on ii.id = poi.item_id
+          left join customers pc on pc.id = po.customer_id
           where po.created_at::date between ${start} and ${end}
         `,
         tx`
           select
-            ii.name as item, ii.name as description, ii.sku, ii.category,
+            ii.id as item_id, ii.item_number::text as item_number, ii.name as item, ii.name as description, ii.sku, ii.category,
             (select il.name from inventory_stock ist join inventory_locations il on il.id = ist.location_id
              where ist.item_id = ii.id order by ist.quantity desc limit 1) as location,
-            j.scheduled_date as movement_date, j.id as ref_id, 'job' as ref_type,
+            j.scheduled_date as movement_date, j.id as ref_id, 'job' as ref_type, j.number as ref_number, jc.name as customer_name,
             ii.unit_cost as cost, coalesce(ii.price, ii.unit_cost) as price, jp.quantity as qty,
             (ii.unit_cost * jp.quantity) as total_cost, (coalesce(ii.price, ii.unit_cost) * jp.quantity) as total_price,
             'Job Use' as movement_type
           from job_parts_used jp
           join jobs j on j.id = jp.job_id
           join inventory_items ii on ii.id = jp.item_id
+          left join customers jc on jc.id = j.customer_id
           where j.scheduled_date between ${start} and ${end}
         `,
         tx`
           select
-            ii.name as item, ii.name as description, ii.sku, ii.category,
+            ii.id as item_id, ii.item_number::text as item_number, ii.name as item, ii.name as description, ii.sku, ii.category,
             (select il.name from inventory_stock ist join inventory_locations il on il.id = ist.location_id
              where ist.item_id = ii.id order by ist.quantity desc limit 1) as location,
-            w.created_at::date as movement_date, null::uuid as ref_id, 'writeoff' as ref_type,
+            w.created_at::date as movement_date, null::uuid as ref_id, 'writeoff' as ref_type, null::text as ref_number, null::text as customer_name,
             ii.unit_cost as cost, null::numeric as price, w.quantity as qty,
             (ii.unit_cost * w.quantity) as total_cost, null::numeric as total_price,
             'Write-off' as movement_type

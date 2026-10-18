@@ -62,7 +62,7 @@ export default function SalesAnalysisReport({ start, end }: { start: string; end
       .finally(() => setLoading(false));
   }, [start, end]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const refNumber = (r: SalesAnalysisRow) => (r.kind === "pos" ? receiptNumber(r.refId) : r.number ?? "");
+  const refNumber = (r: SalesAnalysisRow) => (r.kind === "pos" ? receiptNumber(r.refId, r.number) : r.number ?? "");
   const formatDate = (d: string) => new Date(d + "T00:00:00").toLocaleDateString(lang === "es" ? "es-US" : "en-US");
 
   const filtered = useMemo(

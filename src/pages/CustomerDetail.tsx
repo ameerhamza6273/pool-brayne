@@ -202,6 +202,12 @@ export default function CustomerDetail() {
     return () => { cancelled = true; };
   }, [customer?.id, customer?.address, customer?.lat, customer?.lng]);
 
+  // Directions by address text (not the geocoded point) whenever the address exists: Google
+  // resolves it more exactly than our free geocoder, and it's ready on a phone before any lookup.
+  const mapsHref = customer?.address
+    ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(customer.address)}`
+    : mapCoords ? `https://www.google.com/maps/dir/?api=1&destination=${mapCoords.lat},${mapCoords.lng}` : undefined;
+
   const uploadPhotos = async (files: FileList | File[]) => {
     if (!id) return;
     for (const file of Array.from(files)) {
@@ -398,14 +404,15 @@ export default function CustomerDetail() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-3">
+      {/* Header -- client screenshot 2026-10-18 (phone): the action buttons ran off the right edge
+          of the screen; they now wrap onto their own row under the name on narrow screens. */}
+      <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => navigate("/customers")} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-            <h1 className="text-xl font-bold text-[#0F172A]">{customer.name}</h1>
+            <h1 className="text-xl font-bold text-[#0F172A] break-words">{customer.name}</h1>
             <div className="flex gap-1">
               {customer.tags.map((tag) => (
                 <Badge key={tag} className={`${tagColors[tag] || ""} text-[10px] px-1.5 py-0`}>{t(tag)}</Badge>
@@ -413,7 +420,7 @@ export default function CustomerDetail() {
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           {!readOnly && (
             <Button size="sm" variant="outline" className="gap-1.5 h-9 border-[#E2E8F0] text-[#0F172A]" onClick={() => setEditOpen(true)}>
               <Pencil className="w-4 h-4" />
@@ -487,7 +494,7 @@ export default function CustomerDetail() {
                   <p className="text-sm text-[#64748B]">{t(customer.type)}</p>
                 </div>
               </div>
-              <div className="space-y-2 text-sm">
+              <div className="space-y-2 text-sm min-w-0">
                 <div className="flex items-center gap-2 text-[#64748B]">
                   <Phone className="w-4 h-4 shrink-0 text-[#0891B2]" />
                   <span>{customer.phone}</span>
@@ -496,22 +503,26 @@ export default function CustomerDetail() {
                   <Mail className="w-4 h-4 shrink-0 text-[#0891B2]" />
                   <span className="truncate">{customer.email}</span>
                 </div>
-                <div className="flex items-start gap-2 text-[#64748B]">
-                  <MapPin className="w-4 h-4 shrink-0 text-[#0891B2] mt-0.5" />
-                  <span>{customer.address}</span>
-                </div>
+                {/* Client video 2026-10-18 (phone): "when I try to click the little icon to the left
+                    of the address, it doesn't take me there either" -- the pin + address now open
+                    the same Google Maps directions as the map below. */}
+                {mapsHref ? (
+                  <a href={mapsHref} target="_blank" rel="noreferrer" className="flex items-start gap-2 text-[#64748B] hover:text-[#0891B2]">
+                    <MapPin className="w-4 h-4 shrink-0 text-[#0891B2] mt-0.5" />
+                    <span className="underline decoration-dotted underline-offset-2">{customer.address}</span>
+                  </a>
+                ) : (
+                  <div className="flex items-start gap-2 text-[#64748B]">
+                    <MapPin className="w-4 h-4 shrink-0 text-[#0891B2] mt-0.5" />
+                    <span>{customer.address}</span>
+                  </div>
+                )}
               </div>
               <a
-                href={
-                  mapCoords
-                    ? `https://www.google.com/maps/dir/?api=1&destination=${mapCoords.lat},${mapCoords.lng}`
-                    : customer.address
-                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(customer.address)}`
-                      : undefined
-                }
+                href={mapsHref}
                 target="_blank"
                 rel="noreferrer"
-                className={`relative h-32 rounded-lg bg-[#F1F5F9] overflow-hidden block ${!mapCoords && !customer.address ? "pointer-events-none" : ""}`}
+                className={`relative h-32 rounded-lg bg-[#F1F5F9] overflow-hidden block ${!mapsHref ? "pointer-events-none" : ""}`}
                 title={t("Get directions")}
               >
                 {mapCoords ? (

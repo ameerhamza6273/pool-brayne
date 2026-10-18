@@ -12,6 +12,9 @@ import ReminderLabelSelect from "@/components/ReminderLabelSelect";
 import { reportsApi, type ItemMovementRow, type DepositRow, type InvoiceDueRow, type CustomerReminder, type ValuationRow } from "@/lib/api/reports";
 import SalesTaxDetailReport from "@/components/SalesTaxDetailReport";
 import SalesAnalysisReport from "@/components/SalesAnalysisReport";
+import ItemSummaryReport, { summarizeItems } from "@/components/ItemSummaryReport";
+import ReceiptDialog from "@/components/ReceiptDialog";
+import { receiptNumber } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
@@ -69,6 +72,10 @@ export default function Reports() {
   // Client doc 2026-10-05: "Need a SEARCH bar function -- search for item number, sku number,
   // description, etc..." on Item Movement.
   const [movementQuery, setMovementQuery] = useState("");
+  // Client video 2026-10-18: totals per item (Qty Sold first) is the default view; the old
+  // one-row-per-transaction list stays one click away.
+  const [movementView, setMovementView] = useState<"summary" | "detail">("summary");
+  const [movementOrderId, setMovementOrderId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
     return tab && reportTabs.includes(tab) ? tab : "sales-tax";
@@ -158,13 +165,23 @@ export default function Reports() {
   const today = localKey(new Date());
   const totalValuation = valuation.reduce((s, v) => s + Number(v.value), 0);
 
-  const movementFiltered = movement.filter((m) => matchesQuery(movementQuery, [m.item, m.sku, m.description, m.category]));
+  const movementFiltered = movement.filter((m) => matchesQuery(movementQuery, [m.item, m.item_number, m.sku, m.description, m.category]));
+  const movementSummary = summarizeItems(movementFiltered);
   const movementSort = useSort(movementFiltered, (m, key) => (m as unknown as Record<string, string | number | null>)[key]);
-  const movementRefLabel = (m: ItemMovementRow) => (m.ref_type === "job" ? `JOB-${(m.ref_id ?? "").slice(0, 8).toUpperCase()}` : m.ref_type === "pos" ? `POS-${(m.ref_id ?? "").slice(0, 8).toUpperCase()}` : "—");
+  const movementRefLabel = (m: ItemMovementRow) => (m.ref_type === "job" ? m.ref_number || `JOB-${(m.ref_id ?? "").slice(0, 8).toUpperCase()}` : m.ref_type === "pos" ? receiptNumber(m.ref_id ?? "", m.ref_number) : "—");
   const openMovementRef = (m: ItemMovementRow) => {
     if (m.ref_type === "job" && m.ref_id) navigate(`/jobs/${m.ref_id}`);
+    else if (m.ref_type === "pos" && m.ref_id) setMovementOrderId(m.ref_id);
   };
   const exportMovementCsv = () => {
+    if (movementView === "summary") {
+      const out = [...movementSummary].sort((a, b) => b.qtySold - a.qtySold).map((r) => ({
+        Item: r.item, "Item #": r.itemNumber ?? "", "Qty Sold": r.qtySold, "Ext Price": r.extPrice.toFixed(2), "Ext Cost": r.extCost.toFixed(2),
+        SKU: r.sku, Category: r.category, Transactions: r.transactions, "Written Off": r.writtenOff,
+      }));
+      downloadCsv(`item-summary-${start}-to-${end}.csv`, toCsv(out, ["Item", "Item #", "Qty Sold", "Ext Price", "Ext Cost", "SKU", "Category", "Transactions", "Written Off"]));
+      return;
+    }
     const rows = movementSort.sorted.map((m) => ({
       Item: m.item, Description: m.description ?? "", Location: m.location ?? "", "Invoice Date": m.movement_date,
       "Invoice #": movementRefLabel(m), Category: m.category, Cost: m.cost, Price: m.price ?? "", Quantity: m.qty,
@@ -247,11 +264,23 @@ export default function Reports() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
               <Input value={movementQuery} onChange={(e) => setMovementQuery(e.target.value)} placeholder={t("Search item #, SKU, description...")} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
             </div>
+            <div className="inline-flex rounded-lg border border-[#E2E8F0] bg-white p-0.5 h-10">
+              {(["summary", "detail"] as const).map((v) => (
+                <button
+                  key={v}
+                  className={`px-3 rounded-md text-sm ${movementView === v ? "bg-[#0891B2] text-white" : "text-[#64748B] hover:text-[#0F172A]"}`}
+                  onClick={() => setMovementView(v)}
+                >
+                  {v === "summary" ? t("Totals by Item") : t("Every Transaction")}
+                </button>
+              ))}
+            </div>
             <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0]" onClick={exportMovementCsv}>
               <Download className="w-4 h-4" /> {t("Export")}
             </Button>
           </div>
-          <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
+          {movementView === "summary" && <ItemSummaryReport rows={movementFiltered} summary={movementSummary} />}
+          {movementView === "detail" && <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -277,7 +306,7 @@ export default function Reports() {
                       <td className="py-3 px-4 text-[#64748B]">{m.location ?? "—"}</td>
                       <td className="py-3 px-4 text-[#64748B]">{m.movement_date}</td>
                       <td className="py-3 px-4">
-                        {m.ref_type === "job" ? (
+                        {m.ref_type !== "writeoff" ? (
                           <button className="text-[#0891B2] hover:underline" onClick={() => openMovementRef(m)}>{movementRefLabel(m)}</button>
                         ) : (
                           <span className="text-[#64748B]">{movementRefLabel(m)}</span>
@@ -295,7 +324,8 @@ export default function Reports() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </div>}
+          <ReceiptDialog orderId={movementOrderId} onClose={() => setMovementOrderId(null)} />
         </TabsContent>
 
         <TabsContent value="deposits" className="mt-4">
