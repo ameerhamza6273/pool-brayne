@@ -187,7 +187,7 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
   // job on that date yet (projected on the calendar) just get their standard time; jobs that aren't
   // recurring can optionally be made weekly at the same time.
   app.post<{
-    Body: { items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean }[] };
+    Body: { items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean; date?: string | null }[] };
   }>("/route-order", async (req, reply) => {
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
     if (items.length > 300) return reply.code(400).send({ error: "Too many stops in one request" });
@@ -199,8 +199,22 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
         if (!time) continue;
         // Client SMS 2026-09-25: a "temporary" reorder only re-times this day's real jobs.
         if (it.permanent === false) {
-          if (!it.jobId) continue;
-          const [job] = (await tx`update jobs set scheduled_time = ${time} where id = ${it.jobId} returning id`) as unknown as { id: string }[];
+          // Client video 2026-10-18: a temporary reorder on a future day did nothing ("0 jobs timed")
+          // because every stop there was still a projection with no real job row yet. Create that
+          // day's occurrence now (same generator + unique index the roll-forward uses, so it can't
+          // duplicate later) and time it; the series' standard time stays untouched.
+          let jobId = it.jobId;
+          if (!jobId && it.recurringId && it.date && /^\d{4}-\d{2}-\d{2}$/.test(it.date)) {
+            const [rj] = (await tx`select * from recurring_jobs where id = ${it.recurringId} limit 1`) as unknown as RecurringJob[];
+            if (rj) {
+              const created = await generateOccurrence(tx, rj.tenant_id, rj, it.date);
+              jobId = created
+                ? (created as unknown as { id: string }).id
+                : ((await tx`select id from jobs where recurring_job_id = ${rj.id} and scheduled_date = ${it.date} limit 1`) as unknown as { id: string }[])[0]?.id ?? null;
+            }
+          }
+          if (!jobId) continue;
+          const [job] = (await tx`update jobs set scheduled_time = ${time} where id = ${jobId} returning id`) as unknown as { id: string }[];
           if (job) summary.jobsTimed++;
           continue;
         }
@@ -283,9 +297,11 @@ async function catchUpOccurrences(tx: postgres.TransactionSql, tenantId: string)
   // "buttons that do nothing" (Mark En Route, etc. all reload the job/list afterward and just sat
   // on a spinner). One batched query replaces all of those per-series lookups.
   const lastRows = (await tx`
-    select recurring_job_id, max(scheduled_date) as d from jobs
+    select recurring_job_id, max(scheduled_date) filter (where scheduled_date <= ${today}) as d from jobs
     where recurring_job_id = any(${active.map((rj) => rj.id)}) group by recurring_job_id
   `) as unknown as { recurring_job_id: string; d: string | null }[];
+  // Latest occurrence up to today (2026-10-18): a temporary route change can create one future
+  // occurrence early; anchoring on that would skip generating the weeks before it.
   const lastBySeries = new Map(lastRows.map((r) => [r.recurring_job_id, r.d]));
   for (const rj of active) {
     let anchor = lastBySeries.get(rj.id) ?? rj.start_date;

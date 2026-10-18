@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus, Calendar, LayoutDashboard, Truck, User, Clock, Search, ChevronLeft, ChevronRight, Map as MapIcon, Navigation,
   Pencil, Trash2, Pause, Play, X,
+  ListOrdered,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,7 +29,7 @@ import { useAuth } from "@/lib/auth-context";
 import { customerOption } from "@/lib/customer-options";
 import { techDotColor, techStyle, unassignedColor, registerTechColors } from "@/lib/tech-colors";
 import { matchesQuery } from "@/lib/search";
-import { repeatsOn, projectOccurrences } from "@/lib/recurring";
+import { repeatsOn, projectedDates } from "@/lib/recurring";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import ScheduleCalendar, { type ScheduleJob } from "@/components/ScheduleCalendar";
 import { invoicingApi, type Estimate, type EstimateLineItem } from "@/lib/api/invoicing";
@@ -38,6 +39,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useSort, sortHeader } from "@/components/SortableTh";
 import { useConfirm } from "@/components/ConfirmDialog";
+import RouteOrderDialog, { type RouteOrderItem } from "@/components/RouteOrderDialog";
 
 type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
@@ -397,7 +399,7 @@ export default function Jobs() {
   };
 
   // Client SMS 2026-09-21: route order -- standard times for one tech's stops on a day (and their series).
-  const handleRouteOrder = async (items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean }[]) => {
+  const handleRouteOrder = async (items: RouteOrderItem[]) => {
     const summary = await recurringJobsApi.routeOrder(items);
     loadJobs();
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
@@ -477,8 +479,7 @@ export default function Jobs() {
   const mapGhostJobs: Job[] = recurringJobs
     .filter((rj) => rj.active && passesRecurringFilters(rj))
     .flatMap((rj) => {
-      const anchorDate = jobs.reduce((m, j) => (j.recurring_job_id === rj.id && j.scheduled_date && j.scheduled_date > m ? j.scheduled_date : m), rj.start_date);
-      if (!projectOccurrences(rj, anchorDate, mapDate).includes(mapDate)) return [];
+      if (!projectedDates(rj, jobs, mapDate, localKey(new Date())).includes(mapDate)) return [];
       const cust = customerById.get(rj.customer_id);
       return [{
         id: `rec:${rj.id}:${mapDate}`,
@@ -614,6 +615,19 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, stopCoords, mapJobsKey, mapIdle, mapDate, hiddenMapTechIds]);
 
+  // Client video 2026-10-18 (Map): "is there a way to just click here and then drag to the bottom?"
+  // -- the stop list was click-to-open only, and a projected stop (no real job yet) opened "Job not
+  // found". Projected stops now open their series, and each tech gets the same Route order dialog
+  // the Schedule's day view has.
+  const openMapStop = (s: Job) => {
+    if (s.id.startsWith("rec:")) {
+      const rj = recurringJobs.find((r) => r.id === s.id.split(":")[1]);
+      if (rj) openEditRecurring(rj);
+      return;
+    }
+    navigate(`/jobs/${s.id}`);
+  };
+  const [mapRouteTech, setMapRouteTech] = useState<{ id: string; name: string } | null>(null);
   const routeByTech = technicians
     .map((t) => ({
       tech: t,
@@ -1220,6 +1234,8 @@ export default function Jobs() {
             onOpenRecurring={(id) => { const rj = recurringJobs.find((r) => r.id === id); if (rj) openEditRecurring(rj); }}
             onColorChange={handleColorChange}
             onRouteOrder={handleRouteOrder}
+            focusDate={mapDate}
+            onFocusDateChange={setMapDate}
             extras={scheduleExtras}
             onOpenExtra={(kind, id) => setQuickView({ kind, id })}
           />
@@ -1510,10 +1526,15 @@ export default function Jobs() {
                     <p className={`font-medium text-sm ${hidden ? "text-[#94A3B8] line-through" : "text-[#0F172A]"}`}>{tech.name}</p>
                     <span className="text-xs text-[#64748B]">({stops.length})</span>
                   </button>
+                  {!hidden && stops.length > 1 && (
+                    <button type="button" className="ml-[18px] -mt-1 mb-1.5 text-[11px] font-medium text-[#0891B2] hover:underline inline-flex items-center gap-1" onClick={() => setMapRouteTech({ id: tech.id, name: tech.name })}>
+                      <ListOrdered className="w-3 h-3" /> {t("Change stop order")}
+                    </button>
+                  )}
                   {!hidden && (
                     <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
                       {stops.map((s, i) => (
-                        <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2] flex items-start gap-1.5" onClick={() => navigate(`/jobs/${s.id}`)}>
+                        <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2] flex items-start gap-1.5 select-none" onClick={() => openMapStop(s)}>
                           <span className="w-4 h-4 rounded-full text-[9px] font-bold text-white flex items-center justify-center shrink-0 mt-px" style={{ background: techDotColor(tech.id) }}>{i + 1}</span>
                           <span>{s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}</span>
                         </div>
@@ -1533,7 +1554,7 @@ export default function Jobs() {
                 {!hiddenMapTechIds.has("") && (
                   <div className="space-y-1 pl-4 border-l-2 border-[#F1F5F9]">
                     {unassignedStops.map((s) => (
-                      <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2]" onClick={() => navigate(`/jobs/${s.id}`)}>
+                      <div key={s.id} className="text-xs text-[#64748B] cursor-pointer hover:text-[#0891B2] select-none" onClick={() => openMapStop(s)}>
                         {s.scheduled_time ? `${s.scheduled_time.slice(0, 5)} · ` : ""}{s.customers?.name}{unlocatedTag(s.id)}
                       </div>
                     ))}
@@ -1542,6 +1563,24 @@ export default function Jobs() {
               </div>
             )}
             {mapJobs.length === 0 && <p className="text-sm text-[#64748B] text-center py-4">{t("No jobs scheduled this day")}</p>}
+            <RouteOrderDialog
+              open={mapRouteTech !== null}
+              onClose={() => setMapRouteTech(null)}
+              title={mapRouteTech ? `${mapRouteTech.name} · ${new Date(mapDate + "T00:00:00").toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}` : ""}
+              rows={mapRouteTech ? (routeByTech.find((r) => r.tech.id === mapRouteTech.id)?.stops ?? []).map((st) => {
+                const ghost = st.id.startsWith("rec:");
+                return {
+                  key: st.id,
+                  jobId: ghost ? null : st.id,
+                  recurringId: ghost ? st.id.split(":")[1] : (st.recurring_job_id ?? null),
+                  label: st.customers?.name ?? "—",
+                  sub: t(st.type),
+                  time: st.scheduled_time,
+                  repeats: ghost || !!st.recurring_job_id,
+                };
+              }) : []}
+              onApply={(items) => handleRouteOrder(items.map((it) => ({ ...it, date: mapDate })))}
+            />
           </div>
         </div>
       )}

@@ -25,7 +25,7 @@ export interface RouteRow {
 
 // permanent = false (client SMS 2026-09-25, "ask us if this change is temporary or permanent"): only this day's
 // real jobs get the new times; repeating series keep their standard time. Omitted = permanent (old behaviour).
-export interface RouteOrderItem { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean }
+export interface RouteOrderItem { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean; date?: string | null }
 export interface RouteOrderSummary { jobsTimed: number; seriesTimed: number; madeRecurring: number }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -173,7 +173,7 @@ export default function RouteOrderDialog({
             </label>
             <label className="flex items-start gap-2 cursor-pointer">
               <input type="radio" className="mt-1" checked={scope === "temporary"} onChange={() => setScope("temporary")} />
-              <span><b>{t("Temporary")}</b> — {t("only this day changes; next week goes back to the usual order. (Stops shown dashed, not created yet, are left as they are.)")}</span>
+              <span><b>{t("Temporary")}</b> — {t("only this day changes; next week goes back to the usual order.")}</span>
             </label>
           </div>
         )}

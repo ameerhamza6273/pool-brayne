@@ -903,4 +903,6 @@ export const esDictionary: Record<string, string> = {
   "Combine Open Invoices": "Combinar facturas abiertas",
   "Pick at least one invoice.": "Elija al menos una factura.",
   "Pick invoices for one customer at a time.": "Elija facturas de un solo cliente a la vez.",
+  "Change stop order": "Cambiar orden de paradas",
+  "only this day changes; next week goes back to the usual order.": "solo cambia este día; la próxima semana vuelve al orden habitual.",
 };

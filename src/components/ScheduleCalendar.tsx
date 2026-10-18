@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLanguage } from "@/lib/language-context";
 import { techDotColor, unassignedColor } from "@/lib/tech-colors";
-import { projectOccurrences } from "@/lib/recurring";
+import { projectedDates } from "@/lib/recurring";
 import type { RecurringJob } from "@/lib/api/recurringJobs";
 import RouteOrderDialog, { type RouteOrderItem, type RouteOrderSummary } from "@/components/RouteOrderDialog";
 
@@ -125,7 +125,7 @@ function layoutDay(jobs: ScheduleJob[]): Placed[] {
 
 export default function ScheduleCalendar({
   jobs, technicians, onReschedule, onNewJob, onUnschedule,
-  allJobs, recurring, typeColors, dateFrom, dateTo, onOpenRecurring, onColorChange, onRouteOrder,
+  allJobs, recurring, typeColors, dateFrom, dateTo, onOpenRecurring, onColorChange, onRouteOrder, focusDate, onFocusDateChange,
   extras = [], onOpenExtra,
 }: {
   // Tasks + open estimates (client video 2026-09-25), already narrowed by the page's top filters.
@@ -141,6 +141,8 @@ export default function ScheduleCalendar({
   recurring: RecurringJob[];
   typeColors: Record<string, string>;
   dateFrom: string;
+  focusDate?: string;
+  onFocusDateChange?: (dateKey: string) => void;
   dateTo: string;
   onOpenRecurring: (recurringId: string) => void;
   onColorChange: (techId: string, color: string) => void;
@@ -158,7 +160,14 @@ export default function ScheduleCalendar({
     try { return JSON.parse(localStorage.getItem("schedule-prefs") ?? "{}"); } catch { return {}; }
   }, []);
   const [view, setView] = useState<View>(prefs.view ?? "week");
-  const [anchor, setAnchor] = useState(() => new Date());
+  // Client video 2026-10-18: "when flipping between the schedule view and the map view, maintain the
+  // same date" -- the day on screen is shared with Jobs (and its Map tab) via focusDate.
+  const [anchor, setAnchor] = useState(() => (focusDate ? new Date(`${focusDate}T00:00:00`) : new Date()));
+  useEffect(() => {
+    const k = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}-${String(anchor.getDate()).padStart(2, "0")}`;
+    if (k !== focusDate) onFocusDateChange?.(k);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor]);
   const [hiddenTechIds, setHiddenTechIds] = useState<Set<string>>(new Set(prefs.hidden ?? []));
   const [showUnassigned, setShowUnassigned] = useState(prefs.showUnassigned ?? true);
   const [showCompleted, setShowCompleted] = useState(prefs.showCompleted ?? true);
@@ -284,8 +293,7 @@ export default function ScheduleCalendar({
   // so the dates after the latest real occurrence are projected here (dashed, read-only, click = open the series).
   const rangeEnd = Array.from(rangeKeys).sort().pop() as string;
   const ghosts: ScheduleJob[] = recurring.filter((rj) => rj.active).flatMap((rj) => {
-    const anchorDate = allJobs.reduce((m, j) => (j.recurring_job_id === rj.id && j.scheduled_date && j.scheduled_date > m ? j.scheduled_date : m), rj.start_date);
-    return projectOccurrences(rj, anchorDate, rangeEnd)
+    return projectedDates(rj, allJobs, rangeEnd, todayKey)
       .filter((d) => rangeKeys.has(d) && (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo))
       .map((d): ScheduleJob => ({
         id: `rec:${rj.id}:${d}`, scheduled_date: d, scheduled_time: rj.start_time, tech_id: rj.tech_id, stage: rj.tech_id ? "booked" : "lead",
@@ -680,7 +688,7 @@ export default function ScheduleCalendar({
         onClose={() => setOrderCol(null)}
         title={orderCol ? `${orderCol.name} · ${fromKey(orderCol.dateKey).toLocaleDateString(locale, { weekday: "long", month: "short", day: "numeric" })}` : ""}
         rows={orderRows}
-        onApply={onRouteOrder}
+        onApply={(items) => onRouteOrder(items.map((it) => ({ ...it, date: orderCol?.dateKey ?? null })))}
       />
     </div>
   );

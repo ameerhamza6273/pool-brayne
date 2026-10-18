@@ -30,6 +30,21 @@ export function projectOccurrences(rj: RecurringJob, anchor: string, upTo: strin
   return out;
 }
 
+// Projected (not-yet-created) dates for a series, given every real job. Anchored on the latest real
+// occurrence up to today -- not the latest overall -- because a temporary route change can create a
+// single future occurrence (client video 2026-10-18), and anchoring on that would hide every week in
+// between. Dates that already have a real job are left out (that job is drawn instead).
+export function projectedDates(rj: RecurringJob, jobs: { recurring_job_id?: string | null; scheduled_date?: string | null }[], upTo: string, today: string): string[] {
+  const real = new Set<string>();
+  let anchor = rj.start_date;
+  for (const j of jobs) {
+    if (j.recurring_job_id !== rj.id || !j.scheduled_date) continue;
+    real.add(j.scheduled_date);
+    if (j.scheduled_date <= today && j.scheduled_date > anchor) anchor = j.scheduled_date;
+  }
+  return projectOccurrences(rj, anchor, upTo).filter((d) => !real.has(d));
+}
+
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 // Human "repeats on" text for a series (weekly/biweekly = its weekday, monthly = day of month).
