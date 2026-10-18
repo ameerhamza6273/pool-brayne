@@ -98,6 +98,7 @@ async function recordPayment(
   providerTransactionId: string | null,
   // Client SMS 2026-10-16: "when receiving a check payment allow us to put a check #".
   checkNumber: string | null = null,
+  card: { brand: string | null; last4: string | null } | null = null,
 ) {
   const today = new Date().toISOString().slice(0, 10);
   const [tenant] = await tx`select current_tenant_id() as id`;
@@ -106,8 +107,8 @@ async function recordPayment(
     where id = ${invoice.id} returning *
   `;
   await tx`
-    insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status, provider_transaction_id, check_number)
-    values (${tenant.id}, ${invoice.id}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success', ${providerTransactionId}, ${checkNumber})
+    insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status, provider_transaction_id, check_number, card_brand, card_last4)
+    values (${tenant.id}, ${invoice.id}, ${invoice.customer_id}, ${total}, ${today}, ${method}, 'Success', ${providerTransactionId}, ${checkNumber}, ${card?.brand ?? null}, ${card?.last4 ?? null})
   `;
   return updated;
 }
@@ -314,6 +315,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, async (tx) => {
       const { invoice, total } = await computeInvoiceTotal(tx, id);
       let providerTransactionId: string | null = null;
+      let card: { brand: string | null; last4: string | null } | null = null;
       if (method === "Card") {
         if (!opaqueData) {
           reply.code(400).send({ error: "Card payment requires tokenized card data" });
@@ -325,8 +327,9 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           return;
         }
         providerTransactionId = result.transactionId;
+        card = { brand: result.cardBrand, last4: result.cardLast4 };
       }
-      const updated = await recordPayment(tx, invoice, total, method, providerTransactionId, checkNumber ?? null);
+      const updated = await recordPayment(tx, invoice, total, method, providerTransactionId, checkNumber ?? null, card);
       const [withCustomer] = await tx`
         select i.number, c.name as customer_name from invoices i join customers c on c.id = i.customer_id where i.id = ${id} limit 1
       `;
@@ -348,6 +351,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const combinedTotal = entries.reduce((sum, e) => sum + e.total, 0);
 
       let providerTransactionId: string | null = null;
+      let card: { brand: string | null; last4: string | null } | null = null;
       if (method === "Card") {
         if (!opaqueData) {
           reply.code(400).send({ error: "Card payment requires tokenized card data" });
@@ -359,10 +363,11 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           return;
         }
         providerTransactionId = result.transactionId;
+        card = { brand: result.cardBrand, last4: result.cardLast4 };
       }
 
       const results = [];
-      for (const entry of entries) results.push(await recordPayment(tx, entry.invoice, entry.total, method, providerTransactionId, checkNumber ?? null));
+      for (const entry of entries) results.push(await recordPayment(tx, entry.invoice, entry.total, method, providerTransactionId, checkNumber ?? null, card));
       return results;
     });
   });

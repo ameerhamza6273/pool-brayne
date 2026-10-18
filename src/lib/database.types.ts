@@ -1231,6 +1231,8 @@ export type Database = {
         Row: {
           amount: number
           check_number: string | null
+          card_brand: string | null
+          card_last4: string | null
           customer_id: string | null
           id: string
           invoice_id: string | null

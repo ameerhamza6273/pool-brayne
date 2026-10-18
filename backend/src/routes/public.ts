@@ -166,8 +166,8 @@ export default async function publicRoutes(app: FastifyInstance) {
         where id = ${invoice.id} returning *
       `;
       await sql`
-        insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status, provider_transaction_id)
-        values (${updated.tenant_id}, ${invoice.id}, ${invoice.customer_id}, ${total}, ${today}, 'Card', 'Success', ${result.transactionId})
+        insert into payments (tenant_id, invoice_id, customer_id, amount, paid_at, method, status, provider_transaction_id, card_brand, card_last4)
+        values (${updated.tenant_id}, ${invoice.id}, ${invoice.customer_id}, ${total}, ${today}, 'Card', 'Success', ${result.transactionId}, ${result.cardBrand}, ${result.cardLast4})
       `;
       void notifyBusinessOfPayment({ invoiceNumber: invoice.number, customerName: invoice.customer_name, amount: total });
       return updated;

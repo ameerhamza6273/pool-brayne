@@ -10,12 +10,16 @@ const API_URL = ENVIRONMENT === "production"
   ? "https://api.authorize.net/xml/v1/request.api"
   : "https://apitest.authorize.net/xml/v1/request.api";
 
-export type ChargeResult = { success: true; transactionId: string } | { success: false; error: string };
+// cardBrand/cardLast4: Authorize.net's accountType ("Visa", "MasterCard", ...) and the last 4 of
+// accountNumber ("XXXX1111") -- shown in the Sales Analysis report's Payment Mode column.
+export type ChargeResult = { success: true; transactionId: string; cardBrand: string | null; cardLast4: string | null } | { success: false; error: string };
 
 type AuthorizeNetResponse = {
   transactionResponse?: {
     responseCode?: string;
     transId?: string;
+    accountType?: string;
+    accountNumber?: string;
     errors?: { errorText: string }[];
   };
   messages?: { resultCode: string; message?: { code: string; text: string }[] };
@@ -47,7 +51,8 @@ export async function chargeOpaqueData(
 
   const txn = data.transactionResponse;
   if (txn?.responseCode === "1" && txn.transId) {
-    return { success: true, transactionId: txn.transId };
+    const last4 = (txn.accountNumber ?? "").replace(/D/g, "").slice(-4);
+    return { success: true, transactionId: txn.transId, cardBrand: txn.accountType || null, cardLast4: last4 || null };
   }
   const errorText = txn?.errors?.[0]?.errorText ?? data.messages?.message?.[0]?.text ?? "Payment declined";
   return { success: false, error: errorText };

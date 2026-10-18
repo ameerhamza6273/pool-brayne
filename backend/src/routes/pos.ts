@@ -195,7 +195,7 @@ export default async function posRoutes(app: FastifyInstance) {
       // decline on any card leaves nothing behind. Cash/ACH/Check stay simulated (no real bank
       // processor wired up for those). Client request 2026-09-03: "use more than one payment type
       // or multiple credit cards" -- each tender line gets its own charge/transaction id.
-      const chargedPayments: { method: string; amount: number; providerTransactionId: string | null; checkNumber: string | null }[] = [];
+      const chargedPayments: { method: string; amount: number; providerTransactionId: string | null; checkNumber: string | null; cardBrand: string | null; cardLast4: string | null }[] = [];
       for (const p of payments) {
         if (p.method === "Card") {
           if (!p.opaqueData) {
@@ -207,9 +207,9 @@ export default async function posRoutes(app: FastifyInstance) {
             reply.code(400).send({ error: result.error });
             return;
           }
-          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: result.transactionId, checkNumber: null });
+          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: result.transactionId, checkNumber: null, cardBrand: result.cardBrand, cardLast4: result.cardLast4 });
         } else {
-          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: null, checkNumber: p.method === "Check" ? (p.checkNumber?.trim() || null) : null });
+          chargedPayments.push({ method: p.method, amount: p.amount, providerTransactionId: null, checkNumber: p.method === "Check" ? (p.checkNumber?.trim() || null) : null, cardBrand: null, cardLast4: null });
         }
       }
 
@@ -240,8 +240,8 @@ export default async function posRoutes(app: FastifyInstance) {
 
         for (const p of chargedPayments) {
           await tx`
-            insert into pos_order_payments (tenant_id, order_id, method, amount, provider_transaction_id, check_number)
-            values (${tenant.id}, ${order.id}, ${p.method}, ${p.amount}, ${p.providerTransactionId}, ${p.checkNumber})
+            insert into pos_order_payments (tenant_id, order_id, method, amount, provider_transaction_id, check_number, card_brand, card_last4)
+            values (${tenant.id}, ${order.id}, ${p.method}, ${p.amount}, ${p.providerTransactionId}, ${p.checkNumber}, ${p.cardBrand}, ${p.cardLast4})
           `;
         }
 

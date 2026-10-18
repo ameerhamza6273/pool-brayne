@@ -26,9 +26,10 @@ export default async function reportsRoutes(app: FastifyInstance) {
       const taxRate = await getTaxRate(tx);
       const round = (n: number) => Math.round(n * 100) / 100;
 
-      type InvPay = { payment_id: string; amount: number; paid_at: string; method: string; txn: string | null; invoice_id: string; number: string; inv_amount: number; job_type: string | null; job_done: boolean | null; has_job: boolean; customer_name: string | null; phone: string | null };
+      type InvPay = { payment_id: string; amount: number; paid_at: string; method: string; txn: string | null; check_number: string | null; card_brand: string | null; card_last4: string | null; invoice_id: string; number: string; inv_amount: number; job_type: string | null; job_done: boolean | null; has_job: boolean; customer_name: string | null; phone: string | null };
       const invPayments = await tx`
         select p.id as payment_id, p.amount, p.paid_at, p.method, p.provider_transaction_id as txn,
+          p.check_number, p.card_brand, p.card_last4,
           i.id as invoice_id, i.number, i.amount as inv_amount, j.type as job_type,
           (j.stage = 'completed' or j.status = 'Completed') as job_done, (i.job_id is not null) as has_job,
           c.name as customer_name, c.phone
@@ -46,11 +47,12 @@ export default async function reportsRoutes(app: FastifyInstance) {
 
       // POS: one row per tender (split payments), falling back to the order itself for older
       // orders saved before per-tender rows existed.
-      type PosPay = { order_id: string; payment_id: string | null; amount: number; paid_date: string; method: string | null; txn: string | null; subtotal: number; tax: number; total: number; customer_name: string | null; phone: string | null };
+      type PosPay = { order_id: string; payment_id: string | null; amount: number; paid_date: string; method: string | null; txn: string | null; check_number: string | null; card_brand: string | null; card_last4: string | null; subtotal: number; tax: number; total: number; customer_name: string | null; phone: string | null };
       const posPayments = await tx`
         select o.id as order_id, pp.id as payment_id, coalesce(pp.amount, o.total) as amount,
           (coalesce(pp.created_at, o.created_at) at time zone ${zone})::date as paid_date,
           coalesce(pp.method, o.payment_method) as method, coalesce(pp.provider_transaction_id, o.provider_transaction_id) as txn,
+          pp.check_number, pp.card_brand, pp.card_last4,
           o.subtotal, o.tax, o.total, c.name as customer_name, c.phone
         from pos_orders o
         left join pos_order_payments pp on pp.order_id = o.id
@@ -73,6 +75,16 @@ export default async function reportsRoutes(app: FastifyInstance) {
         if (m === "check") return "Check";
         if (m === "card" || m.includes("credit")) return "Credit Card";
         return "Other";
+      };
+      // Client video 2026-10-18: Payment Mode shows the check # for checks and the card brand
+      // (Visa / MasterCard / Discover ...) for cards. Card payments made before brand capture
+      // existed have no brand stored and keep showing the plain method.
+      const brandLabel = (b: string) => ({ AmericanExpress: "American Express", MasterCard: "MasterCard" } as Record<string, string>)[b] ?? b;
+      const paymentMode = (method: string | null, checkNumber: string | null, brand: string | null, last4: string | null) => {
+        const m = (method ?? "").toLowerCase();
+        if (m === "check") return checkNumber ? `Check #${checkNumber}` : "Check";
+        if (brand) return last4 ? `${brandLabel(brand)} ••${last4}` : brandLabel(brand);
+        return method ?? "";
       };
       const isLaborCategory = (category: string | null) => !!category && /^(labor|services)$/i.test(category.trim());
       const zero = { labor: 0, itemCost: 0, laborCost: 0, merch: 0, inStoreLabor: 0, jobLabor: 0, discount: 0, tax: 0 };
@@ -101,7 +113,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
           key: `inv-${p.payment_id}`, kind: "invoice" as const, refId: p.invoice_id, number: p.number,
           paidDate: p.paid_at, jobType: p.job_type, status: delivered ? "Delivered" : "Not Delivered",
           accountNumber: p.phone, customerName: p.customer_name,
-          paymentType: paymentType(p.method, amount), paymentMode: p.method ?? "", amount: round(amount),
+          paymentType: paymentType(p.method, amount), paymentMode: paymentMode(p.method, p.check_number, p.card_brand, p.card_last4), amount: round(amount),
           delivered: delivered ? round(amount) : 0, salesCheck: delivered ? salesCheck : 0,
           diffAr: delivered ? round(amount - salesCheck) : 0, customerDeposit: delivered ? 0 : round(amount),
           ...b, combinedInvoice: p.number, payoutId: p.txn,
@@ -118,7 +130,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
           key: `pos-${p.payment_id ?? p.order_id}`, kind: "pos" as const, refId: p.order_id, number: null,
           paidDate: p.paid_date, jobType: "Point of Sale", status: "Delivered",
           accountNumber: p.phone, customerName: p.customer_name,
-          paymentType: paymentType(p.method, amount), paymentMode: p.method ?? "", amount: round(amount),
+          paymentType: paymentType(p.method, amount), paymentMode: paymentMode(p.method, p.check_number, p.card_brand, p.card_last4), amount: round(amount),
           delivered: round(amount), salesCheck, diffAr: round(amount - salesCheck), customerDeposit: 0,
           labor: round(labor),
           itemCost: round(lines.filter((l) => !isLaborCategory(l.category)).reduce((s, l) => s + Number(l.unit_cost ?? 0) * Number(l.quantity), 0)),

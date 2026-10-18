@@ -32,6 +32,12 @@ const NUM_COLS: { key: NumKey; label: string }[] = [
   { key: "tax", label: "Sales Tax" },
 ];
 
+// Client video 2026-10-18: "spin these around so we can adjust these fields up and down" -- click
+// any column header to sort (rows stay grouped by payment type, sorted inside each group).
+type TextKey = "ref" | "paidDate" | "jobType" | "status" | "accountNumber" | "customerName" | "paymentType" | "paymentMode" | "combinedInvoice" | "payoutId";
+type SortKey = TextKey | NumKey;
+const PLAIN_MODES = new Set(["Cash", "Check", "Card", "ACH", "Split", "Other", ""]);
+
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const sumBy = (rows: SalesAnalysisRow[], key: NumKey) => Math.round(rows.reduce((s, r) => s + r[key], 0) * 100) / 100;
 
@@ -43,6 +49,9 @@ export default function SalesAnalysisReport({ start, end }: { start: string; end
   const [query, setQuery] = useState("");
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "paidDate", dir: "desc" });
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: NUM_COLS.some((c) => c.key === key) ? "desc" : "asc" }));
 
   useEffect(() => {
     setLoading(true);
@@ -60,10 +69,24 @@ export default function SalesAnalysisReport({ start, end }: { start: string; end
     () => (rows ?? []).filter((r) => matchesQuery(query, [refNumber(r), r.customerName, r.accountNumber, r.jobType, r.paymentType, r.paymentMode, r.payoutId])),
     [rows, query], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  const groups = TYPE_ORDER.map((type) => ({ type, rows: filtered.filter((r) => r.paymentType === type) })).filter((g) => g.rows.length > 0);
+  const sorted = useMemo(() => {
+    const value = (r: SalesAnalysisRow): string | number => {
+      if (sort.key === "ref") return refNumber(r);
+      if (sort.key === "combinedInvoice") return r.combinedInvoice ?? refNumber(r);
+      if (sort.key === "customerName") return r.customerName ?? "Walk-in";
+      return r[sort.key] ?? "";
+    };
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      const va = value(a), vb = value(b);
+      const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: "base" });
+      return cmp * dir;
+    });
+  }, [filtered, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  const groups = TYPE_ORDER.map((type) => ({ type, rows: sorted.filter((r) => r.paymentType === type) })).filter((g) => g.rows.length > 0);
 
   const exportCsv = () => {
-    const out = filtered.map((r) => ({
+    const out = sorted.map((r) => ({
       "Inv #/Tick #": refNumber(r),
       "Paid Date": r.paidDate,
       "Job Type": r.jobType ?? "",
@@ -81,6 +104,13 @@ export default function SalesAnalysisReport({ start, end }: { start: string; end
 
   const th = "py-2 px-2 text-[11px] font-semibold text-[#64748B] uppercase whitespace-nowrap";
   const td = "py-1.5 px-2 whitespace-nowrap";
+  const sortTh = (key: SortKey, label: string, align: "left" | "right" = "left") => (
+    <th key={key} className={`${th} text-${align} cursor-pointer select-none hover:text-[#0891B2]`} onClick={() => toggleSort(key)}>
+      <span className={`inline-flex items-center gap-1 ${align === "right" ? "justify-end" : ""}`}>
+        {t(label)}{sort.key === key && <span className="text-[10px]">{sort.dir === "asc" ? "▲" : "▼"}</span>}
+      </span>
+    </th>
+  );
   const totalCells = (rs: SalesAnalysisRow[]) => NUM_COLS.map((c) => (
     <td key={c.key} className={`${td} text-right font-semibold ${sumBy(rs, c.key) < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>{money(sumBy(rs, c.key))}</td>
   ));
@@ -112,17 +142,17 @@ export default function SalesAnalysisReport({ start, end }: { start: string; end
             <table className="w-full text-xs">
               <thead className="sticky top-0 z-10 bg-[#F8FAFC]">
                 <tr className="border-b border-[#E2E8F0]">
-                  <th className={`${th} text-left`}>{t("Inv #/Tick #")}</th>
-                  <th className={`${th} text-left`}>{t("Paid Date")}</th>
-                  <th className={`${th} text-left`}>{t("Job Type")}</th>
-                  <th className={`${th} text-left`}>{t("Status")}</th>
-                  <th className={`${th} text-left`}>{t("Acct #")}</th>
-                  <th className={`${th} text-left`}>{t("Cust Name")}</th>
-                  <th className={`${th} text-left`}>{t("Payment Type")}</th>
-                  <th className={`${th} text-left`}>{t("Payment Mode")}</th>
-                  {NUM_COLS.map((c) => <th key={c.key} className={`${th} text-right`}>{t(c.label)}</th>)}
-                  <th className={`${th} text-left`}>{t("Found on Combine Inv")}</th>
-                  <th className={`${th} text-left`}>{t("CC Payout ID")}</th>
+                  {sortTh("ref", "Inv #/Tick #")}
+                  {sortTh("paidDate", "Paid Date")}
+                  {sortTh("jobType", "Job Type")}
+                  {sortTh("status", "Status")}
+                  {sortTh("accountNumber", "Acct #")}
+                  {sortTh("customerName", "Cust Name")}
+                  {sortTh("paymentType", "Payment Type")}
+                  {sortTh("paymentMode", "Payment Mode")}
+                  {NUM_COLS.map((c) => sortTh(c.key, c.label, "right"))}
+                  {sortTh("combinedInvoice", "Found on Combine Inv")}
+                  {sortTh("payoutId", "CC Payout ID")}
                 </tr>
               </thead>
               <tbody>
@@ -139,7 +169,7 @@ export default function SalesAnalysisReport({ start, end }: { start: string; end
                         <td className={`${td} text-[#64748B]`}>{r.accountNumber ?? ""}</td>
                         <td className={`${td} text-[#0F172A] font-medium`}>{r.customerName ?? t("Walk-in")}</td>
                         <td className={`${td} text-[#0F172A]`}>{t(r.paymentType)}</td>
-                        <td className={`${td} text-[#64748B]`}>{t(r.paymentMode)}</td>
+                        <td className={`${td} text-[#64748B]`}>{PLAIN_MODES.has(r.paymentMode) ? t(r.paymentMode) : r.paymentMode.replace(/^Check #/, `${t("Check")} #`)}</td>
                         {NUM_COLS.map((c) => (
                           <td key={c.key} className={`${td} text-right ${r[c.key] < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>{money(r[c.key])}</td>
                         ))}
