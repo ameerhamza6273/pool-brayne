@@ -892,4 +892,15 @@ export const esDictionary: Record<string, string> = {
   "Pick when and who — or leave blank and schedule it later from the job page.": "Elija cuándo y quién, o déjelo en blanco y prográmelo después desde la página del trabajo.",
   "Search technicians...": "Buscar técnicos...",
   "Change job type": "Cambiar tipo de trabajo",
+  // Invoice finalize / bulk email (2026-10-18)
+  "Finalize Invoice": "Finalizar factura",
+  "Open": "Abierta",
+  "Mark this invoice as final (Open). Emailing it marks it Sent.": "Marcar esta factura como final (Abierta). Al enviarla por correo queda como Enviada.",
+  "Emailed": "Se enviaron",
+  "invoices to": "facturas a",
+  "See the invoice": "Ver la factura",
+  "No completed jobs without an invoice in this range. A job gets its own invoice automatically when it's completed — to bill several of them together, use Combine Open Invoices.": "No hay trabajos completados sin factura en este rango. Cada trabajo recibe su propia factura automáticamente al completarse; para cobrar varios juntos, use Combinar facturas abiertas.",
+  "Combine Open Invoices": "Combinar facturas abiertas",
+  "Pick at least one invoice.": "Elija al menos una factura.",
+  "Pick invoices for one customer at a time.": "Elija facturas de un solo cliente a la vez.",
 };

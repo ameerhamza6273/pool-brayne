@@ -194,5 +194,7 @@ export const invoicingApi = {
   // Client video 2026-10-06: real "Send via Email" — fails with a clear message (not a silent
   // no-op) until the SMTP password is configured on the server.
   sendInvoiceEmail: (id: string) => api.post<{ sent: true }>(`/api/invoices/${id}/send-email`, {}),
+  finalizeInvoice: (id: string) => api.patch<Invoice>(`/api/invoices/${id}/finalize`, {}),
+  bulkSendInvoiceEmail: (invoiceIds: string[]) => api.post<{ sent: number; to: string }>("/api/invoices/bulk-send-email", { invoiceIds }),
   sendEstimateEmail: (id: string) => api.post<{ sent: true }>(`/api/invoices/estimates/${id}/send-email`, {}),
 };

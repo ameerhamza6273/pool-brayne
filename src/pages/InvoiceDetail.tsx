@@ -27,6 +27,7 @@ type LineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
 
 const statusColors: Record<string, string> = {
   Draft: "bg-[#F59E0B]/10 text-[#F59E0B]",
+  Open: "bg-[#6366F1]/10 text-[#6366F1]",
   Sent: "bg-[#0891B2]/10 text-[#0891B2]",
   Paid: "bg-[#16A34A]/10 text-[#16A34A]",
   Overdue: "bg-[#DC2626]/10 text-[#DC2626]",
@@ -49,6 +50,7 @@ export default function InvoiceDetail() {
   const { t } = useLanguage();
   const taxRate = useTaxRate();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [finalizing, setFinalizing] = useState(false);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
   const [job, setJob] = useState<InvoiceDetailBundle["job"]>(null);
@@ -204,6 +206,18 @@ export default function InvoiceDetail() {
     }
   };
 
+  // Client video 2026-10-18: "This says draft here. How do we change this draft as finalized?"
+  const handleFinalize = async () => {
+    if (!id || !invoice) return;
+    setFinalizing(true);
+    try {
+      await invoicingApi.finalizeInvoice(id);
+      setInvoice({ ...invoice, status: "Open" });
+    } finally {
+      setFinalizing(false);
+    }
+  };
+
   const handleSendEmail = async () => {
     if (!id) return;
     setSendingEmail(true);
@@ -211,6 +225,7 @@ export default function InvoiceDetail() {
     try {
       await invoicingApi.sendInvoiceEmail(id);
       setSendEmailResult("sent");
+      if (invoice && (invoice.status === "Draft" || invoice.status === "Open")) setInvoice({ ...invoice, status: "Sent" });
     } catch (err) {
       setSendEmailResult(err instanceof Error ? err.message : "Failed to send");
     }
@@ -322,6 +337,11 @@ export default function InvoiceDetail() {
 
       {/* Action Bar */}
       <div className="flex flex-wrap items-center gap-2 print:hidden">
+        {invoice.status === "Draft" && (
+          <Button className="h-9 gap-2 bg-[#0891B2] hover:bg-[#0E7490] text-white" disabled={finalizing} onClick={handleFinalize} title={t("Mark this invoice as final (Open). Emailing it marks it Sent.")}>
+            <BadgeCheck className="w-4 h-4" /> {finalizing ? t("Saving...") : t("Finalize Invoice")}
+          </Button>
+        )}
         <Button variant="outline" className="h-9 gap-2 border-[#E2E8F0] text-[#0F172A]" onClick={handleSendEmail} disabled={sendingEmail}>
           <Mail className="w-4 h-4 text-[#0891B2]" /> {sendingEmail ? t("Sending...") : t("Send via Email")}
         </Button>

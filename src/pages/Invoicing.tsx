@@ -29,6 +29,7 @@ import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEdito
 import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 import { useConfirm } from "@/components/ConfirmDialog";
+import InvoicePreviewDialog from "@/components/InvoicePreviewDialog";
 
 // `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches
 // what InvoiceDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
@@ -40,6 +41,7 @@ type Customer = { id: string; name: string; email: string | null; phone: string 
 
 const statusColors: Record<string, string> = {
   Draft: "bg-[#F59E0B]/10 text-[#F59E0B]",
+  Open: "bg-[#6366F1]/10 text-[#6366F1]",
   Sent: "bg-[#0891B2]/10 text-[#0891B2]",
   Paid: "bg-[#16A34A]/10 text-[#16A34A]",
   Overdue: "bg-[#DC2626]/10 text-[#DC2626]",
@@ -98,7 +100,14 @@ export default function Invoicing() {
     return tab && validTabs.includes(tab) ? tab : "all";
   });
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkForm, setBulkForm] = useState({ customerId: "", start: "", end: "" });
+  // Client video 2026-10-18: "Combine completed jobs ... does not do anything" -- nothing showed
+  // until From and To were both typed. Prefilled with the last 90 days.
+  const [bulkForm, setBulkForm] = useState(() => {
+    const end = new Date();
+    const start = new Date(end.getTime() - 90 * 86400000);
+    const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    return { customerId: "", start: key(start), end: key(end) };
+  });
   const [bulkJobs, setBulkJobs] = useState<UninvoicedJob[]>([]);
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
   // Client request 2026-09-02: a second Bulk Invoice mode — combine several of a customer's
@@ -399,15 +408,24 @@ export default function Invoicing() {
     });
   };
 
-  const handleBulkEmail = () => {
-    const customer = customers.find((c) => c.id === bulkInvoiceCustomerId);
-    const selected = openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id));
-    const total = selected.reduce((s, i) => s + (i.total ?? i.amount), 0);
-    const body = selected.map((i) => `${i.number}: $${(i.total ?? i.amount).toFixed(2)}`).join("%0D%0A");
-    window.location.href = `mailto:${customer?.email ?? ""}?subject=Open Invoices&body=Total due: $${total.toFixed(2)}%0D%0A%0D%0A${body}`;
-    setBulkInvoiceSelected(new Set());
-    setBulkOpen(false);
+  // Client video 2026-10-18: the email used to be a mailto: link (opened desktop Outlook). Now a
+  // real email from the server with a view/pay link per invoice; the dialog stays open with the result.
+  const [bulkEmailResult, setBulkEmailResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const handleBulkEmail = async () => {
+    const ids = Array.from(bulkInvoiceSelected);
+    if (ids.length === 0) return;
+    setBulkCollecting(true);
+    setBulkEmailResult(null);
+    try {
+      const r = await invoicingApi.bulkSendInvoiceEmail(ids);
+      setBulkEmailResult({ ok: true, text: `${t("Emailed")} ${r.sent} ${t("invoices to")} ${r.to}` });
+      await loadInvoicing();
+    } catch (err) {
+      setBulkEmailResult({ ok: false, text: t(err instanceof Error ? err.message : "Failed to send") });
+    }
+    setBulkCollecting(false);
   };
+  const [previewInvoiceId, setPreviewInvoiceId] = useState<string | null>(null);
 
   const handleBulkCollect = async (opaqueData?: { dataDescriptor: string; dataValue: string }) => {
     const ids = Array.from(bulkInvoiceSelected);
@@ -613,7 +631,11 @@ export default function Invoicing() {
                         {openInvoicesForCustomer.map((inv) => (
                           <label key={inv.id} className="flex items-center gap-2 p-2 rounded-lg border border-[#E2E8F0] text-sm cursor-pointer">
                             <input type="checkbox" checked={bulkInvoiceSelected.has(inv.id)} onChange={() => toggleBulkInvoice(inv.id)} />
-                            <span className="flex-1">{inv.number} — {inv.issue_date}</span>
+                            <span className="flex-1">
+                              <button type="button" className="text-[#0891B2] hover:underline font-medium" title={t("See the invoice")} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPreviewInvoiceId(inv.id); }}>{inv.number}</button>
+                              {" "}— {inv.issue_date}{" "}
+                              <Badge className={`${statusColors[inv.status] ?? ""} text-[10px] px-1.5 py-0`}>{t(inv.status)}</Badge>
+                            </span>
                             <span className="font-medium text-[#0F172A]">${(inv.total ?? inv.amount).toFixed(2)}</span>
                           </label>
                         ))}
@@ -660,8 +682,11 @@ export default function Invoicing() {
                           onClick={() => (bulkPayMethod === "Email" ? handleBulkEmail() : handleBulkCollect())}
                           disabled={bulkCollecting}
                         >
-                          {bulkPayMethod === "Email" ? t("Email Selected Invoices") : t("Collect Payment (Check)")}
+                          {bulkPayMethod === "Email" ? (bulkCollecting ? t("Sending...") : t("Email Selected Invoices")) : t("Collect Payment (Check)")}
                         </Button>
+                        {bulkPayMethod === "Email" && bulkEmailResult && (
+                          <p className={`text-sm ${bulkEmailResult.ok ? "text-[#16A34A]" : "text-[#DC2626]"}`}>{bulkEmailResult.text}</p>
+                        )}
                         </>
                       )}
                     </>
@@ -690,7 +715,12 @@ export default function Invoicing() {
                   <div>
                     <label className="text-sm font-medium text-[#0F172A]">{t("Completed jobs in range")}</label>
                     <div className="mt-1 space-y-1.5 max-h-64 overflow-y-auto">
-                      {bulkJobs.length === 0 && <p className="text-sm text-[#64748B] py-2">{t("No uninvoiced completed jobs in this range.")}</p>}
+                      {bulkJobs.length === 0 && (
+                        <div className="text-sm text-[#64748B] py-2 space-y-2">
+                          <p>{t("No completed jobs without an invoice in this range. A job gets its own invoice automatically when it's completed — to bill several of them together, use Combine Open Invoices.")}</p>
+                          <Button type="button" size="sm" variant="outline" onClick={() => { setBulkInvoiceCustomerId(bulkForm.customerId); setBulkInvoiceSelected(new Set()); setBulkTab("invoices"); }}>{t("Combine Open Invoices")}</Button>
+                        </div>
+                      )}
                       {bulkJobs.map((j) => (
                         <label key={j.id} className="flex items-center gap-2 p-2 rounded-lg border border-[#E2E8F0] text-sm cursor-pointer">
                           <input type="checkbox" checked={bulkSelected.has(j.id)} onChange={() => toggleBulkJob(j.id)} />
@@ -713,6 +743,7 @@ export default function Invoicing() {
               )}
             </DialogContent>
           </Dialog>
+          <InvoicePreviewDialog invoiceId={previewInvoiceId} onClose={() => setPreviewInvoiceId(null)} />
           <Dialog open={newEstimateOpen} onOpenChange={(open) => (open ? openNewEstimateDialog() : setNewEstimateOpen(false))}>
             <DialogTrigger asChild>
               <Button variant="outline" className="h-10 gap-2 border-[#E2E8F0] text-[#0F172A] bg-white order-1">

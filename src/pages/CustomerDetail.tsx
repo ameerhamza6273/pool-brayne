@@ -53,6 +53,7 @@ const statusColors: Record<string, string> = {
   Paid: "bg-[#16A34A]/10 text-[#16A34A]",
   Sent: "bg-[#0891B2]/10 text-[#0891B2]",
   Draft: "bg-[#F59E0B]/10 text-[#F59E0B]",
+  Open: "bg-[#6366F1]/10 text-[#6366F1]",
   Overdue: "bg-[#DC2626]/10 text-[#DC2626]",
 };
 

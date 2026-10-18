@@ -297,8 +297,10 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       await sendMail({
         to: row.customer_email,
         subject: `Invoice ${row.number} from ${row.business_name} — $${total.toFixed(2)}`,
-        html: `<p>Hi ${row.customer_name},</p><p>Your invoice ${row.number} for <strong>$${total.toFixed(2)}</strong> is ready. You can view it and pay online here:</p><p><a href="${url}">${url}</a></p><p>Thank you!<br/>${row.business_name}</p>`,
+        html: `<p>Hi ${row.customer_name},</p><p>Your invoice ${row.number} for <strong>${total.toFixed(2)}</strong> is ready. You can view it and pay online here:</p><p><a href="${url}">${url}</a></p><p>Thank you!<br/>${row.business_name}</p>`,
       });
+      // Client video 2026-10-18: "When I click it here, it still says draft" -- an emailed invoice is Sent.
+      await tx`update invoices set status = 'Sent' where id = ${id} and status in ('Draft', 'Open')`;
       return { sent: true };
     });
   });
@@ -751,6 +753,58 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`
       update vendor_bills set status = 'Paid', paid_date = ${today} where id = ${id} returning *
     `);
+  });
+
+  // Client video 2026-10-18: "This says draft here. How do we change this draft as finalized?"
+  // Draft -> Open (final, not emailed yet); emailing it later moves it on to Sent.
+  app.patch<{ Params: { id: string } }>("/:id/finalize", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [row] = await tx`update invoices set status = 'Open' where id = ${id} and status = 'Draft' returning *`;
+      return row ?? (await tx`select * from invoices where id = ${id}`)[0];
+    });
+  });
+
+  // Client video 2026-10-18 (Bulk Invoice > Combine Open Invoices > Email): "it's trying to pull
+  // from the outlook on the computer, not the outlook in the cloud" -- it was a mailto: link. Now
+  // one real email (the business's Office 365 SMTP) listing every selected invoice with its own
+  // view/pay link and the combined total; emailed invoices become Sent.
+  app.post<{ Body: { invoiceIds: string[] } }>("/bulk-send-email", async (req, reply) => {
+    const { invoiceIds } = req.body;
+    if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+      reply.code(400).send({ error: "Pick at least one invoice." });
+      return;
+    }
+    if (!isMailerConfigured()) {
+      reply.code(400).send({ error: "Email isn't set up yet — ask for the SMTP password." });
+      return;
+    }
+    return withTenantContext(req.userId, async (tx) => {
+      const rows = (await tx`
+        select i.id, i.number, i.payment_token, i.customer_id, c.name as customer_name, c.email as customer_email,
+          coalesce(t.invoice_business_name, t.name) as business_name
+        from invoices i join customers c on c.id = i.customer_id join tenants t on t.id = i.tenant_id
+        where i.id in ${tx(invoiceIds)}
+        order by i.issue_date, i.number
+      `) as unknown as { id: string; number: string; payment_token: string; customer_id: string; customer_name: string; customer_email: string | null; business_name: string }[];
+      if (rows.length === 0) { reply.code(404).send({ error: "Invoices not found." }); return; }
+      if (new Set(rows.map((r) => r.customer_id)).size > 1) { reply.code(400).send({ error: "Pick invoices for one customer at a time." }); return; }
+      const to = rows[0].customer_email;
+      if (!to) { reply.code(400).send({ error: "This customer has no email address on file." }); return; }
+      const totals = await Promise.all(rows.map((r) => computeInvoiceTotal(tx, r.id)));
+      const grand = totals.reduce((s, x) => s + x.total, 0);
+      const list = rows.map((r, i) => {
+        const url = `${PUBLIC_APP_URL}/invoice/${r.payment_token}`;
+        return `<li>Invoice ${r.number} — <strong>${totals[i].total.toFixed(2)}</strong> — <a href="${url}">view &amp; pay</a></li>`;
+      }).join("");
+      await sendMail({
+        to,
+        subject: `${rows.length} open invoices from ${rows[0].business_name} — ${grand.toFixed(2)}`,
+        html: `<p>Hi ${rows[0].customer_name},</p><p>Here are your open invoices (total <strong>${grand.toFixed(2)}</strong>). Each one can be viewed and paid online:</p><ul>${list}</ul><p>Thank you!<br/>${rows[0].business_name}</p>`,
+      });
+      await tx`update invoices set status = 'Sent' where id in ${tx(invoiceIds)} and status in ('Draft', 'Open')`;
+      return { sent: rows.length, to };
+    });
   });
 
   // Client request 2026-09-06: "A way to Write off a job – (bad debt)". Modeled on the invoice
