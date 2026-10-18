@@ -905,4 +905,5 @@ export const esDictionary: Record<string, string> = {
   "Pick invoices for one customer at a time.": "Elija facturas de un solo cliente a la vez.",
   "Change stop order": "Cambiar orden de paradas",
   "only this day changes; next week goes back to the usual order.": "solo cambia este día; la próxima semana vuelve al orden habitual.",
+  "Couldn't finalize the invoice — try again": "No se pudo finalizar la factura; inténtelo de nuevo",
 };

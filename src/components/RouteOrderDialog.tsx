@@ -59,8 +59,13 @@ export default function RouteOrderDialog({
   // Start from the order the stops already run in (by time, then name), earliest existing time as the start.
   // Keyed on the set of stops (not the array identity) so a parent re-render doesn't wipe the user's ordering.
   const rowsKey = rows.map((r) => r.key).join(",");
+  // QA 2026-10-18: a Temporary apply turns projected stops into real jobs, which changes the row keys
+  // -- that used to re-run this reset and wipe the "Saved" message and flip the choice back to
+  // Permanent (a second Apply would then change the series for good). Once applied, leave it alone.
+  const appliedRef = useRef(false);
+  useEffect(() => { if (!open) appliedRef.current = false; }, [open]);
   useEffect(() => {
-    if (!open) return;
+    if (!open || appliedRef.current) return;
     const sorted = [...rows].sort((a, b) => {
       if (a.time && b.time) return a.time.localeCompare(b.time);
       if (a.time) return -1;
@@ -145,8 +150,10 @@ export default function RouteOrderDialog({
     setSaving(true);
     setError("");
     try {
+      appliedRef.current = true;
       setDone(await onApply(order.map((r, i) => ({ jobId: r.jobId, recurringId: r.recurringId, time: timeFor(i), repeatWeekly: !temporary && weekly.has(r.key), permanent: !temporary }))));
     } catch (e) {
+      appliedRef.current = false;
       setError(e instanceof Error ? e.message : "Couldn't save the route order");
     }
     setSaving(false);

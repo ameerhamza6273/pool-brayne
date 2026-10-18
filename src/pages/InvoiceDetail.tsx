@@ -210,9 +210,13 @@ export default function InvoiceDetail() {
   const handleFinalize = async () => {
     if (!id || !invoice) return;
     setFinalizing(true);
+    setSendEmailResult(null);
     try {
       await invoicingApi.finalizeInvoice(id);
       setInvoice({ ...invoice, status: "Open" });
+    } catch (err) {
+      // QA 2026-10-18: a failed finalize used to do nothing visible; reuse the action bar's message slot.
+      setSendEmailResult(err instanceof Error ? err.message : "Couldn't finalize the invoice — try again");
     } finally {
       setFinalizing(false);
     }
