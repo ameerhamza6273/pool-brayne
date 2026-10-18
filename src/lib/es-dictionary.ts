@@ -879,4 +879,6 @@ export const esDictionary: Record<string, string> = {
   "Delete this time entry?": "¿Eliminar este registro de tiempo?",
   "Delete this item?": "¿Eliminar este elemento?",
   "Delete this request?": "¿Eliminar esta solicitud?",
+  "Enter the check number": "Ingrese el número de cheque",
+  "Total:": "Total:",
 };

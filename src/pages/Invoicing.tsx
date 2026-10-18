@@ -27,7 +27,6 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import CardPaymentForm from "@/components/CardPaymentForm";
 import LineItemsEditor, { type DraftLineItem } from "@/components/LineItemsEditor";
 import { useLanguage } from "@/lib/language-context";
-import { useTaxRate } from "@/hooks/use-tax-rate";
 import type { Database } from "@/lib/database.types";
 import { useConfirm } from "@/components/ConfirmDialog";
 
@@ -64,7 +63,6 @@ const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits
 export default function Invoicing() {
   const { t } = useLanguage();
   const confirm = useConfirm();
-  const taxRate = useTaxRate();
   const [search, setSearch] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
   // Client video 2026-10-18: search box on every Invoicing tab ("a search field for a customer name
@@ -404,8 +402,8 @@ export default function Invoicing() {
   const handleBulkEmail = () => {
     const customer = customers.find((c) => c.id === bulkInvoiceCustomerId);
     const selected = openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id));
-    const total = selected.reduce((s, i) => s + i.amount, 0);
-    const body = selected.map((i) => `${i.number}: $${i.amount.toFixed(2)}`).join("%0D%0A");
+    const total = selected.reduce((s, i) => s + (i.total ?? i.amount), 0);
+    const body = selected.map((i) => `${i.number}: $${(i.total ?? i.amount).toFixed(2)}`).join("%0D%0A");
     window.location.href = `mailto:${customer?.email ?? ""}?subject=Open Invoices&body=Total due: $${total.toFixed(2)}%0D%0A%0D%0A${body}`;
     setBulkInvoiceSelected(new Set());
     setBulkOpen(false);
@@ -616,7 +614,7 @@ export default function Invoicing() {
                           <label key={inv.id} className="flex items-center gap-2 p-2 rounded-lg border border-[#E2E8F0] text-sm cursor-pointer">
                             <input type="checkbox" checked={bulkInvoiceSelected.has(inv.id)} onChange={() => toggleBulkInvoice(inv.id)} />
                             <span className="flex-1">{inv.number} — {inv.issue_date}</span>
-                            <span className="font-medium text-[#0F172A]">${inv.amount.toFixed(2)}</span>
+                            <span className="font-medium text-[#0F172A]">${(inv.total ?? inv.amount).toFixed(2)}</span>
                           </label>
                         ))}
                         {openInvoicesForCustomer.length === 0 && <p className="text-sm text-[#64748B] py-2">{t("No open invoices for this customer.")}</p>}
@@ -626,7 +624,7 @@ export default function Invoicing() {
                   {bulkInvoiceSelected.size > 0 && (
                     <>
                       <p className="text-right text-sm font-semibold text-[#0F172A]">
-                        {t("Total (before tax):")} ${openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0).toFixed(2)}
+                        {t("Total:")} ${openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + (i.total ?? i.amount), 0).toFixed(2)}
                       </p>
                       <div>
                         <label className="text-sm font-medium text-[#0F172A]">{t("Payment Method")}</label>
@@ -644,13 +642,18 @@ export default function Invoicing() {
                       </div>
                       {bulkPayMethod === "Card" ? (
                         <CardPaymentForm
-                          amount={openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + i.amount, 0) * (1 + taxRate)}
+                          amount={openInvoicesForCustomer.filter((i) => bulkInvoiceSelected.has(i.id)).reduce((s, i) => s + (i.total ?? i.amount), 0)}
                           onCharge={(opaqueData) => handleBulkCollect(opaqueData)}
                         />
                       ) : (
                         <>
+                        {/* Client SMS 2026-10-16 + 2026-10-18 ("accepting a check there is no spot for a check
+                            number") -- the field existed but was an unlabeled box; now labelled and focused. */}
                         {bulkPayMethod === "Check" && (
-                          <Input placeholder={t("Check #")} value={bulkCheckNumber} onChange={(e) => setBulkCheckNumber(e.target.value)} />
+                          <div>
+                            <label className="text-sm font-medium text-[#0F172A]">{t("Check #")}</label>
+                            <Input autoFocus className="mt-1" placeholder={t("Enter the check number")} value={bulkCheckNumber} onChange={(e) => setBulkCheckNumber(e.target.value)} />
+                          </div>
                         )}
                         <Button
                           className="w-full bg-[#0891B2] hover:bg-[#0E7490] text-white"
