@@ -387,6 +387,12 @@ export default async function jobsRoutes(app: FastifyInstance) {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
       const inserted = [];
+      // Client answer 2026-10-19: parts a tech uses in the field "should show up as line items on
+      // invoice" -- each part is also appended to the job's line items (which the invoice is built
+      // from), at the catalog price, and job.amount grows by the same total.
+      const [{ next_sort }] = await tx`select coalesce(max(sort_order) + 1, 0)::int as next_sort from job_line_items where job_id = ${id}` as unknown as { next_sort: number }[];
+      let sortOrder = next_sort;
+      let addedAmount = 0;
       for (const item of items) {
         if (item.quantity <= 0) continue;
         const [row] = await tx`
@@ -395,6 +401,17 @@ export default async function jobsRoutes(app: FastifyInstance) {
           returning *
         `;
         inserted.push(row);
+        const [catalog] = await tx`select name, sku, category, cost, price from inventory_items where id = ${item.itemId}` as unknown as { name: string; sku: string | null; category: string | null; cost: number | null; price: number | null }[];
+        if (catalog) {
+          const rate = Number(catalog.price ?? 0);
+          const lineAmount = rate * item.quantity;
+          const itemType = catalog.category && /^(labor|services)$/i.test(catalog.category.trim()) ? "labor" : "material";
+          await tx`
+            insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, sort_order)
+            values (${tenant.id}, ${id}, ${catalog.name}, ${catalog.sku}, ${itemType}, ${item.quantity}, ${Number(catalog.cost ?? 0)}, ${rate}, ${lineAmount}, ${sortOrder++})
+          `;
+          addedAmount += lineAmount;
+        }
         if (!store) continue;
         const [stockRow] = await tx`
           select id, quantity from inventory_stock
@@ -404,6 +421,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
           await tx`update inventory_stock set quantity = greatest(0, ${stockRow.quantity - item.quantity}) where id = ${stockRow.id}`;
         }
       }
+      if (addedAmount !== 0) await tx`update jobs set amount = coalesce(amount, 0) + ${addedAmount} where id = ${id}`;
       return inserted;
     });
   });

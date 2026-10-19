@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt, Search, Download, BarChart3 } from "lucide-react";
+import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt, Search, Download, BarChart3, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,17 @@ import { useSort, SortTh } from "@/components/SortableTh";
 // Client request 2026-09-02 ("Need a reports section"): item movement, customer deposits,
 // invoices total-due per customer, recurring reminder-job types, inventory valuation, plus the
 // sales-tax report that already existed on the POS page (reused here from the same endpoint).
-const reportTabs = ["sales-tax", "sales-analysis", "movement", "deposits", "due", "reminders", "valuation"];
+const reportTabMeta = [
+  { id: "sales-tax", label: "Sales Tax", icon: Receipt },
+  { id: "sales-analysis", label: "Sales Analysis", icon: BarChart3 },
+  { id: "movement", label: "Item Movement", icon: Package },
+  { id: "deposits", label: "Deposits", icon: DollarSign },
+  { id: "due", label: "Accounts Outstanding", icon: FileText },
+  { id: "reminders", label: "Reminders", icon: Bell },
+  { id: "valuation", label: "Inventory Valuation", icon: Warehouse },
+];
+const reportTabs = reportTabMeta.map((tab) => tab.id);
+const FAVORITE_TABS_KEY = "reports_favorite_tabs";
 
 export default function Reports() {
   const { t } = useLanguage();
@@ -37,9 +47,24 @@ export default function Reports() {
   // one-row-per-transaction list stays one click away.
   const [movementView, setMovementView] = useState<"summary" | "detail">("summary");
   const [movementOrderId, setMovementOrderId] = useState<string | null>(null);
+  // Client video 2026-10-19: star the reports you use most -- starred tabs move to the front under
+  // "Favorites" and the first one opens by default (per browser, like POS favorites).
+  const [favoriteTabs, setFavoriteTabs] = useState<string[]>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FAVORITE_TABS_KEY) ?? "[]");
+      return Array.isArray(saved) ? saved.filter((id) => reportTabs.includes(id)) : [];
+    } catch { return []; }
+  });
+  const toggleFavoriteTab = (id: string) => {
+    setFavoriteTabs((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      try { localStorage.setItem(FAVORITE_TABS_KEY, JSON.stringify(next)); } catch { /* private-window storage block */ }
+      return next;
+    });
+  };
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
-    return tab && reportTabs.includes(tab) ? tab : "sales-tax";
+    return tab && reportTabs.includes(tab) ? tab : favoriteTabs[0] ?? "sales-tax";
   });
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -200,13 +225,33 @@ export default function Reports() {
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
-          <TabsTrigger value="sales-tax" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Receipt className="w-4 h-4" /> {t("Sales Tax")}</TabsTrigger>
-          <TabsTrigger value="sales-analysis" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><BarChart3 className="w-4 h-4" /> {t("Sales Analysis")}</TabsTrigger>
-          <TabsTrigger value="movement" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Package className="w-4 h-4" /> {t("Item Movement")}</TabsTrigger>
-          <TabsTrigger value="deposits" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><DollarSign className="w-4 h-4" /> {t("Deposits")}</TabsTrigger>
-          <TabsTrigger value="due" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><FileText className="w-4 h-4" /> {t("Accounts Outstanding")}</TabsTrigger>
-          <TabsTrigger value="reminders" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Bell className="w-4 h-4" /> {t("Reminders")}</TabsTrigger>
-          <TabsTrigger value="valuation" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5"><Warehouse className="w-4 h-4" /> {t("Inventory Valuation")}</TabsTrigger>
+          {[...reportTabMeta.filter((tab) => favoriteTabs.includes(tab.id)), ...reportTabMeta.filter((tab) => !favoriteTabs.includes(tab.id))].map((tab, i) => {
+            const Icon = tab.icon;
+            const fav = favoriteTabs.includes(tab.id);
+            return (
+              <span key={tab.id} className="contents">
+                {i === 0 && favoriteTabs.length > 0 && (
+                  <span className="flex items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-[#F59E0B]"><Star className="w-3 h-3 fill-current" /> {t("Favorites")}</span>
+                )}
+                {i === favoriteTabs.length && favoriteTabs.length > 0 && <span className="mx-1 h-6 w-px bg-[#E2E8F0]" aria-hidden />}
+                <TabsTrigger value={tab.id} className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md pl-4 pr-2 gap-1.5 group">
+                  <Icon className="w-4 h-4" /> {t(tab.label)}
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    title={fav ? t("Remove from favorites") : t("Star as favorite")}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={(e) => { e.stopPropagation(); toggleFavoriteTab(tab.id); }}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleFavoriteTab(tab.id); } }}
+                    className="ml-0.5 p-0.5 rounded hover:bg-black/10"
+                  >
+                    <Star className={`w-3.5 h-3.5 ${fav ? "fill-[#F59E0B] text-[#F59E0B]" : "opacity-40 group-hover:opacity-80"}`} />
+                  </span>
+                </TabsTrigger>
+              </span>
+            );
+          })}
         </TabsList>
 
         <TabsContent value="sales-tax" className="mt-4">

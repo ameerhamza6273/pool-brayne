@@ -450,6 +450,8 @@ export const esDictionary: Record<string, string> = {
   "Remove": "Quitar",
   "Remove document?": "¿Quitar documento?",
   "Remove from favorites": "Quitar de favoritos",
+  "Favorites": "Favoritos",
+  "Taken out of inventory and added to Job Items (and the invoice) when the job is completed.": "Se descuenta del inventario y se agrega a los artículos del trabajo (y a la factura) al completar el trabajo.",
   "Remove from schedule": "Quitar del calendario",
   "Repeat (months)": "Repetir (meses)",
   "Repeat weekly": "Repetir cada semana",

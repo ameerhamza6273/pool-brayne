@@ -134,7 +134,7 @@ Last updated: 2026-10-18 (app-wide sorting + search, delete confirmations, new-v
 10. **Authorize.net production merchant account** (API Login ID + Transaction Key) — card charging already works end-to-end, just on sandbox/test credentials.
 11. ~~Dialpad account + API key~~ — **simpler than we thought, 2026-10-06:** no API key needed for click-to-call. In Dialpad's own admin (dialpad.com, already logged in as them): Office › Integrations › find **CTI Chrome Extension** (already shows Enabled) › Options › Manage Settings › under "Customized Domains" add Domain Name `pool-brayne.vercel.app` and Service Name `clearpoolcrm` › Save changes. That's the only step needed on their end — our side is already built and waiting (see the table above).
 4. One SMS line was cut off: *"Allow us the option to click on an option to click…"* — what was the rest?
-5. **Inventory (2026-09-18 list):** *"Remove the original in inventory list (default list we started with)"* — which list? A leftover demo category, or the old imported product list?
+5. ~~Inventory "remove the original list"~~ — **answered 2026-10-19:** the 32 demo products seeded before their real list was imported (Item # 16000–16031, e.g. "3" Chlorine Tablets", "Pentair IntelliFlo 3HP", "SVC-…" services). Removal pending the dev's OK (see section 14).
 6. ~~Documents folder (2026-09-18)~~ — answered by the 2026-09-25 video: built as Data › **Document List**.
 7. *(confirm only)* Inventory edit "need a drop down" — Manufacturer now suggests from a list; is that the field you meant?
 8. ~~Documents on Invoices~~ — built 2026-09-25 (dev decided, no client question): invoice page › Documents (upload, attach from Library, rename, delete; not printed).
@@ -291,6 +291,15 @@ Last updated: 2026-10-18 (app-wide sorting + search, delete confirmations, new-v
 | *(video)* "Tech view does not allow anybody to log out... the drop down here is not available in the phone view" | ✅ fixed — real bug | The phone/mobile header's account icon had no menu behind it at all (the desktop version's does) — tapping it did nothing. Now opens the same Log out menu everywhere |
 
 **Found while importing, not touched (flagging for you to clean up if you want — one-at-a-time delete in Directory, same as before):** a few contacts are duplicated under slightly different names with the same phone number — "KEVIN LEWIS PENTAIR" (listed twice, identical), "Mitch Cox" vs "Mitch Cox (SPECK PUMP)", and "POOL BUILDERS (PBS)" vs "POOL BUILDERS (PBS) NORCROSS".
+
+## 14. 2026-10-19 (POS video, Reports video, 2 SMS)
+
+| Request | Status | Where to find it |
+|---|---|---|
+| POS: adding the same product twice adds to the quantity — need separate lines so each pump gets its own serial # | ✅ built | POS — every click on a product adds a **new line** (each with its own Serial # box). To sell 10 of a chemical on one line, type the quantity on that line |
+| Reports: star favorite reports so they're easy to find | ✅ built | Reports — small ☆ on every report tab; starred ones move to the front under **★ Favorites**, and the first favorite opens by default (saved per computer/browser) |
+| *(answer to our question)* Parts a tech adds under Parts Used should show up as line items on the invoice | ✅ built | Technician Field — when the job is completed, each part used is taken out of inventory **and** added to Job Items at its catalog price (so the job total and the invoice include it). The tech can still remove/change it under Job Items before generating the invoice |
+| *(SMS #9, answer)* Remove the original dummy inventory list from the start | ⏳ waiting on dev's OK | Found exactly 32 demo products (Item # 16000–16031, all created 2026-07-28 before the real import). 4 were rung up in test POS sales and "Stabilizer / CYA 4lb" was used as a part on one job, so that one can't be deleted (history) — the rest can be removed from Inventory › Catalog (trash icon) |
 
 ## Not built (deliberately, no client request yet)
 

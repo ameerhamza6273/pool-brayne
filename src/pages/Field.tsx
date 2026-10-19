@@ -390,6 +390,10 @@ export default function Field() {
         .map(([itemId, quantity]) => ({ itemId, quantity }));
       if (usedItems.length > 0) {
         await jobsApi.addParts(currentJob.id, usedItems);
+        // The backend also bills each part as a job line item -- reload so Job Items and the
+        // invoice generated next include them.
+        setPartsUsed({});
+        setJobLineItems(await jobsApi.getLineItems(currentJob.id));
       }
     }
 
@@ -678,7 +682,8 @@ export default function Field() {
 
             {/* Parts Used */}
             <div>
-              <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Parts Used")}</p>
+              <p className="text-sm font-medium text-[#0F172A]">{t("Parts Used")}</p>
+              <p className="text-[11px] text-[#64748B] mb-2">{t("Taken out of inventory and added to Job Items (and the invoice) when the job is completed.")}</p>
               <Input
                 placeholder={t("Search parts by item #, SKU, name or description...")}
                 className="mb-2 h-9 text-sm"

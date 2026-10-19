@@ -290,11 +290,9 @@ export default function PointOfSale() {
 
   const addToCart = (p: Product) => {
     const direction = returnMode ? -1 : 1;
-    setCart((prev) => {
-      const existing = prev.find((i) => i.id === p.id);
-      if (existing) return prev.map((i) => i.id === p.id ? { ...i, qty: i.qty + direction } : i);
-      return [...prev, { id: p.id, name: p.name, sku: p.sku, itemNumber: p.item_number, price: p.price ?? 0, qty: direction, taxable: p.taxable, unit: p.unit ?? "ea" }];
-    });
+    // Client video 2026-10-19: adding the same product again must be its own line (two pumps =
+    // two lines, each with its own serial #), not +1 on the existing line. Qty is still editable.
+    setCart((prev) => [...prev, { id: p.id, name: p.name, sku: p.sku, itemNumber: p.item_number, price: p.price ?? 0, qty: direction, taxable: p.taxable, unit: p.unit ?? "ea" }]);
   };
 
   const addCustomItem = () => {
