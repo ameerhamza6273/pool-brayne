@@ -5,6 +5,8 @@
 > **Rule for Claude (2026-09-21):** har naye client message se PEHLE `CLIENT_REQUESTS.md` padho — client ko baar-baar wahi baat
 > dohrani pad rahi hai (yehi uski frustration hai). Jo item wahan ✅ hai use dobara mat banao, sirf "kahan milega" batao; naya item
 > milte hi wahan add karo aur kaam hone par status/location update karo. Client se sawal ek sath, sirf zaroori wale.
+> **Rule for Claude (2026-10-19):** sirf hamare banaye hue kaam ke bugs / jo work nahi kar raha woh fix karo. Client ka koi bhi NEW kaam
+> ya change request ("isko aise kar do", naya feature) khud mat banao — dev ko list do, boss approve karega tab banega.
 > **Rule for Claude:** har meaningful session ke aakhir mein (ya jab user kahe) `## Session
 > Changelog` mein neeche ek nayi dated **one-liner** entry add karo — kya build/fix hua, kya
 > pending reh gaya. **Verbose play-by-play mat likho** (exact click sequences, step-by-step
