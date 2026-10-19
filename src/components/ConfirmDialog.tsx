@@ -6,7 +6,8 @@ import { useLanguage } from "@/lib/language-context";
 
 // Client videos (2026-09-23 SKU delete, 2026-10-18 dev note): every delete asks first, in the same
 // popup style as Inventory's "Delete SKU permanently?" -- many trash icons used to delete on the
-// first click. Usage: `const confirm = useConfirm(); if (!(await confirm({ title, name }))) return;`
+// first click. Buttons read "No" / "Yes" (client video 2026-10-18: "delete photo and then put yes or
+// no there" instead of Cancel/Delete). Usage: `const confirm = useConfirm(); if (!(await confirm({ title, name }))) return;`
 type ConfirmOptions = { title: string; name?: string | null; message?: string; confirmLabel?: string };
 const ConfirmContext = createContext<(o: ConfirmOptions) => Promise<boolean>>(async () => true);
 
@@ -38,9 +39,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
             )}
             <p className="text-[#475569]">{t(opts?.message ?? "Are you sure? This cannot be undone.")}</p>
             <div className="flex justify-end gap-2 pt-1">
-              <Button variant="outline" onClick={() => close(false)}>{t("Cancel")}</Button>
+              <Button variant="outline" onClick={() => close(false)}>{t("No")}</Button>
               <Button className="bg-[#DC2626] hover:bg-[#B91C1C] text-white" onClick={() => close(true)}>
-                <Trash2 className="w-4 h-4 mr-1.5" />{t(opts?.confirmLabel ?? "Delete")}
+                <Trash2 className="w-4 h-4 mr-1.5" />{t(opts?.confirmLabel ?? "Yes")}
               </Button>
             </div>
           </div>

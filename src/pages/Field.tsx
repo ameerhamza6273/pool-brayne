@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import {
   ArrowLeft, MapPin, Clock, Phone, Camera, CheckCircle2, Navigation,
-  ChevronRight, ChevronLeft, ChevronDown, Wrench, User, DollarSign, Minus, Plus, Eraser, FileText, X,
+  ChevronRight, ChevronLeft, ChevronDown, Wrench, User, DollarSign, Minus, Plus, Eraser, FileText, X, Trash2,
   Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -174,6 +174,38 @@ export default function Field() {
     if (!currentJob) return;
     await jobsApi.deleteDocument(currentJob.id, doc.id);
     setJobDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  };
+
+  // Client video 2026-10-18: "the tech may not need all these items ... cannot delete items in the
+  // field." Same full-list save JobDetail's line-items editor uses, so job.amount stays in sync.
+  const [savingLineItems, setSavingLineItems] = useState(false);
+  const saveJobLineItems = async (next: JobLineItem[]) => {
+    if (!currentJob) return;
+    const prev = jobLineItems;
+    setJobLineItems(next);
+    setSavingLineItems(true);
+    try {
+      const row = await jobsApi.saveLineItems(currentJob.id, next.map((li) => ({
+        description: li.description, sku: li.sku, itemType: li.item_type, quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes,
+      })));
+      setMyJobs((list) => list.map((j) => (j.id === currentJob.id ? { ...j, amount: row.amount } : j)));
+      setJobLineItems(await jobsApi.getLineItems(currentJob.id));
+    } catch {
+      setJobLineItems(prev);
+    } finally {
+      setSavingLineItems(false);
+    }
+  };
+  const changeLineItemQty = (id: string, delta: number) => {
+    saveJobLineItems(jobLineItems.map((li) => {
+      if (li.id !== id) return li;
+      const quantity = Math.max(1, li.quantity + delta);
+      return { ...li, quantity, amount: quantity * li.rate };
+    }));
+  };
+  const removeLineItem = async (li: JobLineItem) => {
+    if (!(await confirm({ title: "Remove this item from the job?", name: li.description }))) return;
+    saveJobLineItems(jobLineItems.filter((x) => x.id !== li.id));
   };
 
   const handleDeletePhoto = async (photoId: string) => {
@@ -377,7 +409,7 @@ export default function Field() {
         jobId: currentJob.id,
         issueDate,
         dueDate: dueDate.toISOString().slice(0, 10),
-        amount: currentJob.amount,
+        amount: jobLineItems.length > 0 ? jobLineItems.reduce((sum, li) => sum + li.amount, 0) : currentJob.amount,
         // Client doc 2026-10-05: "Sent" claimed the invoice was emailed/texted when nothing actually
         // was (SendGrid/Twilio aren't connected) -- "Draft" is honest about what happened.
         status: "Draft",
@@ -604,12 +636,40 @@ export default function Field() {
                 <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Job Items")}</p>
                 <div className="rounded-lg border border-[#E2E8F0] divide-y divide-[#F1F5F9]">
                   {jobLineItems.map((li) => (
-                    <div key={li.id} className="flex items-center justify-between px-3 py-2">
+                    <div key={li.id} className="flex items-center justify-between gap-2 px-3 py-2">
                       <div className="min-w-0">
                         <p className="text-sm text-[#0F172A] truncate">{li.description}</p>
                         <p className="text-xs text-[#64748B]">{li.quantity} × ${li.rate.toFixed(2)}{li.sku ? ` · ${li.sku}` : ""}</p>
                       </div>
-                      <span className="text-sm font-medium text-[#0F172A] shrink-0">${li.amount.toFixed(2)}</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => changeLineItemQty(li.id, -1)}
+                          disabled={savingLineItems || li.quantity <= 1}
+                          className="w-6 h-6 rounded-md bg-[#F1F5F9] flex items-center justify-center text-[#64748B] disabled:opacity-40"
+                          aria-label={t("Decrease quantity")}
+                        >
+                          <Minus className="w-3 h-3" />
+                        </button>
+                        <span className="w-5 text-center text-sm font-medium text-[#0F172A]">{li.quantity}</span>
+                        <button
+                          onClick={() => changeLineItemQty(li.id, 1)}
+                          disabled={savingLineItems}
+                          className="w-6 h-6 rounded-md bg-[#0891B2]/10 flex items-center justify-center text-[#0891B2] disabled:opacity-40"
+                          aria-label={t("Increase quantity")}
+                        >
+                          <Plus className="w-3 h-3" />
+                        </button>
+                        <span className="w-16 text-right text-sm font-medium text-[#0F172A]">${li.amount.toFixed(2)}</span>
+                        <button
+                          onClick={() => removeLineItem(li)}
+                          disabled={savingLineItems}
+                          className="w-7 h-7 rounded-md flex items-center justify-center text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] disabled:opacity-40"
+                          aria-label={t("Remove item")}
+                          title={t("Remove item")}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
