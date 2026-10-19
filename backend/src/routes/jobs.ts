@@ -401,14 +401,14 @@ export default async function jobsRoutes(app: FastifyInstance) {
           returning *
         `;
         inserted.push(row);
-        const [catalog] = await tx`select name, sku, category, cost, price from inventory_items where id = ${item.itemId}` as unknown as { name: string; sku: string | null; category: string | null; cost: number | null; price: number | null }[];
+        const [catalog] = await tx`select name, sku, category, unit_cost, price from inventory_items where id = ${item.itemId}` as unknown as { name: string; sku: string | null; category: string | null; unit_cost: number | null; price: number | null }[];
         if (catalog) {
           const rate = Number(catalog.price ?? 0);
           const lineAmount = rate * item.quantity;
           const itemType = catalog.category && /^(labor|services)$/i.test(catalog.category.trim()) ? "labor" : "material";
           await tx`
             insert into job_line_items (tenant_id, job_id, description, sku, item_type, quantity, cost, rate, amount, sort_order)
-            values (${tenant.id}, ${id}, ${catalog.name}, ${catalog.sku}, ${itemType}, ${item.quantity}, ${Number(catalog.cost ?? 0)}, ${rate}, ${lineAmount}, ${sortOrder++})
+            values (${tenant.id}, ${id}, ${catalog.name}, ${catalog.sku}, ${itemType}, ${item.quantity}, ${Number(catalog.unit_cost ?? 0)}, ${rate}, ${lineAmount}, ${sortOrder++})
           `;
           addedAmount += lineAmount;
         }

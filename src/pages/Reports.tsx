@@ -224,7 +224,7 @@ export default function Reports() {
 
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
+        <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto justify-start">
           {[...reportTabMeta.filter((tab) => favoriteTabs.includes(tab.id)), ...reportTabMeta.filter((tab) => !favoriteTabs.includes(tab.id))].map((tab, i) => {
             const Icon = tab.icon;
             const fav = favoriteTabs.includes(tab.id);
@@ -240,8 +240,8 @@ export default function Reports() {
                     role="button"
                     tabIndex={0}
                     title={fav ? t("Remove from favorites") : t("Star as favorite")}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                     onClick={(e) => { e.stopPropagation(); toggleFavoriteTab(tab.id); }}
                     onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleFavoriteTab(tab.id); } }}
                     className="ml-0.5 p-0.5 rounded hover:bg-black/10"
