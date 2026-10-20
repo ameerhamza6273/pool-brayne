@@ -7,7 +7,7 @@ If it is already listed, do not rebuild it and do not ask the client again — r
 
 Status: ✅ done & checked · 🟡 done, needs the client's input/account to finish · ⏳ not built yet
 
-Last updated: 2026-10-18 (app-wide sorting + search, delete confirmations, new-version reload banner, bulk check #, Item Movement totals, Sales Analysis check #/card brand)
+Last updated: 2026-10-20 (ServiceWorks-style Reports catalog, 26 new reports)
 
 ---
 
@@ -300,6 +300,15 @@ Last updated: 2026-10-18 (app-wide sorting + search, delete confirmations, new-v
 | Reports: star favorite reports so they're easy to find | ✅ built | Reports — small ☆ on every report tab; starred ones move to the front under **★ Favorites**, and the first favorite opens by default (saved per computer/browser) |
 | *(answer to our question)* Parts a tech adds under Parts Used should show up as line items on the invoice | ✅ built | Technician Field — when the job is completed, each part used is taken out of inventory **and** added to Job Items at its catalog price (so the job total and the invoice include it). The tech can still remove/change it under Job Items before generating the invoice |
 | *(SMS #9, answer)* Remove the original dummy inventory list from the start | ✅ done 2026-10-19 (30 removed) | Found exactly 32 demo products (Item # 16000–16031, all created 2026-07-28 before the real import). 4 were rung up in test POS sales and "Stabilizer / CYA 4lb" was used as a part on one job, so that one can't be deleted (history) — the rest can be removed from Inventory › Catalog (trash icon) |
+
+## 15. 2026-10-20 (boss approved the Reports catalog from the 2026-10-19 video)
+
+| Request | Status | Where to find it |
+|---|---|---|
+| Reports page like ServiceWorks Insights: Favorites column + Financial / Jobs / Employee & Payroll / POS columns, folders, star any report | ✅ built | **Reports** home — 5 columns, folders open on click, ☆ next to every report (starred ones show in Favorites with a short description), search box on top. Click a report to open it, **← All Reports** to go back |
+| New reports | ✅ built | Financial: Daily Deposit, Earning Report, Payments Received, Vendor Bills Due, Profit & Loss, Job Profit, Sales by Customer, Sales by Category, Current Inventory for All Locations, Inventory Adjustments. Jobs: Call Completed in One Trip, Dispatch Risk Board, Estimate Summary, Jobs by Zip Code, Tech Line Item Profit. Employee & Payroll: Daily Hours with Cost, Employee List, Payroll Summary, Technician Performance, Time Clock Detail, Time Off Requests. POS: Customer Order with Note, Customer Sales by Item #, Customer Sales by Sales Person, Order Items, POS Daily Usage, Sales Pending Serial, Serialized Items in POS. Every one: sort any column, search, totals, Export CSV, Print, click a job/invoice/estimate/customer/receipt to open it. The 7 existing reports are in the same columns |
+| Reports from their screenshot that need data the CRM doesn't record | ⏸ not built | Show All Tips (no tip field), Mileage / Mileage Summary (no mileage logging — GPS7000 has no API), Employees By Zone (no zones), Commissions (no commission rates), Customer Order with Custom Field, Sales by Model / Model Sell Through (no model field on products), Sales By Location (one store). Each needs a new field/feature first — new work, needs approval |
+| Hourly rates | 🟡 needs data | Daily Hours with Cost / Payroll Summary / Profit & Loss payroll use each person's hourly rate from Settings › Team — blank for the people checked (e.g. Adam Kono, Bryan Smith), so their cost shows $0 until a rate is entered |
 
 ## Not built (deliberately, no client request yet)
 

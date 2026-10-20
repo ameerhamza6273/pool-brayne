@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Package, DollarSign, FileText, Bell, Warehouse, Plus, CheckCircle2, Receipt, Search, Download, BarChart3, Star } from "lucide-react";
+import { Plus, CheckCircle2, Search, Download, Star, ArrowLeft, Folder, FolderOpen, FileBarChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { SearchableSelect } from "@/components/SearchableSelect";
 import { customerOption } from "@/lib/customer-options";
@@ -13,6 +12,8 @@ import { reportsApi, type ItemMovementRow, type DepositRow, type InvoiceDueRow, 
 import SalesTaxDetailReport from "@/components/SalesTaxDetailReport";
 import SalesAnalysisReport from "@/components/SalesAnalysisReport";
 import ItemSummaryReport, { summarizeItems } from "@/components/ItemSummaryReport";
+import CatalogReport from "@/components/CatalogReport";
+import { reportCategories, allReports, findReport, isFolder, type ReportDef } from "@/lib/report-catalog";
 import ReceiptDialog from "@/components/ReceiptDialog";
 import { receiptNumber } from "@/lib/api/pos";
 import { customersApi } from "@/lib/api/customers";
@@ -21,25 +22,19 @@ import { matchesQuery } from "@/lib/search";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { useSort, SortTh } from "@/components/SortableTh";
 
-// Client request 2026-09-02 ("Need a reports section"): item movement, customer deposits,
-// invoices total-due per customer, recurring reminder-job types, inventory valuation, plus the
-// sales-tax report that already existed on the POS page (reused here from the same endpoint).
-const reportTabMeta = [
-  { id: "sales-tax", label: "Sales Tax", icon: Receipt },
-  { id: "sales-analysis", label: "Sales Analysis", icon: BarChart3 },
-  { id: "movement", label: "Item Movement", icon: Package },
-  { id: "deposits", label: "Deposits", icon: DollarSign },
-  { id: "due", label: "Accounts Outstanding", icon: FileText },
-  { id: "reminders", label: "Reminders", icon: Bell },
-  { id: "valuation", label: "Inventory Valuation", icon: Warehouse },
-];
-const reportTabs = reportTabMeta.map((tab) => tab.id);
+// Client request 2026-09-02 ("Need a reports section") started this page with item movement,
+// deposits, accounts outstanding, reminders, inventory valuation and sales tax; client video
+// 2026-10-19 (approved 2026-10-20) turned it into a ServiceWorks-style catalog -- see
+// src/lib/report-catalog.ts. The home page lists every report in category columns; ?report=<id>
+// opens one (?tab=<id> still works for older links, e.g. the sidebar's Reminders).
+const reportIds = allReports.map((r) => r.id);
+// Same key as the 2026-10-19 favorite tabs, so reports starred before keep their star.
 const FAVORITE_TABS_KEY = "reports_favorite_tabs";
 
 export default function Reports() {
   const { t } = useLanguage();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   // Client doc 2026-10-05: "Need a SEARCH bar function -- search for item number, sku number,
   // description, etc..." on Item Movement.
   const [movementQuery, setMovementQuery] = useState("");
@@ -52,7 +47,7 @@ export default function Reports() {
   const [favoriteTabs, setFavoriteTabs] = useState<string[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(FAVORITE_TABS_KEY) ?? "[]");
-      return Array.isArray(saved) ? saved.filter((id) => reportTabs.includes(id)) : [];
+      return Array.isArray(saved) ? saved.filter((id) => reportIds.includes(id)) : [];
     } catch { return []; }
   });
   const toggleFavoriteTab = (id: string) => {
@@ -62,14 +57,12 @@ export default function Reports() {
       return next;
     });
   };
-  const [activeTab, setActiveTab] = useState(() => {
-    const tab = searchParams.get("tab");
-    return tab && reportTabs.includes(tab) ? tab : favoriteTabs[0] ?? "sales-tax";
-  });
-  useEffect(() => {
-    const tab = searchParams.get("tab");
-    if (tab && reportTabs.includes(tab)) setActiveTab(tab);
-  }, [searchParams]);
+  const activeReport: ReportDef | null = findReport(searchParams.get("report") ?? searchParams.get("tab"));
+  const activeTab = activeReport?.id ?? null;
+  const openReport = (id: string) => setSearchParams({ report: id });
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [openFolders, setOpenFolders] = useState<string[]>([]);
+  const toggleFolder = (key: string) => setOpenFolders((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   // Local (not UTC) YYYY-MM-DD -- toISOString() re-serializes in UTC, which silently rolls the
   // date back a day in any timezone ahead of UTC (same class of bug fixed 2026-09-25 for
@@ -101,34 +94,38 @@ export default function Reports() {
   // Client video call 2026-10-05: scroll "other reminders" by date range instead of opening every customer.
   const [remindersRange, setRemindersRange] = useState<"30" | "60" | "90" | "all">("all");
 
+  // Only the open report's data is fetched (the home page fetches nothing).
   const load = useCallback(async () => {
-    setIsLoading(true);
-    const [movementData, depositsData, dueData, remindersData, customersData] = await Promise.all([
-      reportsApi.itemMovement(start, end),
-      reportsApi.deposits(start, end),
-      reportsApi.invoicesDue(),
-      reportsApi.reminders(),
-      customersApi.list(),
-    ]);
-    setMovement(movementData ?? []);
-    setDeposits(depositsData ?? []);
-    setInvoicesDue(dueData ?? []);
-    setReminders(remindersData ?? []);
-    setCustomers((customersData ?? []).map((c) => ({ id: c.id, name: c.name, address: c.address, phone: c.phone })));
+    if (activeTab === "movement") {
+      setIsLoading(true);
+      setMovement((await reportsApi.itemMovement(start, end)) ?? []);
+    } else if (activeTab === "deposits") {
+      setIsLoading(true);
+      setDeposits((await reportsApi.deposits(start, end)) ?? []);
+    } else if (activeTab === "due") {
+      setIsLoading(true);
+      setInvoicesDue((await reportsApi.invoicesDue()) ?? []);
+    } else if (activeTab === "reminders") {
+      setIsLoading(true);
+      const [remindersData, customersData] = await Promise.all([reportsApi.reminders(), customersApi.list()]);
+      setReminders(remindersData ?? []);
+      setCustomers((customersData ?? []).map((c) => ({ id: c.id, name: c.name, address: c.address, phone: c.phone })));
+    }
     setIsLoading(false);
-  }, [start, end]);
+  }, [activeTab, start, end]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
+    if (activeTab !== "valuation") return;
     setValuationLoading(true);
     reportsApi.inventoryValuation(valuationAsOf).then((data) => {
       setValuation(data ?? []);
       setValuationLoading(false);
     });
-  }, [valuationAsOf]);
+  }, [valuationAsOf, activeTab]);
 
   const handleAddReminder = async () => {
     if (!newReminder.customerId || !newReminder.label || !newReminder.frequencyMonths || !newReminder.nextDue) return;
@@ -189,17 +186,96 @@ export default function Reports() {
   const valuationTotalPages = Math.max(1, Math.ceil(valuation.length / VALUATION_PAGE_SIZE));
   const paginatedValuation = valuationSort.sorted.slice((valuationPage - 1) * VALUATION_PAGE_SIZE, valuationPage * VALUATION_PAGE_SIZE);
 
+  const starButton = (id: string, size = "w-4 h-4") => {
+    const fav = favoriteTabs.includes(id);
+    return (
+      <button
+        type="button"
+        title={fav ? t("Remove from favorites") : t("Star as favorite")}
+        onClick={(e) => { e.stopPropagation(); toggleFavoriteTab(id); }}
+        className="p-1 rounded hover:bg-black/5 shrink-0"
+      >
+        <Star className={`${size} ${fav ? "fill-[#F59E0B] text-[#F59E0B]" : "text-[#94A3B8] hover:text-[#F59E0B]"}`} />
+      </button>
+    );
+  };
+
+  // ---------- Home: report catalog in columns (like ServiceWorks Insights) ----------
+  if (!activeReport) {
+    const q = catalogQuery.trim();
+    const matches = (r: ReportDef) => !q || matchesQuery(q, [t(r.label), r.label, t(r.description), r.description]);
+    const reportLink = (r: ReportDef, withDescription: boolean) => (
+      <div key={r.id} className="group flex items-start gap-2 py-1.5">
+        <FileBarChart className="w-4 h-4 mt-0.5 text-[#0891B2] shrink-0" />
+        <div className="flex-1 min-w-0">
+          <button className="text-left text-sm text-[#0F172A] hover:text-[#0891B2] hover:underline" title={t(r.description)} onClick={() => openReport(r.id)}>
+            {t(r.label)}
+          </button>
+          {withDescription && <p className="text-xs text-[#64748B] leading-snug mt-0.5">{t(r.description)}</p>}
+        </div>
+        {starButton(r.id, "w-3.5 h-3.5")}
+      </div>
+    );
+    const favorites = favoriteTabs.map((id) => findReport(id)).filter((r): r is ReportDef => !!r && matches(r));
+    const columnShell = (key: string, label: string, headerClass: string, body: React.ReactNode) => (
+      <div key={key} className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden self-start">
+        <div className={`px-4 py-2.5 text-center font-semibold text-white ${headerClass}`}>{t(label)}</div>
+        <div className="px-3 py-2">{body}</div>
+      </div>
+    );
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <h1 className="text-2xl font-bold text-[#0F172A]">{t("Reports")}</h1>
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
+            <Input value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder={t("Search reports...")} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+          </div>
+        </div>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+          {columnShell("favorites", "Favorites", "bg-[#059669]", favorites.length > 0
+            ? favorites.map((r) => reportLink(r, true))
+            : <p className="text-xs text-[#64748B] py-2">{q ? t("No matching favorites") : t("Click the ☆ next to any report to keep it here.")}</p>)}
+          {reportCategories.map((cat) => {
+            const body = cat.entries.map((e) => {
+              if (!isFolder(e)) return matches(e) ? reportLink(e, false) : null;
+              const items = e.items.filter(matches);
+              if (items.length === 0) return null;
+              const key = `${cat.id}/${e.folder}`;
+              const open = !!q || openFolders.includes(key);
+              return (
+                <div key={key}>
+                  <button className="flex items-center gap-2 py-1.5 w-full text-left text-sm text-[#0F172A] hover:text-[#0891B2]" onClick={() => toggleFolder(key)}>
+                    {open ? <FolderOpen className="w-4 h-4 text-[#D97706] shrink-0" /> : <Folder className="w-4 h-4 text-[#D97706] shrink-0" />}
+                    <span className="flex-1">{t(e.folder)}</span>
+                    <span className="text-xs text-[#94A3B8]">{e.items.length}</span>
+                  </button>
+                  {open && <div className="pl-5 border-l border-[#E2E8F0] ml-2">{items.map((r) => reportLink(r, false))}</div>}
+                </div>
+              );
+            }).filter(Boolean);
+            return columnShell(cat.id, cat.label, "bg-[#0891B2]", body.length > 0 ? body : <p className="text-xs text-[#64748B] py-2">{t("No matching reports")}</p>);
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ---------- One report ----------
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <h1 className="text-2xl font-bold text-[#0F172A]">{t("Reports")}</h1>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 print:hidden">
+        <div className="flex items-center gap-2 min-w-0">
+          <Button variant="outline" size="sm" className="h-9 gap-1.5 border-[#E2E8F0] shrink-0" onClick={() => setSearchParams({})}>
+            <ArrowLeft className="w-4 h-4" /> {t("All Reports")}
+          </Button>
+          <h1 className="text-xl sm:text-2xl font-bold text-[#0F172A] truncate">{t(activeReport.label)}</h1>
+          {starButton(activeReport.id)}
+        </div>
         {/* Client SMS 2026-09-30: "Inventory valuation report - need an 'as of' date, not a date
-            range for QBO." Valuation never used this shared range to begin with (see the tab's
-            own note below) -- showing it there implied the report could be filtered by range,
-            which it can't. QBO's own Inventory Valuation Summary is a single as-of date, not a
-            range, so the Valuation tab now shows that instead of the range picker, and (as of
-            the same-day follow-up SMS) it's an editable date, not just a label. */}
-        {activeTab === "valuation" ? (
+            range for QBO." Valuation uses a single, editable as-of date; reports that are always
+            "as of now" (Accounts Outstanding, Reminders...) show no date control at all. */}
+        {activeReport.range === "asof" && (
           <div className="flex items-center gap-2">
             <Label htmlFor="valuation-as-of" className="text-sm text-[#64748B]">{t("As of")}</Label>
             <Input
@@ -211,7 +287,8 @@ export default function Reports() {
               onChange={(e) => { setValuationAsOf(e.target.value); setValuationPage(1); }}
             />
           </div>
-        ) : (
+        )}
+        {activeReport.range === "range" && (
           <div className="flex items-center gap-2">
             <Input type="date" className="h-9 w-auto" value={start} onChange={(e) => setStart(e.target.value)} />
             <span className="text-[#64748B] text-sm">{t("to")}</span>
@@ -219,52 +296,25 @@ export default function Reports() {
           </div>
         )}
       </div>
+      <p className="text-sm text-[#64748B] print:hidden">{t(activeReport.description)}</p>
 
-      {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading reports...")}</div>}
+      {isLoading && activeReport.builtin && <div className="text-center py-8 text-[#64748B]">{t("Loading reports...")}</div>}
+
+      {!activeReport.builtin && <CatalogReport reportId={activeReport.id} title={activeReport.label} start={start} end={end} />}
 
       {!isLoading && (
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto justify-start">
-          {[...reportTabMeta.filter((tab) => favoriteTabs.includes(tab.id)), ...reportTabMeta.filter((tab) => !favoriteTabs.includes(tab.id))].map((tab, i) => {
-            const Icon = tab.icon;
-            const fav = favoriteTabs.includes(tab.id);
-            return (
-              <span key={tab.id} className="contents">
-                {i === 0 && favoriteTabs.length > 0 && (
-                  <span className="flex items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wide text-[#F59E0B]"><Star className="w-3 h-3 fill-current" /> {t("Favorites")}</span>
-                )}
-                {i === favoriteTabs.length && favoriteTabs.length > 0 && <span className="mx-1 h-6 w-px bg-[#E2E8F0]" aria-hidden />}
-                <TabsTrigger value={tab.id} className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md pl-4 pr-2 gap-1.5 group">
-                  <Icon className="w-4 h-4" /> {t(tab.label)}
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    title={fav ? t("Remove from favorites") : t("Star as favorite")}
-                    onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onClick={(e) => { e.stopPropagation(); toggleFavoriteTab(tab.id); }}
-                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); toggleFavoriteTab(tab.id); } }}
-                    className="ml-0.5 p-0.5 rounded hover:bg-black/10"
-                  >
-                    <Star className={`w-3.5 h-3.5 ${fav ? "fill-[#F59E0B] text-[#F59E0B]" : "opacity-40 group-hover:opacity-80"}`} />
-                  </span>
-                </TabsTrigger>
-              </span>
-            );
-          })}
-        </TabsList>
-
-        <TabsContent value="sales-tax" className="mt-4">
+      <>
+        {activeTab === "sales-tax" && (<div className="space-y-3">
           {/* Client PDF 2026-10-15: detail report by order/job then item, accrual/cash basis. */}
           <SalesTaxDetailReport start={start} end={end} />
-        </TabsContent>
+        </div>)}
 
-        <TabsContent value="sales-analysis" className="mt-4">
+        {activeTab === "sales-analysis" && (<div className="space-y-3">
           {/* Client xlsx 2026-10-15: every sale/payment in the date range, their old system's columns. */}
           <SalesAnalysisReport start={start} end={end} />
-        </TabsContent>
+        </div>)}
 
-        <TabsContent value="movement" className="mt-4 space-y-3">
+        {activeTab === "movement" && (<div className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#94A3B8]" />
@@ -332,9 +382,9 @@ export default function Reports() {
             </div>
           </div>}
           <ReceiptDialog orderId={movementOrderId} onClose={() => setMovementOrderId(null)} />
-        </TabsContent>
+        </div>)}
 
-        <TabsContent value="deposits" className="mt-4">
+        {activeTab === "deposits" && (<div className="space-y-3">
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -360,9 +410,9 @@ export default function Reports() {
               </table>
             </div>
           </div>
-        </TabsContent>
+        </div>)}
 
-        <TabsContent value="due" className="mt-4">
+        {activeTab === "due" && (<div className="space-y-3">
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -399,9 +449,9 @@ export default function Reports() {
               </table>
             </div>
           </div>
-        </TabsContent>
+        </div>)}
 
-        <TabsContent value="reminders" className="mt-4 space-y-3">
+        {activeTab === "reminders" && (<div className="space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="flex h-10 rounded-md border border-[#E2E8F0] bg-white overflow-hidden text-xs font-medium">
               {(["30", "60", "90", "all"] as const).map((r) => {
@@ -479,9 +529,9 @@ export default function Reports() {
               </table>
             </div>
           </div>
-        </TabsContent>
+        </div>)}
 
-        <TabsContent value="valuation" className="mt-4 space-y-3">
+        {activeTab === "valuation" && (<div className="space-y-3">
           <p className="text-xs text-[#64748B]">
             {valuationAsOf === today
               ? t("Showing current on-hand quantities. Pick an earlier date above to see what stock was worth then (reconstructed from sales, job parts used, write-offs and received purchase orders since that date — cost is always today's cost, since per-purchase cost history isn't tracked).")
@@ -534,8 +584,8 @@ export default function Reports() {
               {t("Total Inventory Value")}: ${totalValuation.toFixed(2)}
             </div>
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>)}
+      </>
       )}
     </div>
   );
