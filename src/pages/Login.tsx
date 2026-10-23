@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/apiClient";
-import { getRememberedLogo } from "@/lib/remembered-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +19,6 @@ export default function Login() {
   const [forgotSending, setForgotSending] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const { signIn } = useAuth();
-  const [logo] = useState(getRememberedLogo);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,18 +66,10 @@ export default function Login() {
           </svg>
         </div>
         <div className="relative z-10 text-center max-w-md">
-          {logo ? (
-            <div className="rounded-lg border-2 border-white/40 overflow-hidden mx-auto mb-8 w-[187px]">
-              <img src={logo} alt="" className="block w-full h-[60px] object-cover" />
-            </div>
-          ) : (
-            <>
-              <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-8">
-                <Droplets className="w-10 h-10 text-white" />
-              </div>
-              <h1 className="text-4xl font-bold mb-4">Clear Pool CRM</h1>
-            </>
-          )}
+          <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-8">
+            <Droplets className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-4xl font-bold mb-4">Clear Pool CRM</h1>
           <p className="text-xl text-white/90 mb-8 font-medium">Built by a tradesman. Built for the trades.</p>
           <div className="space-y-3 text-left bg-white/10 backdrop-blur rounded-xl p-6">
             <div className="flex items-center gap-3">
@@ -101,11 +91,6 @@ export default function Login() {
       {/* Right Form Panel */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-12 bg-[#F8FAFC]">
         <div className="w-full max-w-sm">
-          {logo ? (
-            <div className="lg:hidden flex justify-center mb-6">
-              <img src={logo} alt="" className="block w-[187px] h-[60px] object-cover rounded-lg border border-[#E2E8F0]" />
-            </div>
-          ) : (
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
             <div className="w-12 h-12 rounded-xl bg-[#0891B2] flex items-center justify-center">
               <Droplets className="w-6 h-6 text-white" />
@@ -115,8 +100,6 @@ export default function Login() {
               <p className="text-xs text-[#64748B]">Built by a tradesman. Built for the trades.</p>
             </div>
           </div>
-          )}
-          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-lg p-6 sm:p-8">
 
           {forgotMode ? (
             <>
@@ -204,7 +187,6 @@ export default function Login() {
                 Sign up
               </button>
             </p>
-          </div>
           </div>
         </div>
       </div>
