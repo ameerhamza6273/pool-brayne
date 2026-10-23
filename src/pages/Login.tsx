@@ -71,8 +71,8 @@ export default function Login() {
         </div>
         <div className="relative z-10 text-center max-w-md">
           {logo ? (
-            <div className="w-[300px] mx-auto mb-8 rounded-lg border-2 border-white/40 overflow-hidden">
-              <img src={logo} alt="" className="block w-full h-[96px] object-cover" />
+            <div className="w-[200px] mx-auto mb-8 rounded-lg border-2 border-white/40 overflow-hidden">
+              <img src={logo} alt="" className="block w-full h-[64px] object-cover" />
             </div>
           ) : (
             <>
