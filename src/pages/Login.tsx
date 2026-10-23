@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/apiClient";
+import { getRememberedLogo } from "@/lib/remembered-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,9 @@ export default function Login() {
   const [forgotSending, setForgotSending] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const { signIn } = useAuth();
+  // Dev 2026-10-23: the company logo replaces the droplet + "Clear Pool CRM" in the brand panel, on a
+  // device that has signed in before (remembered-logo.ts); the form itself is unchanged.
+  const [logo] = useState(getRememberedLogo);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -66,10 +70,18 @@ export default function Login() {
           </svg>
         </div>
         <div className="relative z-10 text-center max-w-md">
-          <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-8">
-            <Droplets className="w-10 h-10 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold mb-4">Clear Pool CRM</h1>
+          {logo ? (
+            <div className="w-[300px] mx-auto mb-8 rounded-lg border-2 border-white/40 overflow-hidden">
+              <img src={logo} alt="" className="block w-full h-[96px] object-cover" />
+            </div>
+          ) : (
+            <>
+              <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-8">
+                <Droplets className="w-10 h-10 text-white" />
+              </div>
+              <h1 className="text-4xl font-bold mb-4">Clear Pool CRM</h1>
+            </>
+          )}
           <p className="text-xl text-white/90 mb-8 font-medium">Built by a tradesman. Built for the trades.</p>
           <div className="space-y-3 text-left bg-white/10 backdrop-blur rounded-xl p-6">
             <div className="flex items-center gap-3">
