@@ -11,7 +11,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
       await catchUpOccurrences(tx, tenant.id);
       return tx`
         select j.*,
-          jsonb_build_object('name', c.name, 'address', c.address, 'lat', c.lat, 'lng', c.lng) as customers,
+          jsonb_build_object('name', c.name, 'address', c.address, 'phone', c.phone, 'lat', c.lat, 'lng', c.lng) as customers,
           case when p.id is null then null else jsonb_build_object('name', p.name, 'avatar', p.avatar) end as profiles
         from jobs j
         left join customers c on c.id = j.customer_id
@@ -46,7 +46,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
       const [tenant] = await tx`select current_tenant_id() as id`;
       await catchUpOccurrences(tx, tenant.id);
       return tx`
-        select j.*, jsonb_build_object('name', c.name, 'address', c.address) as customers
+        select j.*, jsonb_build_object('name', c.name, 'address', c.address, 'phone', c.phone) as customers
         from jobs j
         left join customers c on c.id = j.customer_id
         where j.tech_id = ${req.userId} and j.status != 'Completed'

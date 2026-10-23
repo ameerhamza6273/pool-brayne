@@ -269,6 +269,57 @@ export default async function customersRoutes(app: FastifyInstance) {
     `);
   });
 
+  // Client video 2026-10-23: the Send Email popup lists every contact at the property (household
+  // members share household_id) so the office can tick which ones get the invoice/estimate.
+  app.get<{ Params: { id: string } }>("/:id/email-contacts", async (req) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, (tx) => tx`
+      select c.id, c.name, c.email, c.phone, (c.id = ${id}) as is_primary
+      from customers c
+      where c.id = ${id}
+         or c.household_id = (select household_id from customers where id = ${id} and household_id is not null)
+      order by (c.id = ${id}) desc, c.name
+    `);
+  });
+
+  // Client SMS 2026-10-23: "a delete (trashcan) icon on customer list ... I am finding a few
+  // duplicate customers". Deleting a customer would cascade into its invoices/jobs/estimates (FK
+  // on delete cascade), so -- like the SKU and job deletes -- refuse with the reason when the
+  // customer has any business history; notes, photos, reminders and forms go with it.
+  app.delete<{ Params: { id: string } }>("/:id", async (req, reply) => {
+    const { id } = req.params;
+    return withTenantContext(req.userId, async (tx) => {
+      const [caller] = await tx`select role from profiles where id = ${req.userId} limit 1` as unknown as { role: string }[];
+      if (!caller || caller.role === "technician" || caller.role === "contractor") {
+        return reply.code(403).send({ error: "Only office staff can delete customers" });
+      }
+      const [usage] = (await tx`
+        select
+          (select count(*) from invoices where customer_id = ${id})::int as invoices,
+          (select count(*) from estimates where customer_id = ${id})::int as estimates,
+          (select count(*) from jobs where customer_id = ${id})::int as jobs,
+          (select count(*) from recurring_jobs where customer_id = ${id})::int as recurring,
+          (select count(*) from payments where customer_id = ${id})::int as payments,
+          (select count(*) from pos_orders where customer_id = ${id})::int as sales
+      `) as unknown as { invoices: number; estimates: number; jobs: number; recurring: number; payments: number; sales: number }[];
+      const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+      const reasons = [
+        usage.invoices > 0 ? plural(usage.invoices, "invoice") : null,
+        usage.estimates > 0 ? plural(usage.estimates, "estimate") : null,
+        usage.jobs > 0 ? plural(usage.jobs, "job") : null,
+        usage.recurring > 0 ? `${usage.recurring} recurring series` : null,
+        usage.payments > 0 ? plural(usage.payments, "payment") : null,
+        usage.sales > 0 ? plural(usage.sales, "POS sale") : null,
+      ].filter(Boolean);
+      if (reasons.length > 0) {
+        return reply.code(409).send({ error: `Can't delete: this customer has ${reasons.join(", ")}. If it's a duplicate, delete the other copy (the one with no history).` });
+      }
+      const [row] = await tx`delete from customers where id = ${id} returning id`;
+      if (!row) return reply.code(404).send({ error: "Customer not found" });
+      return { ok: true };
+    });
+  });
+
   app.post<{ Params: { id: string } }>("/:id/quickbooks-sync", async (req) => {
     const qboCustomerId = await syncCustomerToQuickbooks(req.userId, req.params.id);
     return { qboCustomerId };

@@ -31,6 +31,7 @@ import FormBuilder from "@/pages/FormBuilder";
 import PublicForm from "@/pages/PublicForm";
 import PublicEstimate from "@/pages/PublicEstimate";
 import PublicInvoice from "@/pages/PublicInvoice";
+import ResetPassword from "@/pages/ResetPassword";
 import { Toaster } from "@/components/ui/sonner";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 
@@ -52,6 +53,7 @@ function AppRoutes() {
       <Route path="/sales" element={<SalesPortal />} />
       <Route path="/login" element={<Login />} />
       <Route path="/signup" element={<Signup />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/estimate/:token" element={<PublicEstimate />} />
       <Route path="/invoice/:token" element={<PublicInvoice />} />

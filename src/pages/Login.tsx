@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/apiClient";
+import { getRememberedLogo } from "@/lib/remembered-logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +14,13 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Client video 2026-10-23: "Forgot password?" was a bare button with no handler -- it now emails a
+  // reset link (backend public.ts /forgot-password -> /reset-password).
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
   const { signIn } = useAuth();
+  const [logo] = useState(getRememberedLogo);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -28,6 +36,26 @@ export default function Login() {
     }
   };
 
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!email.trim()) return setError("Enter your email address.");
+    setForgotSending(true);
+    try {
+      await api.post("/api/public/forgot-password", { email: email.trim() });
+      setForgotSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't send the reset email. Please try again.");
+    }
+    setForgotSending(false);
+  };
+
+  const showForgot = (on: boolean) => {
+    setForgotMode(on);
+    setForgotSent(false);
+    setError("");
+  };
+
   return (
     <div className="min-h-screen flex">
       {/* Left Brand Panel */}
@@ -40,10 +68,18 @@ export default function Login() {
           </svg>
         </div>
         <div className="relative z-10 text-center max-w-md">
-          <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-8">
-            <Droplets className="w-10 h-10 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold mb-4">Clear Pool CRM</h1>
+          {logo ? (
+            <div className="rounded-lg border-2 border-white/40 overflow-hidden mx-auto mb-8 w-[187px]">
+              <img src={logo} alt="" className="block w-full h-[60px] object-cover" />
+            </div>
+          ) : (
+            <>
+              <div className="w-20 h-20 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mx-auto mb-8">
+                <Droplets className="w-10 h-10 text-white" />
+              </div>
+              <h1 className="text-4xl font-bold mb-4">Clear Pool CRM</h1>
+            </>
+          )}
           <p className="text-xl text-white/90 mb-8 font-medium">Built by a tradesman. Built for the trades.</p>
           <div className="space-y-3 text-left bg-white/10 backdrop-blur rounded-xl p-6">
             <div className="flex items-center gap-3">
@@ -65,6 +101,11 @@ export default function Login() {
       {/* Right Form Panel */}
       <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-12 bg-[#F8FAFC]">
         <div className="w-full max-w-sm">
+          {logo ? (
+            <div className="lg:hidden flex justify-center mb-6">
+              <img src={logo} alt="" className="block w-[187px] h-[60px] object-cover rounded-lg border border-[#E2E8F0]" />
+            </div>
+          ) : (
           <div className="lg:hidden flex items-center justify-center gap-3 mb-8">
             <div className="w-12 h-12 rounded-xl bg-[#0891B2] flex items-center justify-center">
               <Droplets className="w-6 h-6 text-white" />
@@ -74,7 +115,40 @@ export default function Login() {
               <p className="text-xs text-[#64748B]">Built by a tradesman. Built for the trades.</p>
             </div>
           </div>
+          )}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-lg p-6 sm:p-8">
 
+          {forgotMode ? (
+            <>
+              <h2 className="text-2xl font-bold text-[#0F172A] mb-2">Reset your password</h2>
+              {forgotSent ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-[#16A34A]/30 bg-[#16A34A]/10 p-3 text-sm text-[#15803D]">
+                    Reset link sent. If <span className="font-semibold break-all">{email.trim()}</span> has a Clear Pool CRM login, an email is on its way. Check your Junk folder if it isn't in your inbox within a few minutes.
+                  </div>
+                  <Button type="button" variant="outline" className="w-full h-11" onClick={() => setForgotSent(false)}>Send again</Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-[#64748B] mb-6">Enter your login email and we'll send you a link to choose a new password.</p>
+                  <form onSubmit={handleForgot} className="space-y-4">
+                    <div>
+                      <Label htmlFor="forgot-email" className="text-sm font-medium text-[#0F172A]">Email</Label>
+                      <Input id="forgot-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 h-11" placeholder="you@company.com" />
+                    </div>
+                    {error && <p className="text-sm text-[#DC2626]">{error}</p>}
+                    <Button type="submit" disabled={forgotSending} className="w-full h-11 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold">
+                      {forgotSending ? "Sending..." : "Send reset link"}
+                    </Button>
+                  </form>
+                </>
+              )}
+              <div className="mt-4 text-center">
+                <button type="button" onClick={() => showForgot(false)} className="text-sm text-[#0891B2] hover:text-[#0E7490] font-medium">Back to sign in</button>
+              </div>
+            </>
+          ) : (
+          <>
           <h2 className="text-2xl font-bold text-[#0F172A] mb-2">Sign in</h2>
           <p className="text-sm text-[#64748B] mb-6">Welcome back to Clear Pool CRM</p>
 
@@ -118,8 +192,10 @@ export default function Login() {
           </form>
 
           <div className="mt-4 text-center">
-            <button className="text-sm text-[#0891B2] hover:text-[#0E7490] font-medium">Forgot password?</button>
+            <button type="button" onClick={() => showForgot(true)} className="text-sm text-[#0891B2] hover:text-[#0E7490] font-medium">Forgot password?</button>
           </div>
+          </>
+          )}
 
           <div className="mt-6 pt-6 border-t border-[#E2E8F0] text-center">
             <p className="text-sm text-[#64748B]">
@@ -128,6 +204,7 @@ export default function Login() {
                 Sign up
               </button>
             </p>
+          </div>
           </div>
         </div>
       </div>

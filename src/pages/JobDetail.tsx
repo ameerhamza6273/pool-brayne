@@ -44,6 +44,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import type { Database } from "@/lib/database.types";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { safeFileName } from "@/lib/storage-path";
 
 type JobRow = Database["public"]["Tables"]["jobs"]["Row"] & {
   customers: { name: string; phone: string | null; email: string | null } | null;
@@ -268,7 +269,7 @@ export default function JobDetail() {
   // column jsonb for exactly this); every other entry keeps whatever shape it already had.
   const uploadKnownIssuePhoto = async (index: number, file: File) => {
     if (!job?.customer_id || !tenantId) return;
-    const path = `${tenantId}/customers/${job.customer_id}/known-issue-${Date.now()}-${file.name}`;
+    const path = `${tenantId}/customers/${job.customer_id}/known-issue-${Date.now()}-${safeFileName(file.name)}`;
     const { error } = await supabase.storage.from("job-attachments").upload(path, file);
     if (error) throw error;
     const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -362,7 +363,7 @@ export default function JobDetail() {
   // documents/signature, just a "forms/" sub-path so they don't collide.
   const handleFormPhotoUpload = async (file: File): Promise<string> => {
     if (!id || !tenantId) throw new Error("Not ready");
-    const path = `${tenantId}/${id}/forms/${Date.now()}-${file.name}`;
+    const path = `${tenantId}/${id}/forms/${Date.now()}-${safeFileName(file.name)}`;
     const { error } = await supabase.storage.from("job-attachments").upload(path, file);
     if (error) throw error;
     const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -375,7 +376,7 @@ export default function JobDetail() {
     if (!id || !tenantId) return;
     setDocsUploading(true);
     try {
-      const path = `${tenantId}/${id}/document-${Date.now()}-${file.name}`;
+      const path = `${tenantId}/${id}/document-${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) throw error;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -398,7 +399,7 @@ export default function JobDetail() {
     if (!id || !tenantId || !e.target.files) return;
     const label = photoLabelRef.current;
     for (const file of Array.from(e.target.files)) {
-      const path = `${tenantId}/${id}/photo-${Date.now()}-${file.name}`;
+      const path = `${tenantId}/${id}/photo-${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) throw error;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);

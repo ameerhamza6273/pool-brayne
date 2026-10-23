@@ -26,6 +26,7 @@ import type { ItemWithStock, QboAccount, QboAccounts, InventoryWriteoff, Supplie
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { safeFileName } from "@/lib/storage-path";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
@@ -125,7 +126,7 @@ export default function Inventory() {
   const uploadItemPhoto = async (file: File, current: string[], set: (urls: string[]) => void) => {
     if (current.length >= 2 || !file.type.startsWith("image/")) return;
     setUploadingPhoto(true);
-    const path = `${tenantId}/inventory/photo-${Date.now()}-${file.name}`;
+    const path = `${tenantId}/inventory/photo-${Date.now()}-${safeFileName(file.name)}`;
     const { error } = await supabase.storage.from("job-attachments").upload(path, file);
     if (!error) {
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);

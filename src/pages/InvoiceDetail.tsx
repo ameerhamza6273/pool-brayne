@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, Mail, MessageSquare, CreditCard, BadgeCheck, Ban } from "lucide-react";
@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { invoicingApi, type InvoiceDetailBundle, type InvoiceAttachment } from "@/lib/api/invoicing";
+import { invoicingApi, type InvoiceDetailBundle, type InvoiceAttachment, type SendDocumentEmail } from "@/lib/api/invoicing";
 import DocumentsSection from "@/components/DocumentsSection";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import { supabase } from "@/lib/supabase";
@@ -21,6 +21,9 @@ import { useLanguage } from "@/lib/language-context";
 import { useTaxRate } from "@/hooks/use-tax-rate";
 import { laborFirst } from "@/lib/labor";
 import type { Database } from "@/lib/database.types";
+import { safeFileName } from "@/lib/storage-path";
+import SendEmailDialog from "@/components/SendEmailDialog";
+import { elementToPdfBase64 } from "@/lib/document-pdf";
 
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string; address: string | null; phone?: string | null } | null };
 type LineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
@@ -52,7 +55,7 @@ export default function InvoiceDetail() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [finalizing, setFinalizing] = useState(false);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
+  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null; logo_url?: string | null } | null>(null);
   const [job, setJob] = useState<InvoiceDetailBundle["job"]>(null);
   const [photos, setPhotos] = useState<InvoiceDetailBundle["photos"]>([]);
   const [serviceNotes, setServiceNotes] = useState<InvoiceDetailBundle["serviceNotes"]>([]);
@@ -71,6 +74,9 @@ export default function InvoiceDetail() {
   // message (not a silent no-op) until the server's SMTP password is configured.
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendEmailResult, setSendEmailResult] = useState<string | null>(null);
+  // Client video 2026-10-23: "Send via Email" opens a ServiceWorks-style Send Invoice popup.
+  const [emailOpen, setEmailOpen] = useState(false);
+  const docRef = useRef<HTMLDivElement>(null);
   // 2026-09-25: Documents on invoices -- same section as Jobs / Estimates (upload, attach from Library,
   // rename, delete). Staff-only: hidden on the printed / PDF invoice.
   const { tenantId } = useAuth();
@@ -87,7 +93,7 @@ export default function InvoiceDetail() {
     if (!id || !tenantId) return;
     setDocsUploading(true);
     try {
-      const path = `${tenantId}/invoices/${id}/document-${Date.now()}-${file.name}`;
+      const path = `${tenantId}/invoices/${id}/document-${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) throw error;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -222,18 +228,21 @@ export default function InvoiceDetail() {
     }
   };
 
-  const handleSendEmail = async () => {
+  const handleSendEmail = () => {
+    setSendEmailResult(null);
+    setEmailOpen(true);
+  };
+
+  const sendInvoiceEmail = async (data: SendDocumentEmail) => {
     if (!id) return;
     setSendingEmail(true);
-    setSendEmailResult(null);
     try {
-      await invoicingApi.sendInvoiceEmail(id);
+      await invoicingApi.sendInvoiceEmail(id, data);
       setSendEmailResult("sent");
-      if (invoice && (invoice.status === "Draft" || invoice.status === "Open")) setInvoice({ ...invoice, status: "Sent" });
-    } catch (err) {
-      setSendEmailResult(err instanceof Error ? err.message : "Failed to send");
+      setInvoice((prev) => (prev && (prev.status === "Draft" || prev.status === "Open") ? { ...prev, status: "Sent" } : prev));
+    } finally {
+      setSendingEmail(false);
     }
-    setSendingEmail(false);
   };
 
   // Client PDF 2026-09-06: "A way to Write off a job – (bad debt)".
@@ -375,6 +384,18 @@ export default function InvoiceDetail() {
       {/* Invoice Document — layout mirrors the emailed invoice PDF from the client's previous
           system (client SMS 2026-09-21): dark header band with Business / Client Details /
           Billing Address / Service Details boxes, then a Breakdown of Services. */}
+      <SendEmailDialog
+        open={emailOpen}
+        onOpenChange={setEmailOpen}
+        kind="invoice"
+        customerId={invoice.customer_id}
+        defaultSubject={`${t("Invoice")} ${invoice.number} — ${business?.invoice_business_name || business?.name || ""}`.replace(/ — $/, "")}
+        defaultMessage={"Your service has been completed. Attached is your invoice.\n\nPlease look over the details, and let us know if you have any questions.\n\nYou may pay online using the button below or give us a call."}
+        getPdf={async () => (docRef.current ? elementToPdfBase64(docRef.current) : null)}
+        pdfName={`Invoice-${invoice.number}.pdf`}
+        onSend={sendInvoiceEmail}
+      />
+      <div ref={docRef}>
       <Card className="border-[#E2E8F0] shadow-sm">
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <div className="rounded-xl bg-gradient-to-r from-[#0E7490] to-[#0891B2] p-3 sm:p-4 text-white [print-color-adjust:exact] [-webkit-print-color-adjust:exact]">
@@ -385,6 +406,12 @@ export default function InvoiceDetail() {
             <div className="grid grid-cols-1 md:grid-cols-4 print:grid-cols-4 gap-2 text-[11px] leading-relaxed">
               <div className="rounded-lg border border-white/30 bg-white/10 p-3 flex flex-col">
                 <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{business?.invoice_business_name || business?.name || "—"}</p>
+                {/* Client 2026-10-23: their logo in the company box, like the old system's emailed PDF. */}
+                {business?.logo_url && (
+                  <div className="flex justify-center mb-2">
+                    <img src={business.logo_url} crossOrigin="anonymous" alt="" className="max-h-16 max-w-full object-contain rounded bg-white p-1" />
+                  </div>
+                )}
                 <div className="mt-auto space-y-0.5">
                   {business?.phone && <p>{t("Phone #")}: {business.phone}</p>}
                   {business?.address && <p>{business.address}</p>}
@@ -581,6 +608,7 @@ export default function InvoiceDetail() {
           )}
         </CardContent>
       </Card>
+      </div>
 
       <div className="print:hidden">
         <DocumentsSection

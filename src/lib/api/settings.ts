@@ -22,12 +22,14 @@ export const settingsApi = {
     invoiceBusinessName: string;
     payrollWeekStartDay: number;
     logoUrl: string | null;
+    logoShortUrl: string | null;
   }>("/api/settings"),
 
   saveCompany: (data: { name: string; phone: string; address: string; city: string; state: string; zip: string; invoiceBusinessName: string }) =>
     api.patch("/api/settings/company", data),
 
-  saveLogo: (logoUrl: string | null) => api.patch("/api/settings/company/logo", { logoUrl }),
+  saveLogo: (kind: "full" | "short", url: string | null) =>
+    api.patch("/api/settings/company/logo", kind === "full" ? { logoUrl: url } : { logoShortUrl: url }),
 
   savePayrollWeekStart: (payrollWeekStartDay: number) => api.patch("/api/settings/payroll", { payrollWeekStartDay }),
 

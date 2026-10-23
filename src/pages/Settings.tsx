@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { safeFileName } from "@/lib/storage-path";
 import { Upload, Users, Plus, BookOpen, MapPin, CreditCard, Mail, MessageSquare, Shield, Bell, CheckCircle2, Globe, Forward, Trash2, Filter, Inbox, AlertCircle, Wrench, Settings2, Tag, Phone, RotateCw, FileText, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -108,8 +109,22 @@ export default function Settings() {
   const [newTech, setNewTech] = useState({ name: "", email: "", password: "", role: "technician" });
   const [techError, setTechError] = useState("");
   const [editTech, setEditTech] = useState<Profile | null>(null);
-  const [editTechDraft, setEditTechDraft] = useState<{ name: string; role: string; permissions: string[] }>({ name: "", role: "technician", permissions: [] });
+  // Client video 2026-10-23: edit everything Add Tech asks for (+ phone, hourly rate, type), and
+  // change a password behind an "are you sure".
+  const [editTechDraft, setEditTechDraft] = useState({ name: "", email: "", phone: "", hourlyRate: "", employmentType: "Employee" as "Employee" | "Contractor", role: "technician", permissions: [] as string[] });
   const [editTechError, setEditTechError] = useState<string | null>(null);
+  const [editTechSaving, setEditTechSaving] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordResult, setPasswordResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  // Client video 2026-10-23: saving a team member "bounces back to company profile" -- the tab was
+  // uncontrolled and the whole Tabs block unmounted while settings reloaded. Now controlled, and
+  // only the first load shows the spinner.
+  const [settingsTab, setSettingsTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("qbo") ? "integrations" : params.get("tab") || "company";
+  });
+  const loadedOnce = useRef(false);
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([]);
@@ -127,7 +142,12 @@ export default function Settings() {
   // Upload Logo had no handler and tenants had no column for it at all (tracked gap since
   // 2026-09-30). Both real now.
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  const [logoUploading, setLogoUploading] = useState(false);
+  // Client 2026-10-23 ("sent 2 logos, a full and a short ... could not make it work"): uploads
+  // were silently rejected -- the path started with "logos/" but storage RLS requires the tenant
+  // id as the first folder. Full logo = documents/emails, short logo = app sidebar/header.
+  const [logoShortUrl, setLogoShortUrl] = useState<string | null>(null);
+  const [logoUploading, setLogoUploading] = useState<"full" | "short" | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const [savingCompany, setSavingCompany] = useState(false);
   const [companySaveResult, setCompanySaveResult] = useState<"saved" | "error" | null>(null);
   // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- real tenant
@@ -176,7 +196,7 @@ export default function Settings() {
   const qboStatus = new URLSearchParams(window.location.search).get("qbo");
 
   const loadSettings = useCallback(async () => {
-    setIsLoading(true);
+    if (!loadedOnce.current) setIsLoading(true);
     const [data, receiptData, taxRateData] = await Promise.all([settingsApi.all(), settingsApi.receipt(), settingsApi.getTaxRate()]);
     setTeamMembers(data.teamMembers);
     setIntegrations(data.integrations);
@@ -191,9 +211,11 @@ export default function Settings() {
     setInvoiceBusinessName(data.invoiceBusinessName);
     setPayrollWeekStartDay(data.payrollWeekStartDay);
     setLogoUrl(data.logoUrl);
+    setLogoShortUrl(data.logoShortUrl);
     setSelectedPlan(data.planId);
     setReceiptLineId(receiptData.lineId);
     setTaxRatePercent((taxRateData.taxRate * 100).toFixed(2));
+    loadedOnce.current = true;
     setIsLoading(false);
   }, []);
 
@@ -220,19 +242,67 @@ export default function Settings() {
 
   const openEditTech = (m: Profile) => {
     setEditTech(m);
-    setEditTechDraft({ name: m.name, role: m.role, permissions: m.permissions ?? [] });
+    setEditTechDraft({
+      name: m.name,
+      email: m.email ?? "",
+      phone: m.phone ?? "",
+      hourlyRate: m.hourly_rate == null ? "" : String(m.hourly_rate),
+      employmentType: m.employment_type === "Contractor" ? "Contractor" : "Employee",
+      role: m.role,
+      permissions: m.permissions ?? [],
+    });
     setEditTechError(null);
+    setNewPassword("");
+    setPasswordResult(null);
   };
 
   const handleSaveTech = async () => {
     if (!editTech) return;
+    if (!editTechDraft.name.trim() || !editTechDraft.email.trim()) {
+      setEditTechError(t("Name and email are required."));
+      return;
+    }
+    const rate = editTechDraft.hourlyRate.trim() === "" ? null : Number(editTechDraft.hourlyRate);
+    if (rate !== null && (Number.isNaN(rate) || rate < 0)) {
+      setEditTechError(t("Hourly rate must be a number."));
+      return;
+    }
+    setEditTechSaving(true);
     try {
-      await profilesApi.update(editTech.id, editTechDraft);
+      await profilesApi.update(editTech.id, {
+        name: editTechDraft.name.trim(),
+        email: editTechDraft.email.trim(),
+        phone: editTechDraft.phone.trim() || null,
+        hourlyRate: rate,
+        employmentType: editTechDraft.employmentType,
+        role: editTechDraft.role,
+        permissions: editTechDraft.permissions,
+      });
       setEditTech(null);
       loadSettings();
     } catch (err) {
       setEditTechError(err instanceof Error ? err.message : t("Could not save changes."));
     }
+    setEditTechSaving(false);
+  };
+
+  const handleChangePassword = async () => {
+    if (!editTech) return;
+    if (newPassword.length < 6) {
+      setPasswordResult({ ok: false, text: t("Password must be at least 6 characters.") });
+      return;
+    }
+    if (!(await confirm({ title: "Change this person's password?", name: editTech.name, message: "Are you sure? They will need the new password the next time they log in.", confirmLabel: "Yes, change it", tone: "default" }))) return;
+    setPasswordSaving(true);
+    setPasswordResult(null);
+    try {
+      await profilesApi.setPassword(editTech.id, newPassword);
+      setNewPassword("");
+      setPasswordResult({ ok: true, text: t("Password changed. Share the new password with them directly.") });
+    } catch (err) {
+      setPasswordResult({ ok: false, text: err instanceof Error ? err.message : t("Could not change the password.") });
+    }
+    setPasswordSaving(false);
   };
 
   const handleDeleteTech = async (m: Profile) => {
@@ -277,21 +347,45 @@ export default function Settings() {
     setTimeout(() => setTaxRateSaveResult(null), 3000);
   };
 
-  const handleLogoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoSelect = async (kind: "full" | "short", e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !tenantId) return;
-    setLogoUploading(true);
+    setLogoError(null);
+    if (!file.type.startsWith("image/")) {
+      setLogoError(t("Please choose an image file (PNG, JPG, SVG or WebP)."));
+      return;
+    }
+    setLogoUploading(kind);
     try {
-      const path = `logos/${tenantId}/logo-${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from("job-attachments").upload(path, file);
-      if (!error) {
-        const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
-        await settingsApi.saveLogo(data.publicUrl);
+      const path = `${tenantId}/logos/${kind}-${Date.now()}-${safeFileName(file.name)}`;
+      const { error } = await supabase.storage.from("job-attachments").upload(path, file, { contentType: file.type });
+      if (error) throw new Error(error.message);
+      const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
+      await settingsApi.saveLogo(kind, data.publicUrl);
+      if (kind === "full") {
         setLogoUrl(data.publicUrl);
+        window.dispatchEvent(new CustomEvent("tenant-logo-full", { detail: data.publicUrl }));
+      } else {
+        setLogoShortUrl(data.publicUrl);
+        window.dispatchEvent(new CustomEvent("tenant-logo-short", { detail: data.publicUrl }));
       }
+    } catch (err) {
+      setLogoError(`${t("Could not upload the logo.")} ${err instanceof Error ? err.message : ""}`.trim());
     } finally {
-      setLogoUploading(false);
+      setLogoUploading(null);
+    }
+  };
+
+  const handleLogoRemove = async (kind: "full" | "short") => {
+    if (!(await confirm({ title: "Remove this logo?", message: "You can upload it again any time.", confirmLabel: "Remove" }))) return;
+    await settingsApi.saveLogo(kind, null);
+    if (kind === "full") {
+      setLogoUrl(null);
+      window.dispatchEvent(new CustomEvent("tenant-logo-full", { detail: null }));
+    } else {
+      setLogoShortUrl(null);
+      window.dispatchEvent(new CustomEvent("tenant-logo-short", { detail: null }));
     }
   };
 
@@ -332,7 +426,7 @@ export default function Settings() {
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading settings...")}</div>}
 
       {!isLoading && (
-      <Tabs defaultValue={qboStatus ? "integrations" : new URLSearchParams(window.location.search).get("tab") || "company"} className="w-full">
+      <Tabs value={settingsTab} onValueChange={setSettingsTab} className="w-full">
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="company" className="text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Globe className="w-4 h-4" /> {t("Company")}
@@ -361,22 +455,36 @@ export default function Settings() {
         <TabsContent value="company" className="mt-4">
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardContent className="p-5 space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-xl bg-[#0891B2] flex items-center justify-center overflow-hidden shrink-0">
-                  {logoUrl ? (
-                    <img src={logoUrl} alt={t("Company logo")} className="w-full h-full object-contain" />
-                  ) : (
-                    <span className="text-xl font-bold text-white">{tenantName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
-                  )}
-                </div>
-                <div>
-                  <input type="file" accept="image/*" id="logo-upload-input" className="hidden" onChange={handleLogoSelect} />
-                  <Button variant="outline" className="h-9 border-[#E2E8F0] text-[#0F172A] gap-2" disabled={logoUploading} onClick={() => document.getElementById("logo-upload-input")?.click()}>
-                    <Upload className="w-4 h-4" /> {logoUploading ? t("Uploading...") : t("Upload Logo")}
-                  </Button>
-                  <p className="text-xs text-[#64748B] mt-1">{t("Recommended: 200x200px PNG")}</p>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {([
+                  { kind: "full" as const, url: logoUrl, title: "Full Logo", hint: "Shown on invoices, estimates, emails and the customer pay page. A wide PNG works best.", box: "w-40 h-16" },
+                  { kind: "short" as const, url: logoShortUrl, title: "Short Logo / Icon", hint: "The small square mark in the app's menu. Recommended: 200x200px PNG.", box: "w-16 h-16" },
+                ]).map((slot) => (
+                  <div key={slot.kind} className="flex items-center gap-4 rounded-lg border border-[#E2E8F0] p-3">
+                    <div className={`${slot.box} rounded-xl border border-[#E2E8F0] bg-white flex items-center justify-center overflow-hidden shrink-0`}>
+                      {slot.url ? (
+                        <img src={slot.url} alt={t(slot.title)} className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-xl font-bold text-[#94A3B8]">{tenantName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-[#0F172A]">{t(slot.title)}</p>
+                      <input type="file" accept="image/*" id={`logo-upload-${slot.kind}`} className="hidden" onChange={(e) => handleLogoSelect(slot.kind, e)} />
+                      <div className="flex items-center gap-2 mt-1">
+                        <Button variant="outline" className="h-9 border-[#E2E8F0] text-[#0F172A] gap-2" disabled={logoUploading !== null} onClick={() => document.getElementById(`logo-upload-${slot.kind}`)?.click()}>
+                          <Upload className="w-4 h-4" /> {logoUploading === slot.kind ? t("Uploading...") : slot.url ? t("Replace") : t("Upload Logo")}
+                        </Button>
+                        {slot.url && (
+                          <Button variant="ghost" className="h-9 text-[#DC2626]" disabled={logoUploading !== null} onClick={() => handleLogoRemove(slot.kind)}>{t("Remove")}</Button>
+                        )}
+                      </div>
+                      <p className="text-xs text-[#64748B] mt-1">{t(slot.hint)}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
+              {logoError && <p className="text-sm text-[#DC2626]">{logoError}</p>}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="text-sm font-medium text-[#0F172A]">{t("Company Name")}</Label>
@@ -538,6 +646,31 @@ export default function Settings() {
                   <Input className="mt-1" value={editTechDraft.name} onChange={(e) => setEditTechDraft((p) => ({ ...p, name: e.target.value }))} />
                 </div>
                 <div>
+                  <Label>{t("Email")}</Label>
+                  <Input className="mt-1" type="email" value={editTechDraft.email} onChange={(e) => setEditTechDraft((p) => ({ ...p, email: e.target.value }))} />
+                  <p className="text-xs text-[#64748B] mt-1">{t("This is also their login email.")}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{t("Phone")}</Label>
+                    <Input className="mt-1" type="tel" value={editTechDraft.phone} onChange={(e) => setEditTechDraft((p) => ({ ...p, phone: e.target.value }))} />
+                  </div>
+                  <div>
+                    <Label>{t("Hourly Rate")}</Label>
+                    <Input className="mt-1" type="number" min="0" step="0.01" placeholder="0.00" value={editTechDraft.hourlyRate} onChange={(e) => setEditTechDraft((p) => ({ ...p, hourlyRate: e.target.value }))} />
+                  </div>
+                </div>
+                <div>
+                  <Label>{t("Type")}</Label>
+                  <Select value={editTechDraft.employmentType} onValueChange={(v) => setEditTechDraft((p) => ({ ...p, employmentType: v as "Employee" | "Contractor" }))}>
+                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Employee">{t("Employee")}</SelectItem>
+                      <SelectItem value="Contractor">{t("Contractor")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
                   <Label>{t("Role")}</Label>
                   <Select value={editTechDraft.role} onValueChange={(v) => setEditTechDraft((p) => ({ ...p, role: v }))}>
                     <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
@@ -567,7 +700,15 @@ export default function Settings() {
                   </div>
                 )}
                 {editTechError && <p className="text-sm text-[#DC2626]">{editTechError}</p>}
-                <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveTech}>{t("Save Changes")}</Button>
+                <Button className="w-full bg-[#0891B2] text-white" disabled={editTechSaving} onClick={handleSaveTech}>{editTechSaving ? t("Saving...") : t("Save Changes")}</Button>
+                <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-2">
+                  <p className="text-sm font-medium text-[#0F172A]">{t("Change Password")}</p>
+                  <div className="flex gap-2">
+                    <Input type="text" autoComplete="new-password" placeholder={t("New password (min. 6 characters)")} value={newPassword} onChange={(e) => { setNewPassword(e.target.value); setPasswordResult(null); }} />
+                    <Button variant="outline" className="shrink-0" disabled={passwordSaving || !newPassword} onClick={handleChangePassword}>{passwordSaving ? t("Saving...") : t("Change Password")}</Button>
+                  </div>
+                  {passwordResult && <p className={`text-xs ${passwordResult.ok ? "text-[#16A34A]" : "text-[#DC2626]"}`}>{passwordResult.text}</p>}
+                </div>
               </div>
             </DialogContent>
           </Dialog>

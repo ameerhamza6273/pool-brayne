@@ -30,6 +30,7 @@ import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 import { useConfirm } from "@/components/ConfirmDialog";
 import InvoicePreviewDialog from "@/components/InvoicePreviewDialog";
+import { safeFileName } from "@/lib/storage-path";
 
 // `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches
 // what InvoiceDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
@@ -313,7 +314,7 @@ export default function Invoicing() {
     setTaskPhotoUploading(true);
     for (const file of Array.from(e.target.files)) {
       if (!file.type.startsWith("image/")) continue;
-      const path = `${tenantId}/tasks/${Date.now()}-${file.name}`;
+      const path = `${tenantId}/tasks/${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) continue;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);

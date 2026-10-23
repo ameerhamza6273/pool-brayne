@@ -72,6 +72,12 @@ export const customersApi = {
     }>,
   ) => api.patch<Customer>(`/api/customers/${customerId}`, data),
 
+  emailContacts: (customerId: string) =>
+    api.get<{ id: string; name: string; email: string | null; phone: string | null; is_primary: boolean }[]>(`/api/customers/${customerId}/email-contacts`),
+
+  // Client SMS 2026-10-23: delete duplicates from the customer list (refused if it has history).
+  remove: (customerId: string) => api.del(`/api/customers/${customerId}`),
+
   addHouseholdMember: (customerId: string, data: { firstName: string; lastName: string; email: string | null; phone: string | null }) =>
     api.post<Customer>(`/api/customers/${customerId}/household`, data),
 

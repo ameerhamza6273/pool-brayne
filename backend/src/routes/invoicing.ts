@@ -6,8 +6,51 @@ import { syncCustomerToQuickbooks } from "./customers.js";
 import { chargeOpaqueData } from "../lib/authorizenet.js";
 import { notifyBusinessOfPayment, isMailerConfigured, sendMail } from "../lib/mailer.js";
 import { nextDocNumber } from "../lib/numbering.js";
+import { documentEmailHtml, cleanEmailList, invalidEmails } from "../lib/documentEmail.js";
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "http://localhost:5175";
+
+type SendDocumentBody = { to?: string[]; cc?: string[]; subject?: string; message?: string; pdfBase64?: string | null; pdfName?: string | null };
+type InvoiceEmailRow = {
+  number: string; payment_token: string; issue_date: string | null; down_payment: number | string | null;
+  customer_name: string; customer_email: string | null; business_name: string; business_phone: string | null; logo_url: string | null;
+  job_description: string | null; job_created_at: Date | null; completed_at: Date | null; scheduled_date: string | null;
+};
+type EstimateEmailRow = {
+  number: string; amount: number | string; approval_token: string; issue_date: string | null; expiry_date: string | null;
+  job_description: string | null; down_payment: number | string | null;
+  customer_name: string; customer_email: string | null; business_name: string; business_phone: string | null; logo_url: string | null;
+};
+
+// To/CC from the Send Email popup; falls back to the customer's own email when none were chosen.
+function resolveRecipients(body: SendDocumentBody, customerEmail: string | null): { to: string[]; cc: string[] } | { error: string } {
+  const to = cleanEmailList(body.to);
+  const cc = cleanEmailList(body.cc);
+  if (to.length === 0 && customerEmail) to.push(customerEmail);
+  if (to.length === 0) return { error: "Add at least one email address to send to." };
+  const bad = invalidEmails([...to, ...cc]);
+  if (bad.length) return { error: `Not a valid email address: ${bad.join(", ")}` };
+  return { to, cc };
+}
+
+// Client video 2026-10-23: an SMTP rejection used to surface as a bare "Internal Server Error".
+async function sendMailOrFail(opts: Parameters<typeof sendMail>[0]) {
+  try {
+    await sendMail(opts);
+  } catch (err) {
+    const e = new Error(`The email server refused to send: ${err instanceof Error ? err.message : String(err)}`) as Error & { statusCode: number };
+    e.statusCode = 502;
+    throw e;
+  }
+}
+
+function pdfAttachment(body: SendDocumentBody, fallbackName: string) {
+  if (!body.pdfBase64) return [];
+  const content = Buffer.from(body.pdfBase64.replace(/^data:application\/pdf;base64,/, ""), "base64");
+  if (content.length === 0) return [];
+  const name = (body.pdfName || fallbackName).replace(/[^\w.-]+/g, "_");
+  return [{ filename: name.endsWith(".pdf") ? name : `${name}.pdf`, content, contentType: "application/pdf" }];
+}
 
 type LineItemInput = {
   description: string;
@@ -147,7 +190,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           where i.id = ${id} limit 1
         `,
         tx`select * from invoice_line_items where invoice_id = ${id} order by sort_order`,
-        tx`select name, phone, address, city, state, zip, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, phone, address, city, state, zip, invoice_business_name, logo_url from tenants where id = current_tenant_id() limit 1`,
         // Client SMS 2026-09-21: the invoice document mirrors their old system's emailed PDF --
         // Date of Request/Service, Trip Details photos and dated "Service Performed" notes come
         // from the invoice's job. All additive; invoices with no job just get null/empty here.
@@ -275,33 +318,63 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   // Builds the customer-facing pay link from the invoice's own payment_token (see public.ts) and
   // emails it via the Office 365 SMTP account the client provided. Returns a clear 400 (not a
   // silent no-op) while SMTP_PASSWORD is still missing, so the button's error state is honest.
-  app.post<{ Params: { id: string } }>("/:id/send-email", async (req, reply) => {
+  // Client video 2026-10-23: a "Send Invoice" popup like their old system -- pick which of the
+  // customer's emails to send to, add others, CC, edit subject + message; the email carries a
+  // Breakdown of Services + pay button, and the invoice document as a PDF (rendered in the
+  // browser, sent here as base64). An empty body still works (customer's own email, defaults).
+  app.post<{ Params: { id: string }; Body: SendDocumentBody }>("/:id/send-email", { bodyLimit: 25 * 1024 * 1024 }, async (req, reply) => {
     const { id } = req.params;
     if (!isMailerConfigured()) {
       reply.code(400).send({ error: "Email isn't set up yet — ask for the SMTP password." });
       return;
     }
+    const body = req.body ?? {};
     return withTenantContext(req.userId, async (tx) => {
       const { total } = await computeInvoiceTotal(tx, id);
       const [row] = await tx`
-        select i.number, i.payment_token, c.name as customer_name, c.email as customer_email,
-          coalesce(t.invoice_business_name, t.name) as business_name
+        select i.number, i.payment_token, i.issue_date, i.down_payment, c.name as customer_name, c.email as customer_email,
+          coalesce(t.invoice_business_name, t.name) as business_name, t.phone as business_phone, t.logo_url,
+          j.description as job_description, j.created_at as job_created_at, j.completed_at, j.scheduled_date
         from invoices i join customers c on c.id = i.customer_id join tenants t on t.id = i.tenant_id
+        left join jobs j on j.id = i.job_id
         where i.id = ${id} limit 1
-      `;
-      if (!row?.customer_email) {
-        reply.code(400).send({ error: "This customer has no email address on file." });
-        return;
-      }
+      ` as unknown as InvoiceEmailRow[];
+      if (!row) return reply.code(404).send({ error: "Invoice not found" });
+      const recipients = resolveRecipients(body, row.customer_email);
+      if ("error" in recipients) return reply.code(400).send({ error: recipients.error });
+      // Same "Service Performed" source as the invoice page: the customer's notes from the service day.
+      const notes = (await tx`
+        select n.text from customer_notes n
+        join invoices i on i.customer_id = n.customer_id join jobs j on j.id = i.job_id
+        where i.id = ${id} and n.created_at::date = coalesce(j.completed_at::date, j.scheduled_date)
+        order by n.created_at
+      `) as unknown as { text: string }[];
       const url = `${PUBLIC_APP_URL}/invoice/${row.payment_token}`;
-      await sendMail({
-        to: row.customer_email,
-        subject: `Invoice ${row.number} from ${row.business_name} — $${total.toFixed(2)}`,
-        html: `<p>Hi ${row.customer_name},</p><p>Your invoice ${row.number} for <strong>${total.toFixed(2)}</strong> is ready. You can view it and pay online here:</p><p><a href="${url}">${url}</a></p><p>Thank you!<br/>${row.business_name}</p>`,
+      await sendMailOrFail({
+        to: recipients.to,
+        cc: recipients.cc,
+        subject: body.subject?.trim() || `Invoice ${row.number} from ${row.business_name} — $${total.toFixed(2)}`,
+        html: documentEmailHtml({
+          kind: "invoice",
+          logoUrl: row.logo_url,
+          businessName: row.business_name,
+          businessPhone: row.business_phone,
+          customerName: row.customer_name,
+          message: body.message ?? "Your invoice is ready. Please look over the details, and let us know if you have any questions.\n\nYou may pay online using the button below or give us a call.",
+          number: row.number,
+          dateRequested: row.job_created_at ?? row.issue_date,
+          dateCompleted: row.completed_at ?? row.scheduled_date,
+          jobDescription: row.job_description,
+          servicePerformed: notes.map((n) => n.text),
+          total,
+          balanceDue: Math.round((total - Number(row.down_payment ?? 0)) * 100) / 100,
+          buttonUrl: url,
+        }),
+        attachments: pdfAttachment(body, `Invoice-${row.number}.pdf`),
       });
       // Client video 2026-10-18: "When I click it here, it still says draft" -- an emailed invoice is Sent.
       await tx`update invoices set status = 'Sent' where id = ${id} and status in ('Draft', 'Open')`;
-      return { sent: true };
+      return { sent: true, to: recipients.to, cc: recipients.cc };
     });
   });
 
@@ -435,7 +508,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           where e.id = ${id} limit 1
         `,
         tx`select * from estimate_line_items where estimate_id = ${id} order by sort_order`,
-        tx`select name, phone, address, city, state, zip, invoice_business_name from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, phone, address, city, state, zip, invoice_business_name, logo_url from tenants where id = current_tenant_id() limit 1`,
       ]);
       return { estimate: estimateRows[0] ?? null, lineItems, business: tenantRows[0] ?? null };
     });
@@ -448,30 +521,52 @@ export default async function invoicingRoutes(app: FastifyInstance) {
 
   // Client video 2026-10-06: "Send via Email" on an estimate — same pattern as the invoice one
   // above, using the estimate's existing approval_token (built 2026-09-08) for the link.
-  app.post<{ Params: { id: string } }>("/estimates/:id/send-email", async (req, reply) => {
+  // Client video 2026-10-23: same Send Email popup as invoices (recipients, CC, subject, message,
+  // PDF of the estimate attached); the button opens the existing approval link.
+  app.post<{ Params: { id: string }; Body: SendDocumentBody }>("/estimates/:id/send-email", { bodyLimit: 25 * 1024 * 1024 }, async (req, reply) => {
     const { id } = req.params;
     if (!isMailerConfigured()) {
       reply.code(400).send({ error: "Email isn't set up yet — ask for the SMTP password." });
       return;
     }
+    const body = req.body ?? {};
     return withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`
-        select e.number, e.amount, e.approval_token, c.name as customer_name, c.email as customer_email,
-          coalesce(t.invoice_business_name, t.name) as business_name
+        select e.number, e.amount, e.approval_token, e.issue_date, e.expiry_date, e.job_description, e.down_payment,
+          c.name as customer_name, c.email as customer_email,
+          coalesce(t.invoice_business_name, t.name) as business_name, t.phone as business_phone, t.logo_url
         from estimates e join customers c on c.id = e.customer_id join tenants t on t.id = e.tenant_id
         where e.id = ${id} limit 1
-      `;
-      if (!row?.customer_email) {
-        reply.code(400).send({ error: "This customer has no email address on file." });
-        return;
-      }
+      ` as unknown as EstimateEmailRow[];
+      if (!row) return reply.code(404).send({ error: "Estimate not found" });
+      const recipients = resolveRecipients(body, row.customer_email);
+      if ("error" in recipients) return reply.code(400).send({ error: recipients.error });
+      const lineItems = (await tx`select amount, item_type, taxable from estimate_line_items where estimate_id = ${id}`) as unknown as { amount: number; item_type: string | null; taxable: boolean }[];
+      const total = taxedTotal(lineItems, Number(row.amount), await getTaxRate(tx));
       const url = `${PUBLIC_APP_URL}/estimate/${row.approval_token}`;
-      await sendMail({
-        to: row.customer_email,
-        subject: `Estimate ${row.number} from ${row.business_name} — please review`,
-        html: `<p>Hi ${row.customer_name},</p><p>Your estimate ${row.number} is ready for review. You can view and approve it here:</p><p><a href="${url}">${url}</a></p><p>Thank you!<br/>${row.business_name}</p>`,
+      await sendMailOrFail({
+        to: recipients.to,
+        cc: recipients.cc,
+        subject: body.subject?.trim() || `Estimate ${row.number} from ${row.business_name} — please review`,
+        html: documentEmailHtml({
+          kind: "estimate",
+          logoUrl: row.logo_url,
+          businessName: row.business_name,
+          businessPhone: row.business_phone,
+          customerName: row.customer_name,
+          message: body.message ?? "Your estimate is ready. Please look it over, and let us know if you have any questions.\n\nYou can review and approve it online using the button below.",
+          number: row.number,
+          dateRequested: row.issue_date,
+          dateCompleted: row.expiry_date,
+          jobDescription: row.job_description,
+          servicePerformed: [],
+          total,
+          balanceDue: null,
+          buttonUrl: url,
+        }),
+        attachments: pdfAttachment(body, `Estimate-${row.number}.pdf`),
       });
-      return { sent: true };
+      return { sent: true, to: recipients.to, cc: recipients.cc };
     });
   });
 
@@ -797,7 +892,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         const url = `${PUBLIC_APP_URL}/invoice/${r.payment_token}`;
         return `<li>Invoice ${r.number} — <strong>${totals[i].total.toFixed(2)}</strong> — <a href="${url}">view &amp; pay</a></li>`;
       }).join("");
-      await sendMail({
+      await sendMailOrFail({
         to,
         subject: `${rows.length} open invoices from ${rows[0].business_name} — ${grand.toFixed(2)}`,
         html: `<p>Hi ${rows[0].customer_name},</p><p>Here are your open invoices (total <strong>${grand.toFixed(2)}</strong>). Each one can be viewed and paid online:</p><ul>${list}</ul><p>Thank you!<br/>${rows[0].business_name}</p>`,

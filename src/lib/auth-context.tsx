@@ -8,6 +8,8 @@ interface User {
   avatar: string;
   company: string;
   tenantId: string;
+  logoShortUrl: string | null;
+  logoUrl: string | null;
 }
 
 /** staff_role enum (supabase/migrations/20260728061400_initial_schema.sql): owner | manager |
@@ -65,13 +67,14 @@ function getAvatar(name: string): string {
 async function loadProfile(session: Session): Promise<{ user: User; tenantId: string; profileId: string; role: StaffRole; permissions: string[] } | null> {
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("name, email, avatar, tenant_id, role, permissions, tenants(name)")
+    .select("name, email, avatar, tenant_id, role, permissions, tenants(name, logo_short_url, logo_url)")
     .eq("id", session.user.id)
     .single();
 
   if (error || !profile) return null;
 
-  const tenantName = (profile.tenants as unknown as { name: string } | null)?.name ?? "New Pool Company";
+  const tenantRow = profile.tenants as unknown as { name: string; logo_short_url: string | null; logo_url: string | null } | null;
+  const tenantName = tenantRow?.name ?? "New Pool Company";
 
   return {
     user: {
@@ -79,6 +82,8 @@ async function loadProfile(session: Session): Promise<{ user: User; tenantId: st
       email: profile.email,
       avatar: profile.avatar || getAvatar(profile.name),
       company: tenantName,
+      logoShortUrl: tenantRow?.logo_short_url ?? null,
+      logoUrl: tenantRow?.logo_url ?? null,
       tenantId: `Tenant ${profile.tenant_id.slice(0, 8).toUpperCase()}`,
     },
     tenantId: profile.tenant_id,

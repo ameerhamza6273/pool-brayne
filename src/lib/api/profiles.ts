@@ -13,8 +13,11 @@ export const profilesApi = {
   create: (data: { name: string; email: string; password: string; role: string }) =>
     api.post<Profile>("/api/profiles", data),
 
-  update: (id: string, data: { name: string; role: string; permissions?: string[] }) =>
+  update: (id: string, data: { name: string; role: string; permissions?: string[]; email?: string; phone?: string | null; hourlyRate?: number | null; employmentType?: "Employee" | "Contractor" }) =>
     api.patch<Profile>(`/api/profiles/${id}`, data),
+
+  // Client video 2026-10-23: office staff set a new password for a teammate.
+  setPassword: (id: string, password: string) => api.post<{ ok: true }>(`/api/profiles/${id}/password`, { password }),
 
   remove: (id: string) => api.del(`/api/profiles/${id}`),
 

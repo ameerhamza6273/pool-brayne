@@ -1,8 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import sql from "../db.js";
 import { chargeOpaqueData } from "../lib/authorizenet.js";
-import { notifyBusinessOfPayment, notifyBusinessOfEstimateApproval } from "../lib/mailer.js";
+import { notifyBusinessOfPayment, notifyBusinessOfEstimateApproval, sendMail, isMailerConfigured } from "../lib/mailer.js";
+import { getSupabaseAdmin } from "../lib/supabaseAdmin.js";
 import { taxedTotal } from "./invoicing.js";
+
+const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "http://localhost:5175";
+// Forgot-password: one email per address per minute, so the button can't be used to spam an inbox.
+const resetCooldown = new Map<string, number>();
 
 // Client PDF 2026-09-06: "I am sending a sample email for an estimate it will have an 'Approve
 // Estimation' button and we will get a notification via email and test for approval". No email
@@ -32,7 +37,7 @@ export default async function publicRoutes(app: FastifyInstance) {
       from estimate_line_items where estimate_id = ${estimate.id} order by sort_order
     `;
     const [business] = await sql`
-      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name, t.tax_rate
+      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name, t.tax_rate, t.logo_url
       from estimates e join tenants t on t.id = e.tenant_id
       where e.approval_token = ${token} limit 1
     `;
@@ -113,7 +118,7 @@ export default async function publicRoutes(app: FastifyInstance) {
       from invoice_line_items where invoice_id = ${invoice.id} order by sort_order
     `;
     const [business] = await sql`
-      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name, t.tax_rate
+      select t.name, t.phone, t.address, t.city, t.state, t.zip, t.invoice_business_name, t.tax_rate, t.logo_url
       from invoices i join tenants t on t.id = i.tenant_id
       where i.payment_token = ${token} limit 1
     `;
@@ -173,4 +178,43 @@ export default async function publicRoutes(app: FastifyInstance) {
       return updated;
     },
   );
+
+  // Client video 2026-10-23: "When doing a forgot password ... I'm not getting an email reply" --
+  // the Login page's "Forgot password?" was a bare button with no handler. Sent through the
+  // tenant's own Office 365 SMTP (Supabase's built-in mailer only delivers to project team
+  // members). The link carries Supabase's hashed recovery token; /reset-password verifies it only
+  // when the new password is submitted, so Outlook's link scanner opening the page doesn't use it up.
+  // Always answers ok for an unknown email so the form can't be used to discover accounts.
+  app.post<{ Body: { email?: string } }>("/forgot-password", async (req, reply) => {
+    const email = (req.body?.email ?? "").trim().toLowerCase();
+    if (!email || !email.includes("@")) return reply.code(400).send({ error: "Enter your email address." });
+    if (!isMailerConfigured()) return reply.code(503).send({ error: "Email isn't set up on the server yet. Ask your office to change your password in Settings › Team." });
+    const last = resetCooldown.get(email) ?? 0;
+    if (Date.now() - last < 60_000) return { ok: true };
+    resetCooldown.set(email, Date.now());
+    const [profile] = await sql`select name from profiles where lower(email) = ${email} limit 1` as unknown as { name: string }[];
+    if (!profile) return { ok: true };
+    const { data, error } = await getSupabaseAdmin().auth.admin.generateLink({ type: "recovery", email });
+    if (error || !data.properties?.hashed_token) {
+      req.log.error({ err: error }, "forgot-password: generateLink failed");
+      resetCooldown.delete(email);
+      return reply.code(500).send({ error: "Couldn't create a reset link. Please try again." });
+    }
+    const url = `${PUBLIC_APP_URL}/reset-password?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=recovery`;
+    try {
+      await sendMail({
+        to: email,
+        subject: "Reset your Clear Pool CRM password",
+        html: `<p>Hi ${profile.name},</p>
+<p>Someone asked to reset the password for your Clear Pool CRM login. Click the button below to choose a new password:</p>
+<p><a href="${url}" style="display:inline-block;background:#0891B2;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;font-weight:600">Reset password</a></p>
+<p>This link works once and expires in 1 hour. If you didn't ask for this, you can ignore this email.</p>`,
+      });
+    } catch (err) {
+      req.log.error({ err }, "forgot-password: sendMail failed");
+      resetCooldown.delete(email);
+      return reply.code(500).send({ error: "Couldn't send the email. Please try again in a few minutes." });
+    }
+    return { ok: true };
+  });
 }

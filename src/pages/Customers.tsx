@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, Plus, Phone, MessageSquare, Mail, LayoutGrid, Table2, MapPin, X, Bell } from "lucide-react";
+import { Search, Plus, Phone, MessageSquare, Mail, LayoutGrid, Table2, MapPin, X, Bell, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { useAuth, isFieldOnlyRole } from "@/lib/auth-context";
 import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
 import { useSort, sortHeader } from "@/components/SortableTh";
+import { useConfirm } from "@/components/ConfirmDialog";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 
@@ -39,6 +40,21 @@ export default function Customers() {
   const emptyContact = { firstName: "", lastName: "", email: "", phone: "" };
   const [newCustomer, setNewCustomer] = useState({ address: "", type: "Residential", contacts: [{ ...emptyContact }] });
   const navigate = useNavigate();
+  const confirm = useConfirm();
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Client SMS 2026-10-23: trash icon to remove duplicate customers. The backend refuses (with the
+  // reason) when the customer has invoices/jobs/estimates/payments/sales, so history is never lost.
+  const handleDeleteCustomer = async (c: Customer) => {
+    setDeleteError(null);
+    if (!(await confirm({ title: "Delete this customer?", name: c.name, message: "Their notes, photos and reminders are deleted too. This cannot be undone." }))) return;
+    try {
+      await customersApi.remove(c.id);
+      setCustomers((prev) => prev.filter((x) => x.id !== c.id));
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : t("Could not delete this customer."));
+    }
+  };
 
   const loadCustomers = useCallback(async () => {
     setIsLoading(true);
@@ -262,6 +278,13 @@ export default function Customers() {
 
       {isLoading && <div className="text-center py-8 text-[#64748B]">{t("Loading customers...")}</div>}
 
+      {deleteError && (
+        <div className="flex items-start justify-between gap-3 rounded-lg border border-[#DC2626]/30 bg-[#FEF2F2] p-3 text-sm text-[#B91C1C]">
+          <span>{t(deleteError)}</span>
+          <button onClick={() => setDeleteError(null)} title={t("Close")}><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
       {/* Table View */}
       {!isLoading && viewMode === "table" && (
         <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm overflow-hidden">
@@ -334,6 +357,15 @@ export default function Customers() {
                         >
                           <Mail className="w-4 h-4" />
                         </button>
+                        {!isFieldOnlyRole(role) && (
+                          <button
+                            className="p-1.5 rounded hover:bg-[#FEF2F2] text-[#DC2626]"
+                            title={t("Delete customer")}
+                            onClick={(e) => { e.stopPropagation(); handleDeleteCustomer(c); }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -399,9 +431,20 @@ export default function Customers() {
                   <p className="text-xs text-[#64748B]">{t("Lifetime Value")}</p>
                   <p className="text-lg font-bold text-[#0F172A]">${c.lifetime_value.toLocaleString()}</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-[#64748B]">{t("Last Service")}</p>
-                  <p className="text-sm font-medium text-[#0F172A]">{c.last_service}</p>
+                <div className="flex items-end gap-3">
+                  <div className="text-right">
+                    <p className="text-xs text-[#64748B]">{t("Last Service")}</p>
+                    <p className="text-sm font-medium text-[#0F172A]">{c.last_service}</p>
+                  </div>
+                  {!isFieldOnlyRole(role) && (
+                    <button
+                      className="p-1.5 rounded hover:bg-[#FEF2F2] text-[#DC2626]"
+                      title={t("Delete customer")}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteCustomer(c); }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

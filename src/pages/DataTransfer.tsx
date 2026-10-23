@@ -18,6 +18,7 @@ import { formatPhoneInput } from "@/lib/phone";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { safeFileName } from "@/lib/storage-path";
 
 // Client SMS 2026-09-21: "Under Data: need import and export fields with csv file -- Customer list,
 // Inventory list, Vendor list, Inventory Categories, Inventory Manufacture list, Library Category list,
@@ -246,7 +247,7 @@ function DocumentsCard() {
     setError(null);
     try {
       for (const file of Array.from(files)) {
-        const path = `${tenantId}/library/${Date.now()}-${file.name}`;
+        const path = `${tenantId}/library/${Date.now()}-${safeFileName(file.name)}`;
         const { error: uploadErr } = await supabase.storage.from("job-attachments").upload(path, file);
         if (uploadErr) { setError(uploadErr.message); continue; }
         const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);

@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+import { rememberLogo } from "@/lib/remembered-logo";
 import {
   NavigationMenu, NavigationMenuList, NavigationMenuItem, NavigationMenuTrigger,
   NavigationMenuContent, NavigationMenuLink, navigationMenuTriggerStyle,
@@ -114,6 +115,25 @@ export default function AppShell() {
   const navigate = useNavigate();
   const { user, signOut, role, permissions } = useAuth();
   const { t } = useLanguage();
+  // Client 2026-10-23: the tenant's logos (Settings > Company). Expanded sidebar / mobile menu /
+  // phone header show the full logo alone (no "Clear Pool CRM" text); the collapsed rail shows the
+  // short logo. Settings fires "tenant-logo-*" events so a new upload shows without a reload.
+  const [logoShort, setLogoShort] = useState<string | null>(user?.logoShortUrl ?? null);
+  const [logoFull, setLogoFull] = useState<string | null>(user?.logoUrl ?? null);
+  useEffect(() => setLogoShort(user?.logoShortUrl ?? null), [user?.logoShortUrl]);
+  useEffect(() => setLogoFull(user?.logoUrl ?? null), [user?.logoUrl]);
+  // Remembered on this device so the sign-in screens can show it next time (remembered-logo.ts).
+  useEffect(() => { if (user) rememberLogo(logoFull); }, [user, logoFull]);
+  useEffect(() => {
+    const onShort = (e: Event) => setLogoShort((e as CustomEvent<string | null>).detail);
+    const onFull = (e: Event) => setLogoFull((e as CustomEvent<string | null>).detail);
+    window.addEventListener("tenant-logo-short", onShort);
+    window.addEventListener("tenant-logo-full", onFull);
+    return () => {
+      window.removeEventListener("tenant-logo-short", onShort);
+      window.removeEventListener("tenant-logo-full", onFull);
+    };
+  }, []);
   // Client feedback 2026-09-11: technician/contractor accounts should only see the Field page --
   // ProtectedRoute (App.tsx) already bounces any other URL to /field, this just keeps the nav
   // honest about it instead of showing links that would immediately redirect away.
@@ -218,21 +238,29 @@ export default function AppShell() {
           sidebarCollapsed ? "w-16" : "w-64"
         )}
       >
-        <div className={cn("border-b border-white/10", sidebarCollapsed ? "p-3" : "p-6")}>
+        <div className={cn("border-b border-white/10", sidebarCollapsed ? "p-3" : logoFull ? "p-4" : "p-6")}>
           <button
             type="button"
             onClick={toggleSidebarCollapsed}
             title={sidebarCollapsed ? t("Expand sidebar") : t("Collapse sidebar")}
             className={cn("flex items-center gap-3 w-full rounded-lg hover:bg-white/5 transition-colors", sidebarCollapsed ? "justify-center py-1" : "")}
           >
-            <div className="w-10 h-10 rounded-lg bg-[#0891B2] flex items-center justify-center shrink-0">
-              <Droplets className="w-5 h-5 text-white" />
+            {!sidebarCollapsed && logoFull ? (
+              <div className="mx-auto w-[85%] rounded-lg border-2 border-white/40 overflow-hidden">
+                <img src={logoFull} alt={user?.company ?? ""} className="block w-full h-[60px] object-cover" />
+              </div>
+            ) : (
+            <>
+            <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center shrink-0 overflow-hidden", logoShort ? "bg-white" : "bg-[#0891B2]")}>
+              {logoShort ? <img src={logoShort} alt="" className="w-full h-full object-contain" /> : <Droplets className="w-5 h-5 text-white" />}
             </div>
             {!sidebarCollapsed && (
               <div className="text-left min-w-0">
                 <h1 className="font-bold text-lg tracking-tight truncate">Clear Pool CRM</h1>
                 <p className="text-[10px] text-white/50 uppercase tracking-wider truncate">Powered by Brayne AI</p>
               </div>
+            )}
+            </>
             )}
           </button>
         </div>
@@ -534,15 +562,21 @@ export default function AppShell() {
                 </button>
               </SheetTrigger>
               <SheetContent side="left" className="w-72 bg-[#0C2A3A] text-white p-0">
-                <div className="p-6 border-b border-white/10">
+                <div className={cn("border-b border-white/10", logoFull ? "p-4" : "p-6")}>
+                  {logoFull ? (
+                    <div className="mx-auto w-[85%] rounded-lg border-2 border-white/40 overflow-hidden">
+                      <img src={logoFull} alt={user?.company ?? ""} className="block w-full h-[60px] object-cover" />
+                    </div>
+                  ) : (
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#0891B2] flex items-center justify-center">
-                      <Droplets className="w-5 h-5 text-white" />
+                    <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden", logoShort ? "bg-white" : "bg-[#0891B2]")}>
+                      {logoShort ? <img src={logoShort} alt="" className="w-full h-full object-contain" /> : <Droplets className="w-5 h-5 text-white" />}
                     </div>
                     <div>
                       <h1 className="font-bold text-lg tracking-tight">Clear Pool CRM</h1>
                     </div>
                   </div>
+                  )}
                 </div>
                 <nav className="py-4 px-3 space-y-1 overflow-y-auto max-h-[calc(100vh-6rem)] sidebar-scroll">
                   {visibleFlatNavLinks.map((item) => {
@@ -565,12 +599,16 @@ export default function AppShell() {
                 </nav>
               </SheetContent>
             </Sheet>
+            {logoFull ? (
+              <img src={logoFull} alt={user?.company ?? ""} className="h-9 max-w-[160px] object-contain" />
+            ) : (
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-md bg-[#0891B2] flex items-center justify-center">
-                <Droplets className="w-4 h-4 text-white" />
+              <div className={cn("w-7 h-7 rounded-md flex items-center justify-center overflow-hidden", logoShort ? "bg-white border border-[#E2E8F0]" : "bg-[#0891B2]")}>
+                {logoShort ? <img src={logoShort} alt="" className="w-full h-full object-contain" /> : <Droplets className="w-4 h-4 text-white" />}
               </div>
               <span className="font-semibold text-sm text-[#0F172A]">{user?.company || "New Pool Company"}</span>
             </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <LanguageToggle />

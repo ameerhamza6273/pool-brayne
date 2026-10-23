@@ -208,12 +208,12 @@ export default async function settingsRoutes(app: FastifyInstance) {
         tx`select id, tenant_id, name, status, description, icon, provider from integrations order by name`,
         tx`select * from subscription_plans order by price`,
         tx`select * from billing_history order by billed_date desc`,
-        tx`select name, plan_id, phone, address, city, state, zip, invoice_business_name, payroll_week_start_day, logo_url from tenants where id = current_tenant_id() limit 1`,
+        tx`select name, plan_id, phone, address, city, state, zip, invoice_business_name, payroll_week_start_day, logo_url, logo_short_url from tenants where id = current_tenant_id() limit 1`,
       ]);
       const tenant = tenantRows[0] as {
         name: string; plan_id: string | null; phone: string | null; address: string | null;
         city: string | null; state: string | null; zip: string | null;
-        invoice_business_name: string | null; payroll_week_start_day: number; logo_url: string | null;
+        invoice_business_name: string | null; payroll_week_start_day: number; logo_url: string | null; logo_short_url: string | null;
       } | undefined;
       return {
         teamMembers,
@@ -230,6 +230,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
         invoiceBusinessName: tenant?.invoice_business_name ?? "",
         payrollWeekStartDay: tenant?.payroll_week_start_day ?? 1,
         logoUrl: tenant?.logo_url ?? null,
+        logoShortUrl: tenant?.logo_short_url ?? null,
       };
     });
   });
@@ -249,10 +250,14 @@ export default async function settingsRoutes(app: FastifyInstance) {
 
   // Client text 2026-10-06: "under profile ... the upload logo is not functional" -- the button
   // had no handler at all; now uploads to Supabase storage (frontend) and saves the public URL here.
-  app.patch<{ Body: { logoUrl: string | null } }>("/company/logo", async (req) => {
-    const { logoUrl } = req.body;
+  // Client 2026-10-23: two logos -- full (documents/emails) and short (app sidebar/header).
+  app.patch<{ Body: { logoUrl?: string | null; logoShortUrl?: string | null } }>("/company/logo", async (req) => {
+    const body = req.body;
     return withTenantContext(req.userId, (tx) => tx`
-      update tenants set logo_url = ${logoUrl} where id = current_tenant_id() returning *
+      update tenants set
+        logo_url = case when ${"logoUrl" in body} then ${body.logoUrl ?? null} else logo_url end,
+        logo_short_url = case when ${"logoShortUrl" in body} then ${body.logoShortUrl ?? null} else logo_short_url end
+      where id = current_tenant_id() returning *
     `);
   });
 

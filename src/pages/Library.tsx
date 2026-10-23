@@ -14,6 +14,7 @@ import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { matchesQuery } from "@/lib/search";
 import { useSort, sortHeader } from "@/components/SortableTh";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { safeFileName } from "@/lib/storage-path";
 
 // Sidebar restructure (client PDF 2026-09-06, "Employee section > Library") — a generic
 // tenant document repository (SOPs, price sheets, training material), reusing the same
@@ -63,7 +64,7 @@ export default function Library() {
     if (!file || !tenantId) return;
     setUploading(true);
     try {
-      const path = `${tenantId}/library/${Date.now()}-${file.name}`;
+      const path = `${tenantId}/library/${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) throw error;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);

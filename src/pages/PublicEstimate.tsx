@@ -64,7 +64,7 @@ export default function PublicEstimate() {
     <div className="min-h-screen bg-[#F8FAFC] py-8 px-4">
       <div className="max-w-2xl mx-auto space-y-4">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#0891B2] flex items-center justify-center"><Droplets className="w-4 h-4 text-white" /></div>
+          {business?.logo_url ? <img src={business.logo_url} alt="" className="h-12 max-w-[220px] object-contain" /> : <div className="w-8 h-8 rounded-lg bg-[#0891B2] flex items-center justify-center"><Droplets className="w-4 h-4 text-white" /></div>}
           <span className="font-bold text-[#0C2A3A]">{business?.invoice_business_name || business?.name || "Estimate"}</span>
         </div>
 

@@ -34,9 +34,22 @@ function getTransporter() {
   return transporter;
 }
 
-export async function sendMail(opts: { to: string; subject: string; html: string }) {
+export async function sendMail(opts: {
+  to: string | string[];
+  cc?: string[];
+  subject: string;
+  html: string;
+  attachments?: { filename: string; content: Buffer; contentType?: string }[];
+}) {
   const t = getTransporter();
-  await t.sendMail({ from: SMTP_FROM, to: opts.to, subject: opts.subject, html: opts.html });
+  await t.sendMail({
+    from: SMTP_FROM,
+    to: opts.to,
+    ...(opts.cc && opts.cc.length ? { cc: opts.cc } : {}),
+    subject: opts.subject,
+    html: opts.html,
+    ...(opts.attachments && opts.attachments.length ? { attachments: opts.attachments } : {}),
+  });
 }
 
 // Client video 2026-10-06: "we also need notification on our end once [a customer has] paid an

@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Download, ArrowRight, Link2, Mail, Upload, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { invoicingApi, type EstimateAttachment } from "@/lib/api/invoicing";
+import { invoicingApi, type EstimateAttachment, type SendDocumentEmail } from "@/lib/api/invoicing";
 import DocumentsSection from "@/components/DocumentsSection";
 import { libraryApi, type LibraryDocument } from "@/lib/api/library";
 import { SearchableSelect } from "@/components/SearchableSelect";
@@ -22,6 +22,9 @@ import type { Database } from "@/lib/database.types";
 import { profilesApi } from "@/lib/api/profiles";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useConfigLists } from "@/hooks/use-config-lists";
+import { safeFileName } from "@/lib/storage-path";
+import SendEmailDialog from "@/components/SendEmailDialog";
+import { elementToPdfBase64 } from "@/lib/document-pdf";
 
 type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null };
 type LineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
@@ -56,7 +59,7 @@ export default function EstimateDetail() {
   const taxRate = useTaxRate();
   const [estimate, setEstimate] = useState<Estimate | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null } | null>(null);
+  const [business, setBusiness] = useState<{ name: string; phone: string | null; address: string | null; city: string | null; state: string | null; zip: string | null; invoice_business_name: string | null; logo_url?: string | null } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [converting, setConverting] = useState(false);
   // Convert-to-Job dialog (client video 2026-10-18) -- declared up here, before the early return.
@@ -74,6 +77,9 @@ export default function EstimateDetail() {
   // password is configured.
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendEmailResult, setSendEmailResult] = useState<string | null>(null);
+  // Client video 2026-10-23: same Send Email popup as invoices.
+  const [emailOpen, setEmailOpen] = useState(false);
+  const docRef = useRef<HTMLDivElement>(null);
   const { tenantId } = useAuth();
 
   // Client PDF 2026-09-05: "Need to be able to edit an estimate once created and saves".
@@ -239,7 +245,7 @@ export default function EstimateDetail() {
     if (!id || !tenantId) return;
     setDocsUploading(true);
     try {
-      const path = `${tenantId}/estimates/${id}/document-${Date.now()}-${file.name}`;
+      const path = `${tenantId}/estimates/${id}/document-${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) throw error;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -257,7 +263,7 @@ export default function EstimateDetail() {
     if (!file || !id || !tenantId) return;
     setPhotosUploading(true);
     try {
-      const path = `${tenantId}/estimates/${id}/photo-${Date.now()}-${file.name}`;
+      const path = `${tenantId}/estimates/${id}/photo-${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) throw error;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -275,17 +281,20 @@ export default function EstimateDetail() {
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
   };
-  const handleSendEmail = async () => {
+  const handleSendEmail = () => {
+    setSendEmailResult(null);
+    setEmailOpen(true);
+  };
+
+  const sendEstimateEmail = async (data: SendDocumentEmail) => {
     if (!id) return;
     setSendingEmail(true);
-    setSendEmailResult(null);
     try {
-      await invoicingApi.sendEstimateEmail(id);
+      await invoicingApi.sendEstimateEmail(id, data);
       setSendEmailResult("sent");
-    } catch (err) {
-      setSendEmailResult(err instanceof Error ? err.message : "Failed to send");
+    } finally {
+      setSendingEmail(false);
     }
-    setSendingEmail(false);
   };
 
   return (
@@ -403,7 +412,19 @@ export default function EstimateDetail() {
           "make the customer estimates look like the customer invoice") so the two documents read
           as one consistent system: dark header band with Business / Client Details / Billing
           Address / Service Details boxes, then a Breakdown of Services. */}
+      <SendEmailDialog
+        open={emailOpen}
+        onOpenChange={setEmailOpen}
+        kind="estimate"
+        customerId={estimate.customer_id}
+        defaultSubject={`${t("Estimate")} ${estimate.number} — ${business?.invoice_business_name || business?.name || ""}`.replace(/ — $/, "")}
+        defaultMessage={"Your estimate is ready. Please look it over, and let us know if you have any questions.\n\nYou can review and approve it online using the button below."}
+        getPdf={async () => (docRef.current ? elementToPdfBase64(docRef.current) : null)}
+        pdfName={`Estimate-${estimate.number}.pdf`}
+        onSend={sendEstimateEmail}
+      />
       {!editing && (
+      <div ref={docRef}>
       <Card className="border-[#E2E8F0] shadow-sm">
         <CardContent className="p-4 sm:p-6 lg:p-8">
           <div className="rounded-xl bg-gradient-to-r from-[#0E7490] to-[#0891B2] p-3 sm:p-4 text-white [print-color-adjust:exact] [-webkit-print-color-adjust:exact]">
@@ -414,6 +435,12 @@ export default function EstimateDetail() {
             <div className="grid grid-cols-1 md:grid-cols-4 print:grid-cols-4 gap-2 text-[11px] leading-relaxed">
               <div className="rounded-lg border border-white/30 bg-white/10 p-3 flex flex-col">
                 <p className="font-bold uppercase tracking-wide text-center mb-2 pb-1.5 border-b border-white/30">{business?.invoice_business_name || business?.name || "—"}</p>
+                {/* Client 2026-10-23: their logo in the company box, like the old system's emailed PDF. */}
+                {business?.logo_url && (
+                  <div className="flex justify-center mb-2">
+                    <img src={business.logo_url} crossOrigin="anonymous" alt="" className="max-h-16 max-w-full object-contain rounded bg-white p-1" />
+                  </div>
+                )}
                 <div className="mt-auto space-y-0.5">
                   {business?.phone && <p>{t("Phone #")}: {business.phone}</p>}
                   {business?.address && <p>{business.address}</p>}
@@ -547,6 +574,7 @@ export default function EstimateDetail() {
           </div>
         </CardContent>
       </Card>
+      </div>
       )}
 
       <div className="print:hidden">

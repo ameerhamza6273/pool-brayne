@@ -53,6 +53,9 @@ export type PublicInvoice = {
   total: number;
 };
 
+// Client video 2026-10-23: Send Email popup payload (all optional -- empty = customer's email, defaults).
+export type SendDocumentEmail = { to?: string[]; cc?: string[]; subject?: string; message?: string; pdfBase64?: string | null; pdfName?: string | null };
+
 type Business = {
   name: string;
   phone: string | null;
@@ -65,6 +68,7 @@ type Business = {
   // only populated on the public (no-login) estimate/invoice bundles, which can't call the
   // authenticated /api/settings/tax-rate endpoint the rest of the app uses (see useTaxRate()).
   tax_rate?: number | null;
+  logo_url?: string | null;
 };
 
 // Job-derived extras for the customer-facing invoice document (all null/empty for invoices with no job).
@@ -193,8 +197,8 @@ export const invoicingApi = {
 
   // Client video 2026-10-06: real "Send via Email" — fails with a clear message (not a silent
   // no-op) until the SMTP password is configured on the server.
-  sendInvoiceEmail: (id: string) => api.post<{ sent: true }>(`/api/invoices/${id}/send-email`, {}),
+  sendInvoiceEmail: (id: string, data: SendDocumentEmail = {}) => api.post<{ sent: true }>(`/api/invoices/${id}/send-email`, data),
   finalizeInvoice: (id: string) => api.patch<Invoice>(`/api/invoices/${id}/finalize`, {}),
   bulkSendInvoiceEmail: (invoiceIds: string[]) => api.post<{ sent: number; to: string }>("/api/invoices/bulk-send-email", { invoiceIds }),
-  sendEstimateEmail: (id: string) => api.post<{ sent: true }>(`/api/invoices/estimates/${id}/send-email`, {}),
+  sendEstimateEmail: (id: string, data: SendDocumentEmail = {}) => api.post<{ sent: true }>(`/api/invoices/estimates/${id}/send-email`, data),
 };

@@ -34,6 +34,7 @@ import { geocodeAddress, geocodeApproximate } from "@/lib/geocode";
 import { useLanguage } from "@/lib/language-context";
 import type { Database } from "@/lib/database.types";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { safeFileName } from "@/lib/storage-path";
 
 type Customer = Database["public"]["Tables"]["customers"]["Row"];
 type ServiceHistory = Database["public"]["Tables"]["job_service_history"]["Row"];
@@ -215,7 +216,7 @@ export default function CustomerDetail() {
     if (!id) return;
     for (const file of Array.from(files)) {
       if (!file.type.startsWith("image/")) continue;
-      const path = `${tenantId}/${id}/photo-${Date.now()}-${file.name}`;
+      const path = `${tenantId}/${id}/photo-${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("customer-attachments").upload(path, file);
       if (error) continue;
       const { data } = supabase.storage.from("customer-attachments").getPublicUrl(path);

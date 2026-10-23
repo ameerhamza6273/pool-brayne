@@ -26,8 +26,9 @@ import { isLaborCategory } from "@/lib/labor";
 import { matchesQuery } from "@/lib/search";
 import type { Database } from "@/lib/database.types";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { safeFileName } from "@/lib/storage-path";
 
-type Job = Database["public"]["Tables"]["jobs"]["Row"] & { customers: { name: string; address: string | null } | null };
+type Job = Database["public"]["Tables"]["jobs"]["Row"] & { customers: { name: string; address: string | null; phone?: string | null } | null };
 
 const typeColors: Record<string, string> = {
   Maintenance: "bg-[#0891B2]/10 text-[#0891B2]",
@@ -129,6 +130,7 @@ export default function Field() {
 
   const currentJob = myJobs.find((j) => j.id === activeJobId) ?? null;
   const currentStepIdx = statusSteps.findIndex((s) => s.id === jobStatus);
+  const nextStep = statusSteps[currentStepIdx + 1] ?? null;
   const beforePhotos = photos.filter((p) => p.label === "before");
   const afterPhotos = photos.filter((p) => p.label === "after");
   const internalPhotos = photos.filter((p) => p.label === "internal");
@@ -216,7 +218,7 @@ export default function Field() {
   };
 
   const uploadAttachment = async (jobId: string, file: Blob, filename: string, type: "photo" | "signature", label?: string | null) => {
-    const path = `${tenantId}/${jobId}/${type}-${Date.now()}-${filename}`;
+    const path = `${tenantId}/${jobId}/${type}-${Date.now()}-${safeFileName(filename)}`;
     const { error } = await supabase.storage.from("job-attachments").upload(path, file);
     if (error) throw error;
     const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -334,7 +336,7 @@ export default function Field() {
 
   const handleFormPhotoUpload = async (file: File): Promise<string> => {
     if (!currentJob || !tenantId) throw new Error("Not ready");
-    const path = `${tenantId}/${currentJob.id}/forms/${Date.now()}-${file.name}`;
+    const path = `${tenantId}/${currentJob.id}/forms/${Date.now()}-${safeFileName(file.name)}`;
     const { error } = await supabase.storage.from("job-attachments").upload(path, file);
     if (error) throw error;
     const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -345,7 +347,7 @@ export default function Field() {
     if (!currentJob || !tenantId) return;
     setDocsUploading(true);
     try {
-      const path = `${tenantId}/${currentJob.id}/document-${Date.now()}-${file.name}`;
+      const path = `${tenantId}/${currentJob.id}/document-${Date.now()}-${safeFileName(file.name)}`;
       const { error } = await supabase.storage.from("job-attachments").upload(path, file);
       if (error) throw error;
       const { data } = supabase.storage.from("job-attachments").getPublicUrl(path);
@@ -362,10 +364,18 @@ export default function Field() {
     jobsApi.getAttachments(currentJob.id).then((docs) => setJobDocuments(docs.filter((a) => a.type === "document")));
   };
 
+  const openDirections = () => {
+    if (currentJob?.address) window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(currentJob.address)}`, "_blank", "noopener,noreferrer");
+  };
+
   const advanceStatus = async () => {
     if (!currentJob) return;
     const next = statusSteps[currentStepIdx + 1];
     if (!next) return;
+    setFormError("");
+    // Client video 2026-10-23: "Start Job" should take the tech to the address instead of them
+    // typing it in -- opened synchronously so the phone doesn't block it as a popup.
+    if (next.id === "en_route") openDirections();
 
     if (next.id === "completed" && missingRequiredTemplates.length > 0) {
       setFormError(`Submit the required form${missingRequiredTemplates.length > 1 ? "s" : ""} first: ${missingRequiredTemplates.map((t) => t.name).join(", ")}`);
@@ -562,6 +572,19 @@ export default function Field() {
               })}
             </div>
 
+            {/* Client video 2026-10-23: Start Job / I've Arrived sit right under the 1-2-3 steps
+                (they were at the very bottom, below every form). Complete Job and Generate Invoice
+                stay at the bottom -- those come after the forms, photos and signature. */}
+            {nextStep && nextStep.id !== "completed" && (
+              <div className="space-y-2">
+                <Button className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold gap-2" onClick={advanceStatus}>
+                  <nextStep.icon className="w-5 h-5" />
+                  {nextStep.id === "en_route" ? t("Start Job — Navigate to Site") : t(nextStep.action)}
+                </Button>
+                {formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
+              </div>
+            )}
+
             {/* Customer Quick Info */}
             <div className="p-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0]">
               <div className="flex items-center gap-3">
@@ -573,12 +596,18 @@ export default function Field() {
                   <p className="text-xs text-[#64748B]">{currentJob.address}</p>
                 </div>
                 <div className="flex gap-1">
-                  <button className="p-2 rounded-lg bg-[#0891B2]/10 text-[#0891B2]">
-                    <Phone className="w-4 h-4" />
-                  </button>
+                  {currentJob.customers?.phone ? (
+                    <a href={`tel:${currentJob.customers.phone}`} className="p-2 rounded-lg bg-[#0891B2]/10 text-[#0891B2]" title={t("Call")}>
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  ) : (
+                    <button className="p-2 rounded-lg bg-[#0891B2]/10 text-[#0891B2] opacity-40" disabled title={t("No phone number on file")}>
+                      <Phone className="w-4 h-4" />
+                    </button>
+                  )}
                   <button
                     className="p-2 rounded-lg bg-[#0891B2]/10 text-[#0891B2]"
-                    onClick={() => currentJob.address && window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(currentJob.address)}`, "_blank", "noopener,noreferrer")}
+                    onClick={openDirections}
                   >
                     <Navigation className="w-4 h-4" />
                   </button>
@@ -1006,26 +1035,14 @@ export default function Field() {
 
             {/* Action Buttons */}
             <div className="space-y-2">
-              {formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
-              {jobStatus !== "completed" && (
+              {nextStep?.id === "completed" && formError && <p className="text-sm text-[#DC2626]">{t(formError)}</p>}
+              {nextStep?.id === "completed" && (
                 <Button
                   className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold gap-2"
                   onClick={advanceStatus}
                 >
-                  {currentStepIdx < 0 ? (
-                    <>
-                      <Navigation className="w-5 h-5" />
-                      {t("Start Job — Navigate to Site")}
-                    </>
-                  ) : (
-                    <>
-                      {(() => {
-                        const Icon = statusSteps[currentStepIdx]?.icon || CheckCircle2;
-                        return <Icon className="w-5 h-5" />;
-                      })()}
-                      {t(statusSteps[currentStepIdx]?.action || "Complete Job")}
-                    </>
-                  )}
+                  <CheckCircle2 className="w-5 h-5" />
+                  {t("Complete Job")}
                 </Button>
               )}
 
