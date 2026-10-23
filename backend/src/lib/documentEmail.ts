@@ -48,18 +48,21 @@ export function documentEmailHtml(opts: {
   total: number;
   balanceDue: number | null;
   buttonUrl: string;
+  pdfAttached?: boolean;
 }) {
   const row = (label: string, value: string | null) =>
-    value ? `<p style="margin:0 0 10px"><strong>${esc(label)}:</strong> ${esc(value)}</p>` : "";
+    value ? `<p style="margin:0 0 10px;font-size:16px"><strong>${esc(label)}:</strong> ${esc(value)}</p>` : "";
+  // Client video 2026-10-24: "would like to see [Breakdown of Services] a little bit bigger... and bigger font".
   const section = (title: string, body: string) =>
     body
-      ? `<p style="margin:18px 0 6px;font-weight:700;color:#0C2A3A;border-bottom:2px solid #0C2A3A;padding-bottom:4px">${esc(title)}</p>${body}`
+      ? `<p style="margin:22px 0 10px;font-size:19px;font-weight:700;color:#0C2A3A;border-bottom:2px solid #0C2A3A;padding-bottom:6px">${esc(title)}</p><div style="font-size:16px">${body}</div>`
       : "";
   const money = (n: number) => `$${n.toFixed(2)}`;
   const isInvoice = opts.kind === "invoice";
   const phoneDigits = (opts.businessPhone ?? "").replace(/[^\d+]/g, "");
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#0F172A;max-width:640px">
-${opts.logoUrl ? `<p style="margin:0 0 18px"><img src="${esc(opts.logoUrl)}" alt="${esc(opts.businessName)}" style="max-height:70px;max-width:260px" /></p>` : ""}
+${opts.pdfAttached ? `<p style="margin:0 0 16px;padding:10px 14px;background:#ECFEFF;border-left:4px solid #0891B2;font-size:14px">The ${isInvoice ? "invoice" : "estimate"} PDF is attached to this email. If you would like to see a detailed view, please click the PDF.</p>` : ""}
+${opts.logoUrl ? `<p style="margin:0 0 18px"><img src="${esc(opts.logoUrl)}" alt="${esc(opts.businessName)}" width="180" style="display:block;width:180px;max-width:180px;height:auto;border:0" /></p>` : ""}
 <p style="margin:0 0 14px">Hi ${esc(opts.customerName)},</p>
 ${paragraphs(opts.message)}
 ${section("Breakdown of Services", [

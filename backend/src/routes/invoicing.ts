@@ -350,6 +350,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         order by n.created_at
       `) as unknown as { text: string }[];
       const url = `${PUBLIC_APP_URL}/invoice/${row.payment_token}`;
+      const attachments = pdfAttachment(body, `Invoice-${row.number}.pdf`);
       await sendMailOrFail({
         to: recipients.to,
         cc: recipients.cc,
@@ -369,8 +370,9 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           total,
           balanceDue: Math.round((total - Number(row.down_payment ?? 0)) * 100) / 100,
           buttonUrl: url,
+          pdfAttached: attachments.length > 0,
         }),
-        attachments: pdfAttachment(body, `Invoice-${row.number}.pdf`),
+        attachments,
       });
       // Client video 2026-10-18: "When I click it here, it still says draft" -- an emailed invoice is Sent.
       await tx`update invoices set status = 'Sent' where id = ${id} and status in ('Draft', 'Open')`;
@@ -544,6 +546,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const lineItems = (await tx`select amount, item_type, taxable from estimate_line_items where estimate_id = ${id}`) as unknown as { amount: number; item_type: string | null; taxable: boolean }[];
       const total = taxedTotal(lineItems, Number(row.amount), await getTaxRate(tx));
       const url = `${PUBLIC_APP_URL}/estimate/${row.approval_token}`;
+      const attachments = pdfAttachment(body, `Estimate-${row.number}.pdf`);
       await sendMailOrFail({
         to: recipients.to,
         cc: recipients.cc,
@@ -563,8 +566,9 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           total,
           balanceDue: null,
           buttonUrl: url,
+          pdfAttached: attachments.length > 0,
         }),
-        attachments: pdfAttachment(body, `Estimate-${row.number}.pdf`),
+        attachments,
       });
       return { sent: true, to: recipients.to, cc: recipients.cc };
     });
