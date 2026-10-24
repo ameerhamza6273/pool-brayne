@@ -31,10 +31,10 @@ export const inventoryApi = {
 
   suppliers: () => api.get<Supplier[]>("/api/inventory/suppliers"),
 
-  addSupplier: (data: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null }) =>
+  addSupplier: (data: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null; emails: string[] }) =>
     api.post<Supplier>("/api/inventory/suppliers", data),
 
-  updateSupplier: (id: string, data: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null }) =>
+  updateSupplier: (id: string, data: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null; emails: string[] }) =>
     api.patch<Supplier>(`/api/inventory/suppliers/${id}`, data),
 
   deleteSupplier: (id: string) => api.del(`/api/inventory/suppliers/${id}`),

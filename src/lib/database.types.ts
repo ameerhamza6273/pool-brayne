@@ -1882,6 +1882,7 @@ export type Database = {
         Row: {
           address: string | null
           contact: string | null
+          emails: string[]
           id: string
           lead_time: string | null
           name: string
@@ -1891,6 +1892,7 @@ export type Database = {
         Insert: {
           address?: string | null
           contact?: string | null
+          emails?: string[]
           id?: string
           lead_time?: string | null
           name: string

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 import { withQuickbooksConnection, getChartOfAccounts } from "../lib/quickbooks.js";
 import { nextDocNumber, peekNextDocNumber } from "../lib/numbering.js";
+import { cleanEmailList, invalidEmails } from "../lib/documentEmail.js";
 
 type Location = { id: string; type: string };
 type Stock = { item_id: string; location_id: string; quantity: number };
@@ -205,27 +206,36 @@ export default async function inventoryRoutes(app: FastifyInstance) {
 
   app.get("/suppliers", async (req) => withTenantContext(req.userId, (tx) => tx`select * from suppliers order by name`));
 
-  app.post<{ Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null } }>("/suppliers", async (req) => {
+  // Client video 2026-10-24: vendors have "four or five people in the office" -> a list of emails per vendor.
+  type SupplierBody = { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null; emails?: string[] };
+  app.post<{ Body: SupplierBody }>("/suppliers", async (req, reply) => {
     const { name, contact, phone, leadTime, address } = req.body;
+    const emails = cleanEmailList(req.body.emails);
+    const bad = invalidEmails(emails);
+    if (bad.length) return reply.code(400).send({ error: `Not a valid email: ${bad.join(", ")}` });
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [row] = await tx`
-        insert into suppliers (tenant_id, name, contact, phone, lead_time, address)
-        values (${tenant.id}, ${name}, ${contact}, ${phone}, ${leadTime}, ${address ?? null})
+        insert into suppliers (tenant_id, name, contact, phone, lead_time, address, emails)
+        values (${tenant.id}, ${name}, ${contact}, ${phone}, ${leadTime}, ${address ?? null}, ${emails})
         returning *
       `;
       return row;
     });
   });
 
-  app.patch<{ Params: { id: string }; Body: { name: string; contact: string | null; phone: string | null; leadTime: string | null; address: string | null } }>(
+  app.patch<{ Params: { id: string }; Body: SupplierBody }>(
     "/suppliers/:id",
-    async (req) => {
+    async (req, reply) => {
       const { id } = req.params;
       const { name, contact, phone, leadTime, address } = req.body;
+      const emails = req.body.emails === undefined ? null : cleanEmailList(req.body.emails);
+      const bad = emails ? invalidEmails(emails) : [];
+      if (bad.length) return reply.code(400).send({ error: `Not a valid email: ${bad.join(", ")}` });
       return withTenantContext(req.userId, async (tx) => {
         const [row] = await tx`
-          update suppliers set name = ${name}, contact = ${contact}, phone = ${phone}, lead_time = ${leadTime}, address = ${address ?? null}
+          update suppliers set name = ${name}, contact = ${contact}, phone = ${phone}, lead_time = ${leadTime}, address = ${address ?? null},
+            emails = coalesce(${emails}::text[], emails)
           where id = ${id} returning *
         `;
         return row;

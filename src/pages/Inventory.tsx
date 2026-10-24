@@ -191,7 +191,8 @@ export default function Inventory() {
   const [newPoLineItems, setNewPoLineItems] = useState<PoLineItemInput[]>([]);
   const [poDetailLineItems, setPoDetailLineItems] = useState<PoLineItemInput[]>([]);
   const [vendorSearch, setVendorSearch] = useState("");
-  const [newSupplier, setNewSupplier] = useState({ name: "", contact: "", phone: "", leadTime: "", address: "" });
+  const [newSupplier, setNewSupplier] = useState({ name: "", contact: "", phone: "", leadTime: "", address: "", emails: [""] });
+  const [supplierError, setSupplierError] = useState("");
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
 
@@ -401,13 +402,15 @@ export default function Inventory() {
   // Client request 2026-09-03: "Cannot add or edit -- suppliers / vendors".
   const openAddSupplier = () => {
     setEditSupplier(null);
-    setNewSupplier({ name: "", contact: "", phone: "", leadTime: "", address: "" });
+    setNewSupplier({ name: "", contact: "", phone: "", leadTime: "", address: "", emails: [""] });
+    setSupplierError("");
     setSupplierOpen(true);
   };
 
   const openEditSupplier = (s: Supplier) => {
     setEditSupplier(s);
-    setNewSupplier({ name: s.name, contact: s.contact ?? "", phone: s.phone ?? "", leadTime: s.lead_time ?? "", address: (s as Supplier & { address: string | null }).address ?? "" });
+    setNewSupplier({ name: s.name, contact: s.contact ?? "", phone: s.phone ?? "", leadTime: s.lead_time ?? "", address: (s as Supplier & { address: string | null }).address ?? "", emails: s.emails?.length ? [...s.emails] : [""] });
+    setSupplierError("");
     setSupplierOpen(true);
   };
 
@@ -419,11 +422,18 @@ export default function Inventory() {
       phone: newSupplier.phone || null,
       leadTime: newSupplier.leadTime || null,
       address: newSupplier.address || null,
+      emails: newSupplier.emails.map((e) => e.trim()).filter(Boolean),
     };
-    if (editSupplier) {
-      await inventoryApi.updateSupplier(editSupplier.id, data);
-    } else {
-      await inventoryApi.addSupplier(data);
+    setSupplierError("");
+    try {
+      if (editSupplier) {
+        await inventoryApi.updateSupplier(editSupplier.id, data);
+      } else {
+        await inventoryApi.addSupplier(data);
+      }
+    } catch (err) {
+      setSupplierError(err instanceof Error ? err.message : t("Could not save the vendor"));
+      return;
     }
     setSupplierOpen(false);
     loadInventory();
@@ -721,7 +731,7 @@ export default function Inventory() {
     filteredWriteoffs.filter((w) => matchesQuery(writeoffSearch, [w.inventory_items?.name, w.reason, w.note])),
     (x, key) => key === "product" ? x.inventory_items?.name : (x as unknown as Record<string, string | number | null>)[key]);
   const vendorSort = useSort(
-    suppliers.filter((sp) => matchesQuery(vendorSearch, [sp.name, sp.contact, sp.phone, (sp as Supplier & { address: string | null }).address])),
+    suppliers.filter((sp) => matchesQuery(vendorSearch, [sp.name, sp.contact, sp.phone, (sp as Supplier & { address: string | null }).address, ...(sp.emails ?? [])])),
     (x, key) => (x as unknown as Record<string, string | number | null>)[key]);
   const poSort = useSort(
     purchaseOrders.filter((po) => matchesQuery(poSearch, [po.number, po.suppliers?.name, po.locations?.label, po.status, po.order_date, po.payment_terms])),
@@ -1023,7 +1033,7 @@ export default function Inventory() {
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
-              <Input placeholder={t("Search vendor, contact, address, or phone...")} value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
+              <Input placeholder={t("Search vendor, contact, email, address, or phone...")} value={vendorSearch} onChange={(e) => setVendorSearch(e.target.value)} className="pl-9 h-10 bg-white border-[#E2E8F0]" />
             </div>
             <Dialog open={supplierOpen} onOpenChange={setSupplierOpen}>
               <DialogTrigger asChild>
@@ -1035,9 +1045,27 @@ export default function Inventory() {
                 <div className="space-y-4 pt-2">
                   <div><Label>{t("Name")}</Label><Input className="mt-1" value={newSupplier.name} onChange={(e) => setNewSupplier((p) => ({ ...p, name: e.target.value }))} /></div>
                   <div><Label>{t("Contact")}</Label><Input className="mt-1" value={newSupplier.contact} onChange={(e) => setNewSupplier((p) => ({ ...p, contact: e.target.value }))} /></div>
+                  {/* Client video 2026-10-24: "an email slot here ... a plus symbol next to it to add multiple emails". */}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Label>{t("Email")}</Label>
+                      <button type="button" title={t("Add another email")} className="w-5 h-5 rounded-full bg-[#0891B2] text-white flex items-center justify-center hover:bg-[#0E7490]" onClick={() => setNewSupplier((p) => ({ ...p, emails: [...p.emails, ""] }))}><Plus className="w-3.5 h-3.5" /></button>
+                    </div>
+                    <div className="mt-1 space-y-2">
+                      {newSupplier.emails.map((em, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input type="email" placeholder="name@vendor.com" value={em} onChange={(e) => setNewSupplier((p) => ({ ...p, emails: p.emails.map((x, j) => (j === i ? e.target.value : x)) }))} />
+                          {newSupplier.emails.length > 1 && (
+                            <button type="button" title={t("Remove email")} onClick={() => setNewSupplier((p) => ({ ...p, emails: p.emails.filter((_, j) => j !== i) }))}><X className="w-4 h-4 text-[#94A3B8] hover:text-[#DC2626]" /></button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <div><Label>{t("Phone")}</Label><Input className="mt-1" value={newSupplier.phone} onChange={(e) => setNewSupplier((p) => ({ ...p, phone: e.target.value }))} /></div>
                   <div><Label>{t("Address")}</Label><Input className="mt-1" value={newSupplier.address} onChange={(e) => setNewSupplier((p) => ({ ...p, address: e.target.value }))} /></div>
                   <div><Label>{t("Lead Time")}</Label><Input className="mt-1" placeholder={t("3-5 days")} value={newSupplier.leadTime} onChange={(e) => setNewSupplier((p) => ({ ...p, leadTime: e.target.value }))} /></div>
+                  {supplierError && <p className="text-sm text-[#DC2626]">{supplierError}</p>}
                   <Button className="w-full bg-[#0891B2] text-white" onClick={handleSaveSupplier}>{editSupplier ? t("Save Changes") : t("Add Vendor")}</Button>
                 </div>
               </DialogContent>
@@ -1059,7 +1087,10 @@ export default function Inventory() {
                     <tr key={s.id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium text-[#0F172A] cursor-pointer" onClick={() => openEditSupplier(s)}>{s.name}</td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">{(s as Supplier & { address: string | null }).address}</td>
-                      <td className="py-3 px-4 text-[#64748B] text-sm">{s.contact}</td>
+                      <td className="py-3 px-4 text-[#64748B] text-sm">
+                        {s.contact}
+                        {(s.emails ?? []).map((em) => <div key={em}><a href={`mailto:${em}`} className="text-[#0891B2] hover:underline text-xs" onClick={(e) => e.stopPropagation()}>{em}</a></div>)}
+                      </td>
                       <td className="py-3 px-4 text-[#64748B] text-sm">
                         {s.phone ? <a href={`tel:${s.phone}`} className="text-[#0891B2] hover:underline" onClick={(e) => e.stopPropagation()}>{s.phone}</a> : "—"}
                       </td>

@@ -173,7 +173,7 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
 
       // ---------------------------------------------------------------- vendors
       if (dataset === "vendors") {
-        const existing = (await tx`select id, name, contact, phone, lead_time, address from suppliers`) as unknown as Record<string, string | null>[];
+        const existing = (await tx`select id, name, contact, phone, lead_time, address, array_to_string(emails, '; ') as emails from suppliers`) as unknown as Record<string, string | null>[];
         const byName = new Map(existing.map((v) => [lc(v.name), v]));
         const news: Record<string, unknown>[] = [];
         const seen = new Set<string>();
@@ -181,10 +181,13 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
           const name = str(row.name);
           if (!name) { addError(result, `Row ${i + 2}: a vendor name is required`); continue; }
           const cand: Record<string, string | null> = { contact: str(row.contact), phone: str(row.phone), lead_time: str(row.lead_time), address: str(row.address) };
+          // "emails" cell: several addresses separated by ; or , (blank = leave the vendor's emails alone).
+          const emailList = (str(row.emails) ?? "").split(/[;,\s]+/).map((e) => e.trim()).filter(Boolean);
           const found = byName.get(lc(name));
           if (found) {
             const patch: Record<string, unknown> = {};
             for (const [col, val] of Object.entries(cand)) if (val !== null && val !== found[col]) patch[col] = val;
+            if (emailList.length && emailList.join("; ") !== found.emails) patch.emails = emailList;
             if (Object.keys(patch).length === 0) { result.skipped++; continue; }
             await tx`update suppliers set ${tx(patch)} where id = ${found.id as string}`;
             result.updated++;
@@ -192,11 +195,11 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
             result.skipped++;
           } else {
             seen.add(lc(name));
-            news.push({ tenant_id: tenantId, name, ...cand });
+            news.push({ tenant_id: tenantId, name, ...cand, emails: emailList });
           }
         }
         for (let i = 0; i < news.length; i += 300) {
-          await tx`insert into suppliers ${tx(news.slice(i, i + 300), "tenant_id", "name", "contact", "phone", "lead_time", "address")}`;
+          await tx`insert into suppliers ${tx(news.slice(i, i + 300), "tenant_id", "name", "contact", "phone", "lead_time", "address", "emails")}`;
         }
         result.created += news.length;
         return result;

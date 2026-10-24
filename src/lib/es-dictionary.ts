@@ -1182,4 +1182,8 @@ export const esDictionary: Record<string, string> = {
   "Complete Job": "Completar trabajo",
   "I've Arrived": "He llegado",
   "Loading contacts...": "Cargando contactos...",
+  "Add another email": "Agregar otro correo",
+  "Remove email": "Quitar correo",
+  "Could not save the vendor": "No se pudo guardar el proveedor",
+  "Search vendor, contact, email, address, or phone...": "Buscar proveedor, contacto, correo, dirección o teléfono...",
 };
