@@ -20,11 +20,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { safeFileName } from "@/lib/storage-path";
 
-// Client SMS 2026-09-21: "Under Data: need import and export fields with csv file -- Customer list,
-// Inventory list, Vendor list, Inventory Categories, Inventory Manufacture list, Library Category list,
-// Library Manufacture list". Exports are built here from the existing list endpoints; imports send the
-// parsed rows to /api/data/import/:dataset in chunks. Re-importing a file is safe (rows are matched to what
-// exists and only changed fields are updated).
+// Client SMS 2026-09-21: "Under Data: need import and export fields with csv file -- Customer list, Inventory list, Vendor list..."
 
 type Dataset = {
   key: string;
@@ -32,7 +28,7 @@ type Dataset = {
   description: string;
   icon: React.ElementType;
   columns: string[];
-  // Each entry is a set of columns of which ALL must be present; the file needs at least one satisfied set.
+  // Each entry is a set of columns of which ALL must be present; the file needs at least one satisfied
   required: string[][];
   filename: string;
   sample: Record<string, string>;
@@ -149,12 +145,7 @@ const datasets: Dataset[] = [
   },
 ];
 
-// Client video 2026-09-25: "Need a Document List / Folder for PDFs under Data" -- the document types offered
-// when uploading a document on a Job / Estimate / Field job (was a fixed 4-item list, so a "Curing Process"
-// upload was saved as "Sand Change Form"). Renaming a type here doesn't change documents already uploaded.
-// Client video 2026-10-16: confused this card for the one that uploads PDFs ("I click add, nothing
-// happens" -- typed nothing into the label field, since they expected a file picker) -- it only ever
-// edits the type *names*, never held files. Renamed + pointed at the real DocumentsCard above it.
+// Client video 2026-09-25: "Need a Document List / Folder for PDFs under Data" -- the document types offered when uploading
 function DocumentListCard() {
   const { t } = useLanguage();
   const confirm = useConfirm();
@@ -216,11 +207,7 @@ function DocumentListCard() {
   );
 }
 
-// Client SMS 2026-10-16: "Under data I need a document section for pdf's" -- a real place to
-// upload/browse/delete PDFs right on the Data page, not just the type-label editor above (which
-// only names the categories a document can be tagged with, it never held files). Reuses the same
-// document store the Library page already provides (library_documents + the job-attachments
-// bucket's "library/" prefix, see CLAUDE.md > Architecture) rather than building a second one.
+// Client SMS 2026-10-16: "Under data I need a document section for pdf's" -- a real place to upload/browse/delete PDFs right
 function DocumentsCard() {
   const { t } = useLanguage();
   const confirm = useConfirm();
@@ -307,12 +294,7 @@ function DocumentsCard() {
   );
 }
 
-// Client SMS 2026-10-16: "need to set up a phone contact under data, with name / description /
-// phone number / email, also make this visible in tech view" -- same contacts as the Directory
-// page (directory_contacts, built 2026-09-02 "for techs to look up on the road"), just a second,
-// quicker entry point right on the Data page rather than a second contacts system. The "visible in
-// tech view" half is handled separately (Directory itself is now reachable from a field-only
-// login, see auth-context.tsx + AppShell.tsx).
+// Client SMS 2026-10-16: "need to set up a phone contact under data, with name / description / phone number /..."
 function PhoneContactsCard() {
   const { t } = useLanguage();
   const confirm = useConfirm();
@@ -386,8 +368,7 @@ export default function DataTransfer() {
   const [progress, setProgress] = useState<Record<string, string | undefined>>({});
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const fileInputs = useRef<Record<string, HTMLInputElement | null>>({});
-  // Client SMS 2026-09-30: "on import and export give us a grid view" -- same table/cards toggle
-  // already used on Directory, Library, Forms, Form Builder, Manufacturers and Campaigns.
+  // Client SMS 2026-09-30: "on import and export give us a grid view" -- same table/cards toggle already used on Directory
   const [viewMode, setViewMode] = useViewMode("data-transfer");
 
   const handleExport = async (d: Dataset) => {

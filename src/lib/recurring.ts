@@ -1,9 +1,6 @@
 import type { RecurringJob } from "@/lib/api/recurringJobs";
 
-// Mirrors backend/src/routes/recurringJobs.ts `nextOccurrenceDate` (all in UTC so a timezone can't shift
-// the day). Client SMS 2026-09-21: "we created recurring jobs and they only appear on the first date ...
-// it needs to repeat on the calendar view" -- the server only creates the NEXT real job once the current
-// one is completed, so the calendar projects the dates after the latest real occurrence itself.
+// Mirrors backend/src/routes/recurringJobs.ts `nextOccurrenceDate` (all in UTC so a timezone can't shift the day).
 export function nextOccurrence(fromDate: string, rj: Pick<RecurringJob, "frequency" | "day_of_month">): string {
   const d = new Date(`${fromDate}T00:00:00Z`);
   if (rj.frequency === "weekly") d.setUTCDate(d.getUTCDate() + 7);
@@ -30,10 +27,7 @@ export function projectOccurrences(rj: RecurringJob, anchor: string, upTo: strin
   return out;
 }
 
-// Projected (not-yet-created) dates for a series, given every real job. Anchored on the latest real
-// occurrence up to today -- not the latest overall -- because a temporary route change can create a
-// single future occurrence (client video 2026-10-18), and anchoring on that would hide every week in
-// between. Dates that already have a real job are left out (that job is drawn instead).
+// Projected (not-yet-created) dates for a series, given every real job.
 export function projectedDates(rj: RecurringJob, jobs: { recurring_job_id?: string | null; scheduled_date?: string | null }[], upTo: string, today: string): string[] {
   const real = new Set<string>();
   let anchor = rj.start_date;

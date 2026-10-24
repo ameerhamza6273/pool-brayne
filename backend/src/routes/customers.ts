@@ -12,11 +12,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     const result = await withTenantContext(req.userId, async (tx) => {
       const [customer, history, notes, invoices, posOrdersRaw] = await Promise.all([
         tx`select * from customers where id = ${id} limit 1`,
-        // Client SMS 2026-10-15: "job history links not active" -- traced to the real root cause:
-        // this tab was reading `job_service_history`, a table no real workflow has ever written to
-        // (confirmed on prod: 6 rows total, all leftover 2024 demo seed data, every one with
-        // job_id = null) -- so for every real customer this tab was either empty or, if a seed row
-        // happened to exist, permanently unclickable. Built from the customer's real `jobs` instead.
+        // Client SMS 2026-10-15: "job history links not active" -- traced to the real root cause: this tab was reading `job_service_history`
         tx`
           select j.id, j.id as job_id, j.customer_id, j.type, j.status, j.scheduled_date as service_date,
             p.name as tech, j.amount
@@ -32,14 +28,7 @@ export default async function customersRoutes(app: FastifyInstance) {
       const household = customer[0]?.household_id
         ? await tx`select id, name, phone, email from customers where household_id = ${customer[0].household_id} and id != ${id} order by name`
         : [];
-      // Client SMS 2026-09-30: "Walk in customer is still not showing history under previous
-      // sales." Root cause: POS's "Walk-in" option always saved pos_orders.customer_id as null
-      // (see pos.ts checkout, now fixed to attach new sales to this customer when its name
-      // matches), so sales made before that fix -- and any future sale from a tenant without a
-      // "Walk in" customer record at checkout time -- would never show here even after opening
-      // this exact customer. When this customer IS the tenant's walk-in bucket (matched by name,
-      // same as the checkout-side lookup), also pull in every orphaned null-customer_id sale so
-      // its history is complete rather than needing a one-off data backfill.
+      // Client SMS 2026-09-30: "Walk in customer is still not showing history under previous sales." Root cause: POS's "Walk-in" option always
       const isWalkinCustomer = /^walk[\s-]?in$/i.test((customer[0]?.name ?? "").trim());
       const orphanedWalkinOrders = isWalkinCustomer
         ? await tx`select * from pos_orders where customer_id is null order by created_at desc`
@@ -62,9 +51,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     return result;
   });
 
-  // Supports adding multiple customer contacts (name/phone/email) sharing one property address
-  // in a single submit (client-confirmed 2026-08-27) -- each contact becomes its own `customers`
-  // row, linked by a shared `household_id` when there's more than one.
+  // Supports adding multiple customer contacts (name/phone/email) sharing one property address in a single submit (client-confirmed 2026-08-27) -- each contact becomes
   app.post<{
     Body: {
       contacts: { firstName: string; lastName: string; email: string | null; phone: string | null }[];
@@ -92,9 +79,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client bug report 2026-09-02: "I cannot find a way to edit the customer profile" — this
-  // covers name/type/phone/email/address plus the Equipment on File and Gate Codes jsonb blobs
-  // (the gate-code inputs existed in the UI already but were never wired to save anything).
+  // Client bug report 2026-09-02: "I cannot find a way to edit the customer profile" — this covers name/type/phone/email/address plus the
   app.patch<{
     Params: { id: string };
     Body: {
@@ -107,8 +92,7 @@ export default async function customersRoutes(app: FastifyInstance) {
       address?: string | null;
       equipment?: Record<string, unknown>;
       gateCodes?: Record<string, string>;
-      // Migration 2026-10-06: known_issues is now jsonb (was text[]) so each entry can carry an
-      // optional photo alongside its text -- a plain string entry still means "no photo".
+      // Migration 2026-10-06: known_issues is now jsonb (was text[]) so each entry can carry an optional photo alongside its text
       knownIssues?: (string | { text: string; photoUrl: string | null })[];
     };
   }>("/:id", async (req) => {
@@ -135,8 +119,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client bug report 2026-09-02: "cannot add Other Contacts" after a customer already exists —
-  // adds another customer row sharing the same property address/household.
+  // Client bug report 2026-09-02: "cannot add Other Contacts" after a customer already exists — adds another customer row sharing the
   app.post<{ Params: { id: string }; Body: { firstName: string; lastName: string; email: string | null; phone: string | null } }>(
     "/:id/household",
     async (req) => {
@@ -176,8 +159,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client video 2026-10-15: "you can add the notes, but you cannot remove a note. It won't let
-  // you delete or edit."
+  // Client video 2026-10-15: "you can add the notes, but you cannot remove a note.
   app.patch<{ Params: { id: string; noteId: string }; Body: { text: string } }>("/:id/notes/:noteId", async (req, reply) => {
     const { id, noteId } = req.params;
     const text = (req.body.text ?? "").trim();
@@ -198,8 +180,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
-  // Module 1 (Developer Brief) gap fix: real customer photo attachments, uploaded to Supabase
-  // Storage by the frontend and recorded here for the customer's photo gallery.
+  // Module 1 (Developer Brief) gap fix: real customer photo attachments, uploaded to Supabase Storage by the frontend and recorded here
   app.get<{ Params: { id: string } }>("/:id/attachments", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -221,16 +202,13 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client bug report 2026-09-02: "was not able to delete photos" — the storage object itself is
-  // removed by the frontend (which already holds the authenticated Supabase client used to
-  // upload), this just removes the DB record.
+  // Client bug report 2026-09-02: "was not able to delete photos" — the storage object itself is removed by the frontend
   app.delete<{ Params: { id: string; attachmentId: string } }>("/:id/attachments/:attachmentId", async (req) => {
     const { attachmentId } = req.params;
     return withTenantContext(req.userId, (tx) => tx`delete from customer_attachments where id = ${attachmentId}`);
   });
 
-  // Caches a free Nominatim geocode result (Jobs map/route view) so we don't re-geocode the
-  // same address on every render.
+  // Caches a free Nominatim geocode result (Jobs map/route view) so we don't re-geocode the same address on every render.
   app.patch<{ Params: { id: string }; Body: { lat: number; lng: number } }>("/:id/coordinates", async (req) => {
     const { id } = req.params;
     const { lat, lng } = req.body;
@@ -240,8 +218,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client request 2026-08-28: periodic service reminder (repeat jobs 2-3x/year) — a due date
-  // plus a frequency so "Mark Serviced" can roll the next one forward automatically.
+  // Client request 2026-08-28: periodic service reminder (repeat jobs 2-3x/year) — a due date plus a frequency so "Mark Serviced" can
   app.patch<{ Params: { id: string }; Body: { nextReminderDate: string | null; reminderFrequencyMonths: number | null } }>(
     "/:id/reminder",
     async (req) => {
@@ -254,8 +231,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     },
   );
 
-  // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs (water testing
-  // and check list for maintenance with notes)".
+  // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs (water testing and check list for maintenance with..."
   app.get<{ Params: { id: string } }>("/:id/forms", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -269,8 +245,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client video 2026-10-23: the Send Email popup lists every contact at the property (household
-  // members share household_id) so the office can tick which ones get the invoice/estimate.
+  // Client video 2026-10-23: the Send Email popup lists every contact at the property (household members share household_id) so the office
   app.get<{ Params: { id: string } }>("/:id/email-contacts", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -282,10 +257,7 @@ export default async function customersRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client SMS 2026-10-23: "a delete (trashcan) icon on customer list ... I am finding a few
-  // duplicate customers". Deleting a customer would cascade into its invoices/jobs/estimates (FK
-  // on delete cascade), so -- like the SKU and job deletes -- refuse with the reason when the
-  // customer has any business history; notes, photos, reminders and forms go with it.
+  // Client SMS 2026-10-23: "a delete (trashcan) icon on customer list ...
   app.delete<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -326,9 +298,7 @@ export default async function customersRoutes(app: FastifyInstance) {
   });
 }
 
-// Pushes a customer to QuickBooks as a Customer record (creating it once — a customer that's
-// already synced just returns its existing QBO Id rather than creating a duplicate). Exported so
-// the invoices route can auto-sync a customer before syncing one of their invoices.
+// Pushes a customer to QuickBooks as a Customer record (creating it once — a customer that's already synced just returns
 export async function syncCustomerToQuickbooks(userId: string, customerId: string): Promise<string> {
   const [customer] = await withTenantContext(userId, (tx) => tx`select * from customers where id = ${customerId} limit 1`) as unknown as {
     id: string;

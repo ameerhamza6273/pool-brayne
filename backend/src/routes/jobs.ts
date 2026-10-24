@@ -55,8 +55,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client request 2026-08-28 (bulk invoicing): completed jobs for a customer in a date range
-  // that don't have an invoice yet, so several weeks of service can be combined into one invoice.
+  // Client request 2026-08-28 (bulk invoicing): completed jobs for a customer in a date range that don't have an invoice yet
   app.get<{ Querystring: { customerId: string; start: string; end: string } }>("/uninvoiced", async (req) => {
     const { customerId, start, end } = req.query;
     return withTenantContext(req.userId, (tx) => tx`
@@ -102,17 +101,13 @@ export default async function jobsRoutes(app: FastifyInstance) {
     const { customerId, jobType, techId, date, time, description, address, amount, itemSku, laborSku, lineItems, crewIds, selectedFormIds } = req.body;
     const status = techId ? "Booked" : "Lead";
     const stage = techId ? "booked" : "lead";
-    // Client bug report 2026-09-04: "when creating a job... dynamic search or autofill for
-    // SKUs... ability to add multiple line items" -- New Job previously only had flat Item
-    // SKU/Labor SKU text fields wired to nothing. Now accepts the same line-items array
-    // Estimates/Invoices do, and the job amount is computed from them when present.
+    // Client bug report 2026-09-04: "when creating a job...
     const computedAmount = lineItems && lineItems.length > 0
       ? lineItems.reduce((sum, li) => sum + li.quantity * li.rate, 0)
       : amount ?? 0;
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
-      // Client SMS 2026-10-16: "numbers only" numbering for every document type, including jobs
-      // (which never had a number before -- only ever identified by their internal uuid).
+      // Client SMS 2026-10-16: "numbers only" numbering for every document type, including jobs (which never had a number before -- only
       const number = await nextDocNumber(tx, tenant.id, "JOB");
       const [row] = await tx`
         insert into jobs (tenant_id, customer_id, type, tech_id, status, stage, scheduled_date, scheduled_time, description, address, amount, item_sku, labor_sku, selected_form_ids, number)
@@ -138,8 +133,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Crew = additional techs beyond the primary `tech_id` (lead tech, dispatch/on-time logic
-  // stays keyed off tech_id unchanged).
+  // Crew = additional techs beyond the primary `tech_id` (lead tech, dispatch/on-time logic stays keyed off tech_id unchanged).
   app.get<{ Params: { id: string } }>("/:id/crew", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -171,8 +165,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Sidebar restructure (client PDF 2026-09-06, "Employee section > Forms") — every submitted
-  // service form across the whole tenant, not scoped to one job/customer.
+  // Sidebar restructure (client PDF 2026-09-06, "Employee section > Forms") — every submitted service form across the whole tenant, not scoped
   app.get("/forms/all", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
       select f.*, j.type as job_type, c.name as customer_name, p.name as submitted_by_name, ft.name as template_name
@@ -186,9 +179,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client PDF 2026-09-06: "add a button to view all forms from previous jobs or maintenance
-  // jobs (water testing and check list for maintenance with notes)" — WaterTestingForm /
-  // MaintenanceChecklist / OneOffJobChecklist (src/components/forms) never saved anything before.
+  // Client PDF 2026-09-06: "add a button to view all forms from previous jobs or maintenance jobs (water testing and check..."
   app.get<{ Params: { id: string } }>("/:id/forms", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -201,9 +192,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     `);
   });
 
-  // `templateId` drives the new custom Form Builder; `type` is kept for the 3 legacy built-in
-  // forms (now also real form_templates rows -- callers can pass both, template_id wins for
-  // display).
+  // `templateId` drives the new custom Form Builder; `type` is kept for the 3 legacy built-in forms (now also real form_templates
   app.post<{ Params: { id: string }; Body: { templateId?: string | null; type: string; data: Record<string, unknown>; notes?: string | null } }>(
     "/:id/forms",
     async (req) => {
@@ -227,10 +216,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     const fields = req.body;
     return withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`update jobs set ${tx(fields)} where id = ${id} returning *`;
-      // Recurring jobs (recurringJobs.ts) roll forward one occurrence at a time -- when a
-      // generated occurrence is marked Completed, generate the next one (if the template is
-      // still active and not past its end date). No cron runs in this environment, so this is
-      // the only place a next occurrence gets created.
+      // Recurring jobs (recurringJobs.ts) roll forward one occurrence at a time -- when a generated occurrence is marked Completed, generate the
       if (fields.stage === "completed" && row.recurring_job_id) {
         const [rjRow] = await tx`select * from recurring_jobs where id = ${row.recurring_job_id} limit 1`;
         const rj = rjRow as unknown as RecurringJob | undefined;
@@ -241,11 +227,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
           }
         }
       }
-      // Client video 2026-10-06 (ServiceWorks reference screenshots): "Tech Enroute" / "Tech
-      // Arrival" / "Trip Complete" customer email notifications -- all 3 go through this one
-      // generic PATCH regardless of which page (JobDetail or Field) triggered the change, so
-      // this is the single place to hook them. Only fires when the field is actually being SET
-      // (not cleared back to null) and the job has a customer with an email on file.
+      // Client video 2026-10-06 (ServiceWorks reference screenshots): "Tech Enroute" / "Tech Arrival" / "Trip Complete" customer email notifications -- all 3
       const jobEvent = fields.en_route_at ? "en_route" : fields.arrived_at ? "arrived" : fields.stage === "completed" ? "completed" : null;
       if (jobEvent && row.customer_id) {
         const [withCustomer] = await tx`
@@ -267,13 +249,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Dev request 2026-09-30 (QA sweep turned up 5 stale demo jobs with no way to remove them):
-  // "should there be an edit/delete option" — yes, mirroring the same pattern already used for
-  // Inventory SKUs (2026-09-23): a job that's still just a job (no invoice/estimate generated from
-  // it, no parts consumed against it) can be deleted outright; one with real downstream records is
-  // refused so that history is never silently lost. job_line_items/attachments/forms/crew cascade;
-  // an invoice/estimate that came FROM this job just loses the link (schema-level set-null), but
-  // that case is refused before it ever gets there.
+  // Dev request 2026-09-30 (QA sweep turned up 5 stale demo jobs with no way to remove them): "should there be..."
   app.delete<{ Params: { id: string } }>("/:id", async (req, reply) => {
     const { id } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -297,8 +273,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously
-  // only had a flat `amount`, no itemized breakdown like Estimates/Invoices already have.
+  // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously only had a flat `amount`, no
   app.get<{ Params: { id: string } }>("/:id/line-items", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`select * from job_line_items where job_id = ${id} order by sort_order`);
@@ -306,8 +281,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
 
   type LineItemInput = { description: string; sku: string | null; itemType: string; quantity: number; cost: number; rate: number; notes?: string | null };
 
-  // Replaces the full set of line items for a job and recomputes job.amount from their total —
-  // simplest correct model (matches how Estimate/Invoice line items are edited as a full set).
+  // Replaces the full set of line items for a job and recomputes job.amount from their total — simplest correct model
   app.patch<{ Params: { id: string }; Body: { lineItems: LineItemInput[] } }>("/:id/line-items", async (req) => {
     const { id } = req.params;
     const { lineItems } = req.body;
@@ -328,9 +302,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client question 2026-09-03: "How to reverse a Job back to an estimate" — spins off a new
-  // Estimate from the job's current data/line items rather than mutating the job itself (safer
-  // than trying to literally "undo" a job that may already have real work/notes attached).
+  // Client question 2026-09-03: "How to reverse a Job back to an estimate" — spins off a new Estimate from the
   app.post<{ Params: { id: string } }>("/:id/convert-to-estimate", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -367,8 +339,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Module 3 (Developer Brief) gap fix: parts/products used on a job, auto-deducted from
-  // store inventory at job completion (mirrors the deduct logic in pos.ts checkout).
+  // Module 3 (Developer Brief) gap fix: parts/products used on a job, auto-deducted from store inventory at job completion (mirrors the
   app.get<{ Params: { id: string } }>("/:id/parts", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -387,9 +358,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
       const inserted = [];
-      // Client answer 2026-10-19: parts a tech uses in the field "should show up as line items on
-      // invoice" -- each part is also appended to the job's line items (which the invoice is built
-      // from), at the catalog price, and job.amount grows by the same total.
+      // Client answer 2026-10-19: parts a tech uses in the field "should show up as line items on invoice" -- each
       const [{ next_sort }] = await tx`select coalesce(max(sort_order) + 1, 0)::int as next_sort from job_line_items where job_id = ${id}` as unknown as { next_sort: number }[];
       let sortOrder = next_sort;
       let addedAmount = 0;
@@ -426,8 +395,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Module 2 (Developer Brief) gap fix: real photo/signature attachments captured on mobile,
-  // uploaded to Supabase Storage by the frontend, and recorded here for the job's gallery.
+  // Module 2 (Developer Brief) gap fix: real photo/signature attachments captured on mobile, uploaded to Supabase Storage by the frontend, and
   app.get<{ Params: { id: string } }>("/:id/attachments", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -435,8 +403,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client request 2026-09-03: "document" type added alongside photo/signature, with an
-  // optional label (e.g. "Sand Change Form") and original filename for the Documents section.
+  // Client request 2026-09-03: "document" type added alongside photo/signature, with an optional label (e.g.
   app.post<{ Params: { id: string }; Body: { type: "photo" | "signature" | "document"; url: string; label?: string | null; filename?: string | null } }>(
     "/:id/attachments",
     async (req) => {
@@ -453,8 +420,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client video 2026-09-25: documents need Edit (rename the label) and Delete. Only document rows --
-  // photos/signatures are untouched by this route.
+  // Client video 2026-09-25: documents need Edit (rename the label) and Delete.
   app.patch<{ Params: { id: string; attId: string }; Body: { label: string | null } }>("/:id/attachments/:attId", async (req) => {
     const { id, attId } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -466,10 +432,7 @@ export default async function jobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client video feedback 2026-10-15 (Technician Field): "there is no way to delete a picture if
-  // you uploaded the wrong picture" -- widened from document-only to also allow photo rows
-  // (signatures are still untouched; deleting a signed job completion isn't the same kind of
-  // mistake-correction this was asked for).
+  // Client video feedback 2026-10-15 (Technician Field): "there is no way to delete a picture if you uploaded the wrong picture"
   app.delete<{ Params: { id: string; attId: string } }>("/:id/attachments/:attId", async (req) => {
     const { id, attId } = req.params;
     return withTenantContext(req.userId, async (tx) => {

@@ -8,8 +8,7 @@ export type FormField = {
   type: FormFieldType;
   options?: string[];
   helpText?: string;
-  // Client meeting 2026-09: "we need to be able to set some of these as mandatory fields" — a
-  // per-field required flag, distinct from FormTemplate.required (whole form must be submitted).
+  // Client meeting 2026-09: "we need to be able to set some of these as mandatory fields" — a per-field required
   required?: boolean;
 };
 

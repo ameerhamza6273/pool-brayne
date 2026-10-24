@@ -10,17 +10,13 @@ export type PosOrderDetail = {
   payments: { method: string; amount: number; check_number: string | null }[];
 };
 
-// Same receipt number everywhere (POS, customer page, reprints). Client SMS 2026-10-16: "numbers
-// only" -- orders placed since then carry a real sequential `number` (POS-0001, assigned
-// server-side, see numbering.ts); older orders have none, so they keep the old uuid-derived
-// fallback rather than suddenly relabeling history.
+// Same receipt number everywhere (POS, customer page, reprints).
 export const receiptNumber = (orderId: string, number?: string | null) => number || `POS-${orderId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
 export type SalesReport = {
   qtyByProduct: { description: string; qty: number; revenue: number }[];
   taxSummary: { orderCount: number; totalSales: number; taxableSales: number; taxCollected: number };
-  // Client SMS 2026-10-15: "need a way to drill down to see orders and amounts included on the
-  // sales tax report" -- the orders behind the summary totals above.
+  // Client SMS 2026-10-15: "need a way to drill down to see orders and amounts included on the sales tax report"
   orders: { id: string; created_at: string; subtotal: number; tax: number; total: number; customer_name: string | null }[];
 };
 

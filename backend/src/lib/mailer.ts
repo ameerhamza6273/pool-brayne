@@ -1,17 +1,12 @@
 import nodemailer from "nodemailer";
 
-// Client video 2026-10-06: Office 365 SMTP details provided (server/port/user/SSL), real
-// sending still needs SMTP_PASSWORD in the environment before this can actually send -- every
-// call below checks for it explicitly and throws a clear, honest error instead of silently
-// failing or pretending to succeed, so "Send via Email" can be wired up now and will just start
-// working the moment the password is added to the environment (no further code change needed).
+// Client video 2026-10-06: Office 365 SMTP details provided (server/port/user/SSL), real sending still needs SMTP_PASSWORD in the environment before this can
 const SMTP_HOST = process.env.SMTP_HOST ?? "smtp.office365.com";
 const SMTP_PORT = Number(process.env.SMTP_PORT ?? 587);
 const SMTP_USER = process.env.SMTP_USER;
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
 const SMTP_FROM = process.env.SMTP_FROM ?? SMTP_USER;
-// Where "customer paid" notifications go -- defaults to the same inbox being used to send, since
-// no separate notification-email field exists on tenants yet.
+// Where "customer paid" notifications go -- defaults to the same inbox being used to send, since no separate notification-email field
 const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL ?? SMTP_USER;
 
 export function isMailerConfigured(): boolean {
@@ -52,9 +47,7 @@ export async function sendMail(opts: {
   });
 }
 
-// Client video 2026-10-06: "we also need notification on our end once [a customer has] paid an
-// invoice". Best-effort -- failures here (e.g. password still missing) are logged, not thrown,
-// so a successful real payment is never blocked by a notification email that can't send yet.
+// Client video 2026-10-06: "we also need notification on our end once [a customer has] paid an invoice".
 export async function notifyBusinessOfPayment(opts: { invoiceNumber: string; customerName: string; amount: number }) {
   if (!isMailerConfigured() || !NOTIFY_EMAIL) return;
   try {
@@ -68,12 +61,7 @@ export async function notifyBusinessOfPayment(opts: { invoiceNumber: string; cus
   }
 }
 
-// Client video 2026-10-06 (ServiceWorks Notification Preference screenshots): client has these
-// 6 toggled on over there -- "Approved Estimation", "Tech Enroute", "Invoice Email", "Custom
-// Estimation Email", "Trip Complete", "Tech Arrival". Invoice Email / Custom Estimation Email map
-// to the "Send via Email" buttons already built (manual, by design -- auto-sending an unreviewed
-// Draft invoice would undo the 2026-10-06 decision to default new invoices to Draft, not Sent).
-// These 3 are the genuinely new ones: automatic, customer-facing, tied to job status changes.
+// Client video 2026-10-06 (ServiceWorks Notification Preference screenshots): client has these 6 toggled on over there -- "Approved Estimation", "Tech Enroute"
 export async function notifyCustomerOfJobEvent(opts: {
   to: string;
   customerName: string;
@@ -95,9 +83,7 @@ export async function notifyCustomerOfJobEvent(opts: {
   }
 }
 
-// "Approved Estimation" -- ON in the client's reference screenshots, described in the matching
-// video as "kind of an important one". Separate from the existing in-app Notifications-bell alert
-// (public.ts's estimate-respond route) -- this is the same event, also as a real email.
+// "Approved Estimation" -- ON in the client's reference screenshots, described in the matching video as "kind of an important one".
 export async function notifyBusinessOfEstimateApproval(opts: { estimateNumber: string; customerName: string }) {
   if (!isMailerConfigured() || !NOTIFY_EMAIL) return;
   try {

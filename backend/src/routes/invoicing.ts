@@ -10,7 +10,7 @@ import { documentEmailHtml, cleanEmailList, invalidEmails } from "../lib/documen
 
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "http://localhost:5175";
 
-type SendDocumentBody = { to?: string[]; cc?: string[]; subject?: string; message?: string; pdfBase64?: string | null; pdfName?: string | null };
+export type SendDocumentBody = { to?: string[]; cc?: string[]; subject?: string; message?: string; pdfBase64?: string | null; pdfName?: string | null };
 type InvoiceEmailRow = {
   number: string; payment_token: string; issue_date: string | null; down_payment: number | string | null;
   customer_name: string; customer_email: string | null; business_name: string; business_phone: string | null; logo_url: string | null;
@@ -23,7 +23,7 @@ type EstimateEmailRow = {
 };
 
 // To/CC from the Send Email popup; falls back to the customer's own email when none were chosen.
-function resolveRecipients(body: SendDocumentBody, customerEmail: string | null): { to: string[]; cc: string[] } | { error: string } {
+export function resolveRecipients(body: SendDocumentBody, customerEmail: string | null): { to: string[]; cc: string[] } | { error: string } {
   const to = cleanEmailList(body.to);
   const cc = cleanEmailList(body.cc);
   if (to.length === 0 && customerEmail) to.push(customerEmail);
@@ -34,7 +34,7 @@ function resolveRecipients(body: SendDocumentBody, customerEmail: string | null)
 }
 
 // Client video 2026-10-23: an SMTP rejection used to surface as a bare "Internal Server Error".
-async function sendMailOrFail(opts: Parameters<typeof sendMail>[0]) {
+export async function sendMailOrFail(opts: Parameters<typeof sendMail>[0]) {
   try {
     await sendMail(opts);
   } catch (err) {
@@ -44,7 +44,7 @@ async function sendMailOrFail(opts: Parameters<typeof sendMail>[0]) {
   }
 }
 
-function pdfAttachment(body: SendDocumentBody, fallbackName: string) {
+export function pdfAttachment(body: SendDocumentBody, fallbackName: string) {
   if (!body.pdfBase64) return [];
   const content = Buffer.from(body.pdfBase64.replace(/^data:application\/pdf;base64,/, ""), "base64");
   if (content.length === 0) return [];
@@ -61,14 +61,11 @@ type LineItemInput = {
   rate: number;
   notes?: string | null;
   jobId?: string | null;
-  // Client video 2026-10-06: "I'm going to need [a tax yes/no icon] for individual SKUs" -- was
-  // purely derived from item_type (labor untaxed, material taxed) before; now a real per-line
-  // override, defaulting to that same rule when not explicitly set.
+  // Client video 2026-10-06: "I'm going to need [a tax yes/no icon] for individual SKUs" -- was purely derived from item_type
   taxable?: boolean;
 };
 
-// Shared by /invoices and /invoices/estimates — both header tables gained the same
-// sku/cost/item_type line-item detail (client's "Pool Supply Atlanta" sample PDFs, 2026-08-28).
+// Shared by /invoices and /invoices/estimates — both header tables gained the same sku/cost/item_type line-item detail (client's "Pool Supply Atlanta" sample
 async function insertInvoiceLineItems(tx: postgres.TransactionSql, invoiceId: string, tenantId: string, lineItems: LineItemInput[] | undefined) {
   if (!lineItems || lineItems.length === 0) return;
   for (const [sortIdx, li] of lineItems.entries()) {
@@ -93,32 +90,19 @@ async function insertEstimateLineItems(tx: postgres.TransactionSql, estimateId: 
   }
 }
 
-// Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- confirmed as the
-// tenant's real sales tax rate (was a hardcoded 8.25% placeholder everywhere, frontend and
-// backend). Now a real per-tenant column (migration 20261015170000) instead of a literal, since
-// "for now" implies the client may change it later from Settings without a code deploy.
+// Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- confirmed as the tenant's real sales
 export async function getTaxRate(tx: postgres.TransactionSql): Promise<number> {
   const [row] = (await tx`select tax_rate from tenants where id = current_tenant_id() limit 1`) as unknown as { tax_rate: string | number }[];
   return row ? Number(row.tax_rate) : 0.0775;
 }
 
-// QA sweep 2026-09-30 found the invoice/estimate "Amount" shown in every list view (Invoicing,
-// Dashboard, Reports) never matched the real Total on the invoice document/charge -- because it's
-// the stored pre-tax `amount`, while the document (InvoiceDetail.tsx/EstimateDetail.tsx) taxes only
-// materials, not labor (`materialsSubtotal * taxRate`, see Architecture > Labor vs materials). This
-// function had ALSO drifted from that rule -- it taxed the whole subtotal including labor, so any
-// invoice with labor line items would be OVERCHARGED on card payment. Fixed to match the one true
-// formula every other total in the app already uses.
-// Client video 2026-10-06: tax is now driven by each line's real `taxable` flag (manually
-// overridable per SKU) instead of the item_type rule alone -- `item_type` only used as a fallback
-// for any pre-migration row that somehow has neither set.
+// QA sweep 2026-09-30 found the invoice/estimate "Amount" shown in every list view (Invoicing, Dashboard, Reports) never matched the real Total
 export function taxedTotal(lineItems: { amount: number; item_type?: string | null; taxable?: boolean | null }[], fallbackAmount: number, taxRate: number): number {
   if (lineItems.length === 0) return Math.round(fallbackAmount * (1 + taxRate) * 100) / 100;
   const isTaxable = (li: { item_type?: string | null; taxable?: boolean | null }) => li.taxable ?? li.item_type !== "labor";
   const taxableAmount = lineItems.filter(isTaxable).reduce((sum, li) => sum + li.amount, 0);
   const exemptAmount = lineItems.filter((li) => !isTaxable(li)).reduce((sum, li) => sum + li.amount, 0);
-  // Floating-point multiplication (e.g. 7.75% tax) can land a cent or two off a clean decimal --
-  // round to the cent so every surface that displays this shows the same, correctly-formatted number.
+  // Floating-point multiplication (e.g.
   return Math.round((taxableAmount * (1 + taxRate) + exemptAmount) * 100) / 100;
 }
 
@@ -130,9 +114,7 @@ async function computeInvoiceTotal(tx: postgres.TransactionSql, invoiceId: strin
   return { invoice, total: taxedTotal(lineItems, invoice.amount, taxRate) };
 }
 
-// Records a payment already collected — for Card, `providerTransactionId` is the real
-// Authorize.net transaction ID from a charge that already succeeded (see the routes below,
-// which run the actual charge before ever calling this).
+// Records a payment already collected — for Card, `providerTransactionId` is the real Authorize.net transaction ID from a charge that already
 async function recordPayment(
   tx: postgres.TransactionSql,
   invoice: { id: string; customer_id: string },
@@ -191,9 +173,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
         `,
         tx`select * from invoice_line_items where invoice_id = ${id} order by sort_order`,
         tx`select name, phone, address, city, state, zip, invoice_business_name, logo_url from tenants where id = current_tenant_id() limit 1`,
-        // Client SMS 2026-09-21: the invoice document mirrors their old system's emailed PDF --
-        // Date of Request/Service, Trip Details photos and dated "Service Performed" notes come
-        // from the invoice's job. All additive; invoices with no job just get null/empty here.
+        // Client SMS 2026-09-21: the invoice document mirrors their old system's emailed PDF -- Date of Request/Service, Trip Details photos and
         tx`
           select j.scheduled_date, j.created_at, j.completed_at, j.description, j.tech_notes, j.type
           from jobs j join invoices i on i.job_id = j.id where i.id = ${id} limit 1
@@ -204,8 +184,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           where i.id = ${id} and a.type = 'photo' and coalesce(a.label, '') <> 'internal'
           order by a.created_at
         `,
-        // The tech's Job Notes (Field view) are saved as customer notes on completion, not tied
-        // to the job -- so "Service Performed" = that customer's notes written on the service day.
+        // The tech's Job Notes (Field view) are saved as customer notes on completion, not tied to the job -- so
         tx`
           select n.text, n.author, n.created_at
           from customer_notes n
@@ -214,10 +193,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           where i.id = ${id} and n.created_at::date = coalesce(j.completed_at::date, j.scheduled_date)
           order by n.created_at
         `,
-        // Client doc 2026-10-05: a combined/bulk invoice has no single i.job_id (it spans several
-        // jobs) -- its line_items.job_id groups them back into the real jobs that made it up, so
-        // the document can render a full per-job breakdown instead of one flattened description.
-        // Empty for every normal invoice (job_id null on all its line items).
+        // Client doc 2026-10-05: a combined/bulk invoice has no single i.job_id (it spans several jobs) -- its line_items.job_id groups them back
         tx`
           select j.id, j.type, j.description, j.scheduled_date, j.tech_notes
           from jobs j
@@ -246,11 +222,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     Body: {
       customerId: string;
       jobId?: string | null;
-      // Client SMS 2026-10-16: "numbers only" -- callers no longer need to compute one (the old
-      // client-side date-based guesses are the same duplicate-number bug class already fixed once
-      // for PO); the server assigns a sequential "INV-0001" via the shared per-tenant counter when
-      // omitted. Kept optional (not removed) only so a caller with a real reason to pin a specific
-      // number still can.
+      // Client SMS 2026-10-16: "numbers only" -- callers no longer need to compute one (the old client-side date-based guesses are the
       number?: string;
       issueDate: string;
       dueDate: string | null;
@@ -276,12 +248,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client doc 2026-10-05 ("Combine Completed Jobs" bulk invoice, sample PDF from their old
-  // software): one combined invoice should show each job's own real line items (sub-total, tax,
-  // job total), not a single flattened "job type -- date" line per job. Line-item composition
-  // moves server-side (vs. the old client-built flat version) so it's atomic and can't drift from
-  // what's actually on each job; a job with no real line items still falls back to one flat line
-  // from its own amount, same as before, so nothing silently disappears.
+  // Client doc 2026-10-05 ("Combine Completed Jobs" bulk invoice, sample PDF from their old software): one combined invoice should show each
   app.post<{
     Body: { customerId: string; jobIds: string[]; number?: string; issueDate: string };
   }>("/bulk", async (req) => {
@@ -315,13 +282,6 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   });
 
   // Client video 2026-10-06: "Send via Email" button on an invoice — was decorative, no handler.
-  // Builds the customer-facing pay link from the invoice's own payment_token (see public.ts) and
-  // emails it via the Office 365 SMTP account the client provided. Returns a clear 400 (not a
-  // silent no-op) while SMTP_PASSWORD is still missing, so the button's error state is honest.
-  // Client video 2026-10-23: a "Send Invoice" popup like their old system -- pick which of the
-  // customer's emails to send to, add others, CC, edit subject + message; the email carries a
-  // Breakdown of Services + pay button, and the invoice document as a PDF (rendered in the
-  // browser, sent here as base64). An empty body still works (customer's own email, defaults).
   app.post<{ Params: { id: string }; Body: SendDocumentBody }>("/:id/send-email", { bodyLimit: 25 * 1024 * 1024 }, async (req, reply) => {
     const { id } = req.params;
     if (!isMailerConfigured()) {
@@ -380,9 +340,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
-  // `opaqueData` is the tokenized-on-the-client payment nonce, never a raw card number. ACH/
-  // Check stay simulated (no real bank-transfer/check processor is wired up).
+  // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js — `opaqueData` is the tokenized-on-the-client payment nonce, never a
   app.patch<{
     Params: { id: string };
     Body: { method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null };
@@ -415,10 +373,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client request 2026-09-02: bulk-collect payment across several of a customer's open
-  // invoices at once. For Card, the customer's card is charged ONCE for the combined total
-  // (not once per invoice), then every selected invoice is marked Paid with that same real
-  // Authorize.net transaction ID.
+  // Client request 2026-09-02: bulk-collect payment across several of a customer's open invoices at once.
   app.post<{
     Body: { invoiceIds: string[]; method: "Card" | "ACH" | "Check"; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null };
   }>("/bulk-collect", async (req, reply) => {
@@ -521,10 +476,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     return result;
   });
 
-  // Client video 2026-10-06: "Send via Email" on an estimate — same pattern as the invoice one
-  // above, using the estimate's existing approval_token (built 2026-09-08) for the link.
-  // Client video 2026-10-23: same Send Email popup as invoices (recipients, CC, subject, message,
-  // PDF of the estimate attached); the button opens the existing approval link.
+  // Client video 2026-10-06: "Send via Email" on an estimate — same pattern as the invoice one above, using the estimate's
   app.post<{ Params: { id: string }; Body: SendDocumentBody }>("/estimates/:id/send-email", { bodyLimit: 25 * 1024 * 1024 }, async (req, reply) => {
     const { id } = req.params;
     if (!isMailerConfigured()) {
@@ -574,9 +526,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client PDF 2026-09-05: "Need to be able to edit an estimate once created and saves" —
-  // estimates were view-and-convert only before. Full replace of header + line items, same
-  // pattern as the job/:id/line-items PATCH.
+  // Client PDF 2026-09-05: "Need to be able to edit an estimate once created and saves" — estimates were view-and-convert only
   app.patch<{
     Params: { id: string };
     Body: {
@@ -609,8 +559,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client request 2026-09-03: "Need a Document section to send to customers on an estimate /
-  // job" (sand-change form, automation checklist, weekly service form, or any upload).
+  // Client request 2026-09-03: "Need a Document section to send to customers on an estimate / job" (sand-change form, automation checklist
   app.get<{ Params: { id: string } }>("/estimates/:id/attachments", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`
@@ -755,9 +704,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client question 2026-09-03: "How to convert an estimate to a Job" — mirrors
-  // convert-to-invoice above, but creates a real dispatchable job (with its own line items)
-  // instead of a bill.
+  // Client question 2026-09-03: "How to convert an estimate to a Job" — mirrors convert-to-invoice above, but creates a real dispatchable
   app.post<{ Params: { id: string }; Body: { date?: string | null; time?: string | null; techId?: string | null; jobType?: string | null } }>("/estimates/:id/convert-to-job", async (req) => {
     const { id } = req.params;
     const { date = null, time = null, techId = null, jobType = null } = req.body ?? {};
@@ -779,8 +726,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const [customer] = await tx`select address from customers where id = ${estimate.customer_id} limit 1`;
 
       const [tenant] = await tx`select current_tenant_id() as id`;
-      // Client video 2026-10-18: date / time / tech can be picked while converting (all optional),
-      // and the job gets a real JOB-#### number like every other job (it used to show its uuid).
+      // Client video 2026-10-18: date / time / tech can be picked while converting (all optional), and the job gets a
       const number = await nextDocNumber(tx, tenant.id, "JOB");
       const [job] = await tx`
         insert into jobs (tenant_id, customer_id, type, status, stage, description, address, amount, scheduled_date, scheduled_time, tech_id, number)
@@ -793,11 +739,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
           values (${tenant.id}, ${job.id}, ${li.description}, ${li.sku}, ${li.item_type}, ${li.quantity}, ${li.cost}, ${li.rate}, ${li.amount}, ${li.notes}, ${sortIdx})
         `;
       }
-      // Client doc 2026-10-05: "In estimate: once converted to job -- pictures do not transfer,
-      // nor are visible" (Estimate's Trip Photos / Documents live in estimate_attachments, Job's
-      // in job_attachments -- converting never copied them across). Estimate's untitled "Trip
-      // Photos" have no label; the Job page only has somewhere to show photos under the Before/
-      // After Photos tab, so an unlabeled photo lands there (still visible) rather than vanishing.
+      // Client doc 2026-10-05: "In estimate: once converted to job -- pictures do not transfer, nor are visible" (Estimate's Trip Photos
       await tx`
         insert into job_attachments (tenant_id, job_id, type, url, label, filename)
         select tenant_id, ${job.id}, type, url, coalesce(label, case when type = 'photo' then 'before' else null end), filename
@@ -809,8 +751,6 @@ export default async function invoicingRoutes(app: FastifyInstance) {
   });
 
   // Client request 2026-08-27: separate vendor bills (accounts payable) ledger from customer invoices.
-  // Client PDF 2026-09-15: "Ability to search by PO number" -- vendor_bills.po_id links a bill
-  // back to the PO it's paying off; po.number is joined in so the frontend can search/display it.
   app.get("/vendor-bills/list", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
       select vb.*, jsonb_build_object('name', s.name) as suppliers, po.number as po_number
@@ -825,8 +765,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     Body: { supplierId: string; number: string; issueDate: string; dueDate: string | null; amount: number; poId?: string | null };
   }>("/vendor-bills", async (req, reply) => {
     const { supplierId, number, issueDate, dueDate, amount, poId } = req.body;
-    // Client doc 2026-10-15: "Create New Vendor Bill doesn't work" -- failures used to surface as a
-    // bare 500 the dialog never showed. Clear messages now for the two real failure cases.
+    // Client doc 2026-10-15: "Create New Vendor Bill doesn't work" -- failures used to surface as a bare 500 the dialog
     if (!supplierId || !number?.trim()) return reply.code(400).send({ error: "Vendor and bill number are required" });
     try {
       return await withTenantContext(req.userId, async (tx) => {
@@ -854,8 +793,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client video 2026-10-18: "This says draft here. How do we change this draft as finalized?"
-  // Draft -> Open (final, not emailed yet); emailing it later moves it on to Sent.
+  // Client video 2026-10-18: "This says draft here.
   app.patch<{ Params: { id: string } }>("/:id/finalize", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -864,10 +802,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client video 2026-10-18 (Bulk Invoice > Combine Open Invoices > Email): "it's trying to pull
-  // from the outlook on the computer, not the outlook in the cloud" -- it was a mailto: link. Now
-  // one real email (the business's Office 365 SMTP) listing every selected invoice with its own
-  // view/pay link and the combined total; emailed invoices become Sent.
+  // Client video 2026-10-18 (Bulk Invoice > Combine Open Invoices > Email): "it's trying to pull from the outlook on the..."
   app.post<{ Body: { invoiceIds: string[] } }>("/bulk-send-email", async (req, reply) => {
     const { invoiceIds } = req.body;
     if (!Array.isArray(invoiceIds) || invoiceIds.length === 0) {
@@ -906,8 +841,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client request 2026-09-06: "A way to Write off a job – (bad debt)". Modeled on the invoice
-  // (where AR/payment status actually lives) rather than the job itself.
+  // Client request 2026-09-06: "A way to Write off a job – (bad debt)".
   app.patch<{ Params: { id: string }; Body: { reason: string } }>("/:id/write-off", async (req) => {
     const { id } = req.params;
     const { reason } = req.body;
@@ -918,9 +852,7 @@ export default async function invoicingRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client request 2026-09-06: "Estimate templates" (Heater replacement, Filter replacement,
-  // etc.) — a saved line-item preset a staffer can apply to a new estimate instead of typing
-  // the same job out from scratch every time.
+  // Client request 2026-09-06: "Estimate templates" (Heater replacement, Filter replacement, etc.) — a saved line-item preset a staffer can apply to
   app.get("/estimate-templates", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`select * from estimate_templates order by name`);
   });

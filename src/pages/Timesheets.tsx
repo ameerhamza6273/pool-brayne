@@ -27,8 +27,7 @@ type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 const DAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-// Client request 2026-09-02: payroll week can start on any day (they run Wed-Tue), not always
-// Monday — finds the most recent date on or before today whose weekday matches startDay.
+// Client request 2026-09-02: payroll week can start on any day (they run Wed-Tue), not always Monday — finds the most
 function weekStartOf(date: Date, startDay: number) {
   const d = new Date(date);
   const diff = (d.getDay() - startDay + 7) % 7;
@@ -68,8 +67,7 @@ export default function Timesheets() {
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [jobCosting, setJobCosting] = useState<JobCosting[]>([]);
   const [employeeCount, setEmployeeCount] = useState(0);
-  // null until Settings answers, so the page doesn't first show (and load) a Mon-Sun week and then jump to
-  // the tenant's payroll week (Wed-Tue for this client).
+  // null until Settings answers, so the page doesn't first show (and load) a Mon-Sun week and then jump to the
   const [payrollWeekStartDay, setPayrollWeekStartDay] = useState<number | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
   const [staff, setStaff] = useState<Profile[]>([]);
@@ -101,8 +99,7 @@ export default function Timesheets() {
     return () => clearInterval(id);
   }, []);
 
-  // The "Loading" placeholder only shows when switching weeks -- a refresh after Approve / Save / Clock in keeps
-  // the table on screen (it used to blank out and jump the page back to the top after every click).
+  // The "Loading" placeholder only shows when switching weeks -- a refresh after Approve / Save / Clock in keeps the
   const shownWeek = useRef<string | null>(null);
   const latestWeek = useRef(weekStart);
   latestWeek.current = weekStart;
@@ -129,8 +126,7 @@ export default function Timesheets() {
     if (payrollWeekStartDay !== null) loadTimesheets();
   }, [loadTimesheets, payrollWeekStartDay]);
 
-  // One row per staff member (client: "need to be able to add employees" -- everyone on the team is listed,
-  // new people are added under Settings > Team). Each day = hours from the old weekly row + clock entries.
+  // One row per staff member (client: "need to be able to add employees" -- everyone on the team is listed
   const rows = useMemo(() => {
     const ids = new Set<string>([...staff.map((p) => p.id), ...timesheets.map((ts) => ts.employee_id), ...entries.map((e) => e.employee_id)]);
     return [...ids].map((id) => {
@@ -178,10 +174,7 @@ export default function Timesheets() {
     loadTimesheets();
   };
 
-  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "APPROVE WEEK -- button doesn't work (not
-  // sure if I'm doing it right?)". It did work, but only touches people who have hours that week --
-  // on a week with none nothing changed and nothing was said. The button now shows how many are
-  // waiting, is disabled when there's nothing to approve, and confirms (or shows the error) after.
+  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "APPROVE WEEK -- button doesn't work (not sure if I'm doing it right?)".
   const pendingApproval = rows.filter((r) => !r.approved && (r.total > 0 || r.ts));
   const [approveWeekMsg, setApproveWeekMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [approvingWeek, setApprovingWeek] = useState(false);

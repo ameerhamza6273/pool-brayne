@@ -10,9 +10,7 @@ import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
 import { toCsv, downloadCsv } from "@/lib/csv";
 
-// Renders any table report from the report catalog (backend routes/reportCatalog.ts): summary
-// cards, search, click-to-sort headers, a totals row, CSV export, print, and links to the job /
-// invoice / estimate / customer / POS receipt behind a row.
+// Renders any table report from the report catalog (backend routes/reportCatalog.ts): summary cards, search, click-to-sort headers, a totals row, CSV export
 const PAGE_SIZE = 100;
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const isNumeric = (type?: CatalogColType) => type === "money" || type === "number" || type === "hours" || type === "percent";

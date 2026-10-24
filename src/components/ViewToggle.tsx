@@ -2,9 +2,7 @@ import { useState } from "react";
 import { LayoutGrid, Table2 } from "lucide-react";
 import { useLanguage } from "@/lib/language-context";
 
-// Client SMS 2026-09-21: "grid view" (rows/columns) as the default on Directory, Library, Forms,
-// Form Builder, Manufacturers and Campaigns, with the older card layout kept as a toggle. The
-// choice is remembered per page in localStorage (a per-viewer convenience only).
+// Client SMS 2026-09-21: "grid view" (rows/columns) as the default on Directory, Library, Forms, Form Builder, Manufacturers and Campaigns, with the
 export type ViewMode = "table" | "cards";
 
 export function useViewMode(storageKey: string): [ViewMode, (m: ViewMode) => void] {

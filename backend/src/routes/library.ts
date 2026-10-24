@@ -1,9 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 
-// Sidebar restructure (client PDF 2026-09-06, "Employee section > Library") — a generic tenant
-// document repository (SOPs, price sheets, training material), distinct from per-job/
-// per-estimate Documents which are scoped to one record.
+// Sidebar restructure (client PDF 2026-09-06, "Employee section > Library") — a generic tenant document repository (SOPs, price sheets, training material)
 export default async function libraryRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
@@ -26,11 +24,7 @@ export default async function libraryRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client meeting 2026-09: "go into each one of these PDFs and say, this is the category and
-  // this is what it is" — tagging happens after upload too, not just at upload time.
-  // Client video 2026-10-16: the Data > Documents card could upload/delete a PDF but never rename
-  // it -- `name` is optional (undefined leaves it unchanged) so Library's existing category/
-  // manufacturer-only tagging call keeps working unchanged.
+  // Client meeting 2026-09: "go into each one of these PDFs and say, this is the category and this is what..."
   app.patch<{ Params: { id: string }; Body: { name?: string; category: string | null; manufacturer: string | null } }>("/:id", async (req) => {
     const { id } = req.params;
     const { name, category, manufacturer } = req.body;

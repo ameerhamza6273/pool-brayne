@@ -7,10 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Droplets, Eye, EyeOff } from "lucide-react";
 import { getRememberedLogo } from "@/lib/remembered-logo";
 
-// Client video 2026-10-23: landing page for the "Forgot password?" email (backend public.ts
-// /forgot-password). The recovery token is only verified when the new password is submitted, not
-// on page load, so an email link-scanner opening the URL first doesn't use it up. English-only,
-// like Login/Signup.
+// Client video 2026-10-23: landing page for the "Forgot password?" email (backend public.ts /forgot-password).
 export default function ResetPassword() {
   const [params] = useSearchParams();
   const tokenHash = params.get("token_hash");

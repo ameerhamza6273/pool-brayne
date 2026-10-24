@@ -1,11 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 
-// Client request 2026-09-02: a field Directory of sales-rep names/phone numbers for techs to
-// look up on the road. Client SMS 2026-10-16: added description + email, and made it visible in
-// the Technician Field view (see Field.tsx) -- previously it existed but was unreachable from a
-// field-only login (not in auth-context.tsx's FIELD_PERMISSIONS, so ProtectedRoute bounced it
-// straight back to /field).
+// Client request 2026-09-02: a field Directory of sales-rep names/phone numbers for techs to look up on the road.
 export default async function directoryRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`select * from directory_contacts order by name`);

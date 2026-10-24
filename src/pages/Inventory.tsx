@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type DragEvent } from "react";
+import { useState, useEffect, useCallback, useMemo, type DragEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { averyLabelsPdfUrl, zebraLabelsPdfUrl } from "@/lib/label-pdf";
 import { Search, Plus, Package, AlertTriangle, TrendingUp, Warehouse, Truck, ShoppingCart, BarChart3, Tag, Landmark, Pencil, ClipboardX, Barcode, Trash2, Receipt, Eye, FileText, Mail, Star, X } from "lucide-react";
@@ -27,6 +27,8 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth-context";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { safeFileName } from "@/lib/storage-path";
+import SendEmailDialog, { type EmailContact } from "@/components/SendEmailDialog";
+import { elementToPdfBase64 } from "@/lib/document-pdf";
 
 type Supplier = Database["public"]["Tables"]["suppliers"]["Row"];
 type PurchaseOrder = Database["public"]["Tables"]["purchase_orders"]["Row"] & { suppliers: { name: string } | null; locations: { label: string; address: string | null } | null };
@@ -44,8 +46,7 @@ const poStatusColors: Record<string, string> = {
   "Sent - Email": "bg-[#0891B2]/10 text-[#0891B2]",
   "Sent - Portal": "bg-[#7C3AED]/10 text-[#7C3AED]",
   "Received": "bg-[#16A34A]/10 text-[#16A34A]",
-  // Backward-compat for any PO row written by older code before the status vocabulary migrated
-  // (Draft/Ordered -> Pending/Sent, then Sent -> Sent - Email 2026-09-15).
+  // Backward-compat for any PO row written by older code before the status vocabulary migrated (Draft/Ordered -> Pending/Sent, then Sent ->
   "Draft": "bg-[#F59E0B]/10 text-[#F59E0B]",
   "Ordered": "bg-[#0891B2]/10 text-[#0891B2]",
   "Sent": "bg-[#0891B2]/10 text-[#0891B2]",
@@ -61,17 +62,7 @@ const vendorBillStatusColors: Record<string, string> = {
   "Overdue": "bg-[#DC2626]/10 text-[#DC2626]",
 };
 
-// Client request 2026-08-27: print price stickers on Avery-style label sheets (Avery 5160 layout:
-// 3 columns x 10 rows of 2.625" x 1" labels per letter-size sheet).
-// Client SMS 2026-09-21 ("remove all headers and footers"): labels are now generated as PDFs
-// (src/lib/label-pdf.ts) instead of printing an HTML page, so the browser can't stamp its own
-// date/title/URL/page-number onto them. The tab is opened synchronously (popup blockers only
-// allow that inside the click) and pointed at the PDF once it's ready.
-// Client SMS 2026-09-29: "It won't let me print off barcodes... It won't let me do it today" --
-// both failure paths here (a popup blocker returning `win === null`, or the on-demand jsPDF chunk
-// failing to load/generate) used to fail completely silently, so from the tech's side "nothing
-// happens when I click" with no indication why. Now throws a specific, user-facing message
-// instead so the caller can show it.
+// Client request 2026-08-27: print price stickers on Avery-style label sheets (Avery 5160 layout: 3 columns x 10 rows of 2.625"..."
 const openLabelPdf = async (makeUrl: () => Promise<string>) => {
   const win = window.open("", "_blank");
   if (!win) throw new Error("Your browser blocked the popup. Allow popups for this site and try again.");
@@ -86,10 +77,7 @@ const openLabelPdf = async (makeUrl: () => Promise<string>) => {
 const printLabels = (items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost">[]) =>
   openLabelPdf(() => averyLabelsPdfUrl(items));
 
-// Client request 2026-09-02: a real scannable barcode (Code128, from the SKU) sized for a
-// 2"x1" Zebra label printer, distinct from the text-only Avery sheet above.
-// Client request 2026-09-03: "customize labels for barcode scanner using item #" — barcode can
-// now encode either the SKU or the internal Item # (`inventory_items.item_number`).
+// Client request 2026-09-02: a real scannable barcode (Code128, from the SKU) sized for a 2"x1" Zebra label printer, distinct from
 const printZebraLabels = (
   items: Pick<ItemWithStock, "name" | "sku" | "price" | "unit_cost" | "item_number">[],
   barcodeSource: "sku" | "itemNumber" = "sku",
@@ -98,15 +86,14 @@ const printZebraLabels = (
 export default function Inventory() {
   const { t } = useLanguage();
   const confirm = useConfirm();
-  const { tenantId } = useAuth();
+  const { tenantId, user } = useAuth();
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get("search") ?? "");
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
   const [poOpen, setPoOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  // Client request 2026-09-04: editing a product previously only opened a 2-field Cost/Price
-  // dialog -- now opens a full "Add Product"-shaped editor with every field.
+  // Client request 2026-09-04: editing a product previously only opened a 2-field Cost/Price dialog -- now opens a full "Add Product"-shaped
   const [editProductItem, setEditProductItem] = useState<ItemWithStock | null>(null);
   const [deleteItem, setDeleteItem] = useState<ItemWithStock | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -119,9 +106,7 @@ export default function Inventory() {
     subcategory: "", subSubcategory: "", subSubSubcategory: "", isInventory: true, maintenancePriority: false,
     photoUrls: [] as string[],
   });
-  // Client SMS 2026-10-16: "upload a max of two pics for each inventory item" -- same upload
-  // pattern as every other photo field in the app (direct-from-browser Supabase Storage upload,
-  // see CLAUDE.md > Architecture). Shared by Add Product and Edit Product.
+  // Client SMS 2026-10-16: "upload a max of two pics for each inventory item" -- same upload pattern as every other
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const uploadItemPhoto = async (file: File, current: string[], set: (urls: string[]) => void) => {
     if (current.length >= 2 || !file.type.startsWith("image/")) return;
@@ -134,10 +119,7 @@ export default function Inventory() {
     }
     setUploadingPhoto(false);
   };
-  // Client video 2026-10-16: "allow us to drag and drop into this file here instead of pulling
-  // from an existing file list... when I grab it and try to drop it, it just brings up a new
-  // window" -- the dropzone had no drag handlers at all, so the browser's default action (open the
-  // dropped file) took over. Shared by Add Product and Edit Product.
+  // Client video 2026-10-16: "allow us to drag and drop into this file here instead of pulling from an existing file..."
   const [photoDragActive, setPhotoDragActive] = useState(false);
   const photoDropHandlers = (current: string[], set: (urls: string[]) => void) => ({
     onDragOver: (e: DragEvent) => { e.preventDefault(); setPhotoDragActive(true); },
@@ -150,8 +132,7 @@ export default function Inventory() {
     },
   });
   const [categoryTaxonomy, setCategoryTaxonomy] = useState<CategoryTaxonomyRow[]>([]);
-  // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real
-  // inventory (2,600+ items) was imported.
+  // Client request 2026-09-04: the Catalog table had no pagination at all -- unusable once real inventory (2,600+ items) was imported.
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
   const inventoryTabs = ["catalog", "suppliers", "purchase", "vendor-bills", "variance", "writeoffs"];
@@ -182,9 +163,7 @@ export default function Inventory() {
     photoUrls: [] as string[],
   });
   const [barcodeSource, setBarcodeSource] = useState<"sku" | "itemNumber">("sku");
-  // QA sweep 2026-09-30: this used to be a client-guessed, user-editable "PO Number" field
-  // (`purchaseOrders.length + 2`, drifts from reality) that produced real duplicate PO numbers --
-  // the backend now assigns the real number atomically, so there's nothing to track/edit here.
+  // QA sweep 2026-09-30: this used to be a client-guessed, user-editable "PO Number" field (`purchaseOrders.length + 2`, drifts from reality) that
   const [newPo, setNewPo] = useState({ supplierId: "", locationId: "", paymentTerms: "Net 30", number: "" });
   const [poError, setPoError] = useState("");
   const [newPoLocations, setNewPoLocations] = useState<SupplierLocation[]>([]);
@@ -209,28 +188,22 @@ export default function Inventory() {
   const [writeoffTo, setWriteoffTo] = useState("");
   const [writeoffDraft, setWriteoffDraft] = useState({ itemId: "", quantity: "", reason: "Store Use", note: "" });
 
-  // Client SMS 2026-09-09: "under Estimates/Quote, move Vendor Bills under Purchase Orders" --
-  // Vendor Bills used to live on the Invoicing page; it's now a tab here, next to Purchase Orders,
-  // with none of the customer-invoicing header buttons/tabs that page carries.
+  // Client SMS 2026-09-09: "under Estimates/Quote, move Vendor Bills under Purchase Orders" -- Vendor Bills used to live on the Invoicing
   const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
   const [vendorBillsDue, setVendorBillsDue] = useState<VendorBillDueRow[]>([]);
   const [newBillOpen, setNewBillOpen] = useState(false);
-  // Client doc 2026-10-15: "Create New Vendor Bill doesn't work" -- Issue Date started blank and
-  // the create handler silently returned when it (or vendor / bill #) was missing, so clicking Create
-  // did nothing at all. Issue Date now defaults to today and every failure says why.
+  // Client doc 2026-10-15: "Create New Vendor Bill doesn't work" -- Issue Date started blank and the create handler silently returned
   const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const [newBill, setNewBill] = useState({ supplierId: "", number: "", issueDate: todayKey(), dueDate: "", amount: "", poId: "" });
   const [newBillError, setNewBillError] = useState<string | null>(null);
   const [newBillSaving, setNewBillSaving] = useState(false);
   // Client PDF 2026-09-15: "Ability to search by PO number" on the Pay Invoices / Vendor Bills tab.
   const [billSearch, setBillSearch] = useState("");
-  // Client video 2026-10-18: "under purchase orders ... make these spinnable as well and maybe a
-  // search field" -- every Inventory tab's columns sort, PO / Variance / Write-Offs got search.
+  // Client video 2026-10-18: "under purchase orders ...
   const [poSearch, setPoSearch] = useState("");
   const [varianceSearch, setVarianceSearch] = useState("");
   const [writeoffSearch, setWriteoffSearch] = useState("");
-  // Client video 2026-10-16: "spin the item number report here to make a numerical order" --
-  // the Catalog table's column headers were plain text, not clickable, on every column.
+  // Client video 2026-10-16: "spin the item number report here to make a numerical order" -- the Catalog table's column headers
   type CatalogSortKey = "item_number" | "name" | "sku" | "category" | "manufacturer" | "storeQty" | "vehicleQty" | "total" | "reorder_threshold" | "unit_cost" | "price" | "status";
   const [catalogSort, setCatalogSort] = useState<{ key: CatalogSortKey | null; dir: "asc" | "desc" }>({ key: null, dir: "asc" });
   const toggleCatalogSort = (key: CatalogSortKey) => {
@@ -297,8 +270,7 @@ export default function Inventory() {
     loadInventory();
   };
 
-  // Client SMS 2026-09-23: delete a SKU, behind a "this is permanent" confirmation. The backend
-  // refuses SKUs that have job/write-off history and says why (shown in the same popup).
+  // Client SMS 2026-09-23: delete a SKU, behind a "this is permanent" confirmation.
   const confirmDeleteItem = async () => {
     if (!deleteItem) return;
     setIsDeleting(true);
@@ -314,8 +286,7 @@ export default function Inventory() {
     setIsDeleting(false);
   };
 
-  // Client request 2026-09-04: full product edit (every field, same shape as Add Product) —
-  // replaces the old Cost/Price-only dialog.
+  // Client request 2026-09-04: full product edit (every field, same shape as Add Product) — replaces the old Cost/Price-only dialog.
   const openEditProduct = (item: ItemWithStock) => {
     setEditProductItem(item);
     setEditProductDraft({
@@ -472,8 +443,7 @@ export default function Inventory() {
     setSupplierLocations(await inventoryApi.getSupplierLocations(locationsSupplier.id));
   };
 
-  // Client video 2026-10-15: "primarily we do pool builder supply as a default... if we need a
-  // change, the ability to change the email from our selected list."
+  // Client video 2026-10-15: "primarily we do pool builder supply as a default...
   const handleSetDefaultLocation = async (locationId: string) => {
     if (!locationsSupplier) return;
     await inventoryApi.setDefaultSupplierLocation(locationId);
@@ -498,7 +468,7 @@ export default function Inventory() {
     setPoDetailLineItems(lines.map((li) => ({ description: li.description, sku: li.sku, quantity: li.quantity, unitCost: li.unit_cost })));
   };
 
-  const handleSavePoDetail = async () => {
+  const persistPoDetail = async () => {
     if (!poDetail) return;
     await inventoryApi.updatePurchaseOrder(poDetail.id, {
       number: poDetailDraft.number,
@@ -508,30 +478,84 @@ export default function Inventory() {
       paymentTerms: poDetailDraft.paymentTerms,
     });
     await inventoryApi.savePurchaseOrderLineItems(poDetail.id, poDetailLineItems.filter((li) => li.description.trim()));
+  };
+
+  const handleSavePoDetail = async () => {
+    await persistPoDetail();
     setPoDetail(null);
     loadInventory();
   };
 
+  // Client video 2026-10-24: email the PO to everyone at the vendor (all their emails pre-ticked), same Send popup as invoices.
+  const [poEmailOpen, setPoEmailOpen] = useState(false);
+  const [poEmailLocations, setPoEmailLocations] = useState<SupplierLocation[]>([]);
+  const [poEmailResult, setPoEmailResult] = useState<string | null>(null);
+  const poVendor = suppliers.find((s) => s.id === poDetailDraft.supplierId) ?? null;
+  const poVendorContacts = useMemo<EmailContact[]>(() => {
+    if (!poVendor) return [];
+    const list: EmailContact[] = (poVendor.emails ?? []).map((email) => ({ id: `v-${email}`, name: poVendor.name, email, phone: poVendor.phone, is_primary: true }));
+    for (const loc of poEmailLocations) {
+      if (!loc.email || list.some((c) => c.email!.toLowerCase() === loc.email!.toLowerCase())) continue;
+      list.push({ id: loc.id, name: loc.contact_name || loc.label, email: loc.email, phone: loc.phone, is_primary: loc.is_default || list.length === 0 });
+    }
+    return list;
+  }, [poVendor, poEmailLocations]);
+  const openPoEmail = async () => {
+    setPoEmailResult(null);
+    setPoEmailLocations(poVendor ? await inventoryApi.getSupplierLocations(poVendor.id).catch(() => []) : []);
+    setPoEmailOpen(true);
+  };
+
   // Client PDF 2026-09-15: "review or view purchase order on pdf screen (full screen)".
+  const poRowsHtml = () => poDetailLineItems
+    .filter((li) => li.description.trim())
+    .map(
+      (li) => `
+        <tr>
+          <td>${li.description}</td>
+          <td>${li.sku ?? ""}</td>
+          <td style="text-align:right">${li.quantity}</td>
+          <td style="text-align:right">${li.unitCost.toFixed(2)}</td>
+          <td style="text-align:right">${(li.quantity * li.unitCost).toFixed(2)}</td>
+        </tr>`
+    )
+    .join("");
+  const poTotal = () => poDetailLineItems.reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
+
+  // PDF attached to the PO email: the same document as View PDF, rendered off-screen and captured.
+  const poPdfBase64 = async () => {
+    const supplierName = poVendor?.name ?? "—";
+    const el = document.createElement("div");
+    el.style.cssText = "position:fixed;left:-10000px;top:0;width:780px;background:#fff;padding:40px;font-family:Arial,sans-serif;color:#0F172A";
+    const cell = "border-bottom:1px solid #E2E8F0;padding:8px;font-size:13px;text-align:left";
+    el.innerHTML = `
+      ${user?.logoUrl ? `<img src="${user.logoUrl}" crossorigin="anonymous" style="height:60px;margin-bottom:16px" />` : ""}
+      <h1 style="font-size:22px;margin:0 0 4px">Purchase Order ${poDetailDraft.number}</h1>
+      <div style="color:#64748B;font-size:13px;margin-bottom:24px">
+        <div><strong>Vendor:</strong> ${supplierName}</div>
+        <div><strong>Date:</strong> ${poDetail?.order_date ?? ""}</div>
+        <div><strong>Payment Terms:</strong> ${poDetailDraft.paymentTerms}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>${["Description", "SKU", "Qty", "Unit Cost", "Amount"].map((h, i) => `<th style="${cell};background:#F8FAFC;text-transform:uppercase;font-size:11px;color:#64748B;${i > 1 ? "text-align:right" : ""}">${h}</th>`).join("")}</tr></thead>
+        <tbody>${poRowsHtml().replace(/<td>/g, `<td style="${cell}">`).replace(/<td style="text-align:right">/g, `<td style="${cell};text-align:right">`)}</tbody>
+      </table>
+      <div style="text-align:right;font-size:16px;font-weight:bold;margin-top:16px">Total: ${poTotal().toFixed(2)}</div>`;
+    document.body.appendChild(el);
+    try {
+      return await elementToPdfBase64(el);
+    } finally {
+      el.remove();
+    }
+  };
+
   const handleViewPoPdf = () => {
     if (!poDetail) return;
     const supplierName = suppliers.find((s) => s.id === poDetailDraft.supplierId)?.name ?? "—";
     const win = window.open("", "_blank");
     if (!win || !win.document) return;
-    const rowsHtml = poDetailLineItems
-      .filter((li) => li.description.trim())
-      .map(
-        (li) => `
-          <tr>
-            <td>${li.description}</td>
-            <td>${li.sku ?? ""}</td>
-            <td style="text-align:right">${li.quantity}</td>
-            <td style="text-align:right">$${li.unitCost.toFixed(2)}</td>
-            <td style="text-align:right">$${(li.quantity * li.unitCost).toFixed(2)}</td>
-          </tr>`
-      )
-      .join("");
-    const total = poDetailLineItems.reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
+    const rowsHtml = poRowsHtml();
+    const total = poTotal();
     win.document.write(`
       <html>
         <head>
@@ -568,8 +592,7 @@ export default function Inventory() {
     win.document.close();
   };
 
-  // Client request 2026-08-27: map each item to QuickBooks COGS/Income/Asset accounts, fetched
-  // lazily (once) from the tenant's live QBO chart of accounts.
+  // Client request 2026-08-27: map each item to QuickBooks COGS/Income/Asset accounts, fetched lazily (once) from the tenant's live QBO chart of
   const openQboDialog = async (item: ItemWithStock) => {
     setQboDialogItem(item);
     setQboSelection((item.qbo_accounts as QboAccounts | null) ?? {});
@@ -615,11 +638,7 @@ export default function Inventory() {
       return String(av).localeCompare(String(bv)) * dir;
     });
 
-  // Client bug report 2026-09-04: the filter dropdown (and the Add/Edit Product Category field,
-  // which used to be this same fixed list) only had 5 hardcoded values -- real imported items
-  // carry ~35 real categories (from the source ProductFamily field), so most items couldn't be
-  // filtered and the Edit dialog showed the Category field blank for them. Filter dropdown is now
-  // built from whatever categories actually exist; Add/Edit switched to free text (see below).
+  // Client bug report 2026-09-04: the filter dropdown (and the Add/Edit Product Category field, which used to be this same fixed
   const dynamicCategories = ["All", ...Array.from(new Set(items.map((i) => i.category))).sort()];
 
   // Client PDF 2026-09-15: "sort by amount or vendors" + "search by PO number" on Pay Invoices.
@@ -711,8 +730,7 @@ export default function Inventory() {
     loadInventory();
   };
 
-  // Manufacturer field suggestions: manufacturers already on items + the imported/managed list
-  // (Data > Import / Export). Free text is still allowed for a brand-new one.
+  // Manufacturer field suggestions: manufacturers already on items + the imported/managed list (Data > Import / Export).
   const { lists: manufacturerLists } = useConfigLists();
   const manufacturerOptions = Array.from(new Set([
     ...items.map((p) => p.manufacturer).filter((m): m is string => Boolean(m)),
@@ -794,9 +812,7 @@ export default function Inventory() {
                   <Input className="mt-1" type="number" placeholder="0" value={newProduct.reorderThreshold} onChange={(e) => setNewProduct((p) => ({ ...p, reorderThreshold: e.target.value }))} />
                   <p className="text-xs text-[#64748B] mt-1">{t('Shows as "Low Stock" once total quantity drops to this number or below.')}</p>
                 </div>
-                {/* Client screenshots 2026-10-06 (ServiceWorks): "Inventory Type" -- Inventory vs
-                    Non-Inventory, independent of category. Labor/Shipping/Misc items are examples
-                    of Non-Inventory (never stocked, never shown as Out/Low, no reorder). */}
+                {/* Client screenshots 2026-10-06 (ServiceWorks): "Inventory Type" -- Inventory vs Non-Inventory, independent of category. */}
                 <div>
                   <Label>{t("Inventory Type")}</Label>
                   <Select value={newProduct.isInventory ? "inventory" : "non-inventory"} onValueChange={(v) => setNewProduct((p) => ({ ...p, isInventory: v === "inventory" }))}>
@@ -808,10 +824,7 @@ export default function Inventory() {
                   </Select>
                   <p className="text-xs text-[#64748B] mt-1">{t("Non-Inventory items (labor, shipping, misc fees) are never stocked and never show as Out or Low.")}</p>
                 </div>
-                {/* Client video 2026-10-15: "where do I set Material / Labor / Maintenance" --
-                    Labor is already set via Category above (e.g. category "Labor"); this is the
-                    other missing piece, a real toggle for the Maintenance line-item type used on
-                    Estimates/Invoices (previously only ever set by a one-off script). */}
+                {/* Client video 2026-10-15: "where do I set Material / Labor / Maintenance" -- Labor is already set via Category above */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1107,10 +1120,7 @@ export default function Inventory() {
             </div>
           </div>
 
-          {/* Client PDF 2026-09-05: "some vendors have multiple locations we put from". Client
-              video 2026-10-15: email + a single default, for the group of people (e.g. Pool
-              Builder Supply / Superior Landscape / Classic Tile, all under parent company
-              Heritage) this vendor's invoices get emailed to. */}
+          {/* Client PDF 2026-09-05: "some vendors have multiple locations we put from". */}
           <Dialog open={!!locationsSupplier} onOpenChange={(open) => !open && setLocationsSupplier(null)}>
             <DialogContent className="max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>{locationsSupplier?.name} — {t("Locations")}</DialogTitle></DialogHeader>
@@ -1169,11 +1179,7 @@ export default function Inventory() {
               </DialogTrigger>
               <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
-                  {/* QA sweep 2026-09-30: made server-assigned (not typed) to stop duplicate PO
-                      numbers (date+count guessed client-side). Client SMS 2026-10-16: "when
-                      creating a po to a vendor allow us to change it if we need to" -- editable
-                      again, prefilled with the server's own next suggestion (peek-only, doesn't
-                      reserve it); the server still falls back to a fresh number on a conflict. */}
+                  {/* QA sweep 2026-09-30: made server-assigned (not typed) to stop duplicate PO numbers (date+count guessed client-side). */}
                   <div><Label>{t("PO Number")}</Label>
                     <Input className="mt-1" value={newPo.number} onChange={(e) => setNewPo((p) => ({ ...p, number: e.target.value }))} />
                   </div>
@@ -1227,11 +1233,37 @@ export default function Inventory() {
             <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start">
               <DialogHeader><DialogTitle>{t("Purchase Order")} {poDetail?.number}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
-                <div className="flex justify-end">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {poEmailResult && <span className="text-xs text-[#16A34A] mr-auto">{poEmailResult}</span>}
+                  <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 border-[#E2E8F0]" onClick={openPoEmail}>
+                    <Mail className="w-3.5 h-3.5" /> {t("Send via Email")}
+                  </Button>
                   <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 border-[#E2E8F0]" onClick={handleViewPoPdf}>
                     <FileText className="w-3.5 h-3.5" /> {t("View PDF")}
                   </Button>
                 </div>
+                <SendEmailDialog
+                  open={poEmailOpen}
+                  onOpenChange={setPoEmailOpen}
+                  kind="purchase_order"
+                  customerId={null}
+                  presetContacts={poVendorContacts}
+                  defaultSubject={`${t("Purchase Order")} ${poDetailDraft.number} — ${user?.company ?? ""}`.replace(/ — $/, "")}
+                  defaultMessage={"Please see our purchase order below.\n\nPlease reply to confirm the order and let us know the expected ship date."}
+                  getPdf={poPdfBase64}
+                  pdfName={`PO-${poDetailDraft.number}.pdf`}
+                  onSend={async (data) => {
+                    if (!poDetail) return;
+                    await persistPoDetail();
+                    const res = await inventoryApi.sendPurchaseOrderEmail(poDetail.id, data);
+                    setPoEmailResult(`${t("Sent to")} ${res.to.join(", ")}`);
+                    setPoDetailDraft((p) => (p.status === "Pending" ? { ...p, status: "Sent - Email" } : p));
+                    loadInventory();
+                  }}
+                />
+                {poVendor && poVendorContacts.length === 0 && (
+                  <p className="text-xs text-[#64748B] text-right">{t("This vendor has no email yet — add one under Vendors › pencil › Email, or type it in the Send popup.")}</p>
+                )}
                 <div><Label>{t("PO Number")}</Label><Input className="mt-1" value={poDetailDraft.number} onChange={(e) => setPoDetailDraft((p) => ({ ...p, number: e.target.value }))} /></div>
                 <div><Label>{t("Vendor")}</Label>
                   <div className="mt-1">
@@ -1342,7 +1374,7 @@ export default function Inventory() {
                     </div>
                   </div>
                   <div><Label>{t("Bill Number")} <span className="text-[#DC2626]">*</span></Label><Input className="mt-1" placeholder="BILL-1001" value={newBill.number} onChange={(e) => setNewBill((p) => ({ ...p, number: e.target.value }))} /></div>
-                  {/* Client PDF 2026-09-15: link a bill back to the PO it's paying off, so it can be searched/found by PO number. */}
+                  {/* Client PDF 2026-09-15: link a bill back to the PO it's paying off, so it can be searched/found by PO */}
                   <div><Label>{t("Purchase Order (optional)")}</Label>
                     <div className="mt-1">
                       <SearchableSelect
@@ -1599,8 +1631,7 @@ export default function Inventory() {
         </DialogContent>
       </Dialog>
 
-      {/* Client request 2026-09-04: full product edit, same shape as Add Product plus every
-          other field a real item carries (barcode, distributor, unit, taxable). */}
+      {/* Client request 2026-09-04: full product edit, same shape as Add Product plus every other field a real item carries (barcode */}
       <Dialog open={!!deleteItem} onOpenChange={(open) => { if (!open && !isDeleting) setDeleteItem(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>{t("Delete SKU permanently?")}</DialogTitle></DialogHeader>
@@ -1625,10 +1656,7 @@ export default function Inventory() {
         <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{t("Edit Product")} — {editProductItem?.name}</DialogTitle></DialogHeader>
           <div className="space-y-4 pt-2">
-            {/* Client request 2026-09-04: "if stock runs out, be able to mark it Out; if it's
-                back, mark it In Stock" — status is computed live from real quantity everywhere
-                else in the app, so this edits the actual Store quantity + reorder threshold that
-                drive it, with quick buttons for the common cases. */}
+            {/* Client request 2026-09-04: "if stock runs out, be able to mark it Out; if it's back, mark it In Stock" */}
             {editProductItem && (() => {
               const storeQty = parseInt(editProductDraft.storeQuantity, 10) || 0;
               const threshold = parseInt(editProductDraft.reorderThreshold, 10) || 0;
@@ -1692,9 +1720,7 @@ export default function Inventory() {
                 </SelectContent>
               </Select>
             </div>
-            {/* Client video 2026-10-15: "where do I set Material / Labor / Maintenance" -- Labor is
-                already set via Category above; this is the other missing piece, a real toggle for
-                the Maintenance line-item type (previously only ever set by a one-off script). */}
+            {/* Client video 2026-10-15: "where do I set Material / Labor / Maintenance" -- Labor is already set via Category above */}
             <div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

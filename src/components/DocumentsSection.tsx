@@ -10,23 +10,13 @@ import { useLanguage } from "@/lib/language-context";
 import { useConfigLists } from "@/hooks/use-config-lists";
 import type { LibraryDocument } from "@/lib/api/library";
 
-// Client video 2026-09-25: "Use file name" is the default -- the old default ("Sand Change Form", first of a
-// hardcoded list) silently relabelled any other upload (e.g. "Curing Process"). Types now come from the
-// tenant-editable Document List (Data > Document List).
+// Client video 2026-09-25: "Use file name" is the default -- the old default ("Sand Change Form", first of a hardcoded
 const USE_FILE_NAME = "__file_name__";
 const fileBaseName = (name: string) => name.replace(/\.[^.]+$/, "");
 
 export type DocumentAttachment = { id: string; url: string; label: string | null; filename: string | null; created_at: string };
 
-// Client request 2026-09-03: "Need a Document section to send to customers on an estimate / job
-// (these documents can be attached to the estimate / job)" — a generic upload+list, reused on
-// both JobDetail and EstimateDetail (each wires its own storage bucket path + API call).
-// Client feedback 2026-09-11: "Make sure there is a link to select a document from the document
-// folder in a drop down menu" -- these are typically the client's scope-of-work PDFs already
-// sitting in the Library, so re-uploading them per estimate/job was the actual complaint.
-// `libraryDocuments` + `onAttachExisting` are optional so callers that haven't loaded the
-// library yet degrade to upload-only. `onRename` / `onDelete` (client video 2026-09-25) are optional
-// too -- the Edit / Delete buttons only show where the caller wires them.
+// Client request 2026-09-03: "Need a Document section to send to customers on an estimate / job (these documents can be..."
 export default function DocumentsSection({
   documents,
   onUpload,
@@ -45,12 +35,9 @@ export default function DocumentsSection({
   onAttachExisting?: (doc: LibraryDocument) => Promise<void>;
   onRename?: (doc: DocumentAttachment, label: string) => Promise<void>;
   onDelete?: (doc: DocumentAttachment) => Promise<void>;
-  // Client SMS 2026-09-25: "if a document is not selected do not show the document section" (estimate + job):
-  // with no documents the card shrinks to one "Add document" button that opens it.
+  // Client SMS 2026-09-25: "if a document is not selected do not show the document section" (estimate + job): with no
   collapseWhenEmpty?: boolean;
-  // Client video 2026-09-29: the JobDetail Receipts tab reuses this component (same upload/list
-  // mechanism, filtered to label "Receipt") -- without this the card header always said
-  // "Documents" even while showing receipts, confusing given both tabs sat right next to each other.
+  // Client video 2026-09-29: the JobDetail Receipts tab reuses this component (same upload/list mechanism, filtered to label "Receipt") -- without this
   title?: string;
 }) {
   const { t } = useLanguage();

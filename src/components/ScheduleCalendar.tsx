@@ -8,9 +8,7 @@ import { projectedDates } from "@/lib/recurring";
 import type { RecurringJob } from "@/lib/api/recurringJobs";
 import RouteOrderDialog, { type RouteOrderItem, type RouteOrderSummary } from "@/components/RouteOrderDialog";
 
-// Client SMS 2026-09-21 (screenshots of their previous system's Schedule): month/week/day views,
-// hour-by-hour week grid, an employee panel to show/hide individual people, and quick-filter
-// chips along the bottom. The old Schedule tab was a month grid with only a color legend.
+// Client SMS 2026-09-21 (screenshots of their previous system's Schedule): month/week/day views, hour-by-hour week grid, an employee panel to show/hide individual
 
 export interface ScheduleJob {
   id: string;
@@ -28,8 +26,7 @@ export interface ScheduleJob {
   // Projected occurrence of a recurring job that hasn't been created yet (shown dashed, read-only).
   virtual?: boolean;
   recurringId?: string;
-  // Client video 2026-09-25: tasks and open estimates can be shown on the schedule too (read-only chips,
-  // click = quick view). `refId` is the task / estimate id.
+  // Client video 2026-09-25: tasks and open estimates can be shown on the schedule too (read-only chips, click = quick view).
   kind?: "task" | "estimate";
   refId?: string;
 }
@@ -53,9 +50,7 @@ const DEFAULT_DURATION_MIN = 60;
 // Client SMS 2026-09-21: "it's very busy" -- month cells show this many jobs, then "+N more" (opens that day).
 const MONTH_CHIP_CAP = 5;
 
-// Client video 2026-09-25: "make that a drag ... so I can expand it and view it as a whole instead of
-// scrolling through each one" -- the employee list, the "Other" (no start time) row and the hourly grid
-// each get a drag handle on their bottom edge. Sizes are remembered per browser; defaults = the old fixed sizes.
+// Client video 2026-09-25: "make that a drag ...
 type SizeKey = "panel" | "other" | "grid";
 const DEFAULT_SIZES: Record<SizeKey, number> = { panel: 720, other: 150, grid: 560 };
 const ESTIMATE_COLOR = "#6366F1";
@@ -130,9 +125,7 @@ export default function ScheduleCalendar({
 }: {
   // Tasks + open estimates (client video 2026-09-25), already narrowed by the page's top filters.
   extras?: ScheduleJob[];
-  // Client video 2026-09-29: "when I click task here it shows the pictures... not doing that on
-  // this one [a job]" -- a plain job click now opens the same quick-view popup as task/estimate
-  // (kind "job", id = the job id) instead of jumping straight to the full JobDetail page.
+  // Client video 2026-09-29: "when I click task here it shows the pictures...
   onOpenExtra?: (kind: "task" | "estimate" | "job", id: string) => void;
   jobs: ScheduleJob[];
   technicians: ScheduleTech[];
@@ -160,8 +153,7 @@ export default function ScheduleCalendar({
     try { return JSON.parse(localStorage.getItem("schedule-prefs") ?? "{}"); } catch { return {}; }
   }, []);
   const [view, setView] = useState<View>(prefs.view ?? "week");
-  // Client video 2026-10-18: "when flipping between the schedule view and the map view, maintain the
-  // same date" -- the day on screen is shared with Jobs (and its Map tab) via focusDate.
+  // Client video 2026-10-18: "when flipping between the schedule view and the map view, maintain the same date" -- the day
   const [anchor, setAnchor] = useState(() => (focusDate ? new Date(`${focusDate}T00:00:00`) : new Date()));
   useEffect(() => {
     const k = `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}-${String(anchor.getDate()).padStart(2, "0")}`;
@@ -171,8 +163,7 @@ export default function ScheduleCalendar({
   const [hiddenTechIds, setHiddenTechIds] = useState<Set<string>>(new Set(prefs.hidden ?? []));
   const [showUnassigned, setShowUnassigned] = useState(prefs.showUnassigned ?? true);
   const [showCompleted, setShowCompleted] = useState(prefs.showCompleted ?? true);
-  // Client video 2026-09-25: 3rd filter box "Tasks" (off by default = the schedule looks as before), and
-  // open estimates sit under "Unassigned" (they have no tech) so they can be looked at from the schedule.
+  // Client video 2026-09-25: 3rd filter box "Tasks" (off by default = the schedule looks as before), and open estimates sit
   const [showTasks, setShowTasks] = useState(prefs.showTasks ?? false);
   const [showEstimates, setShowEstimates] = useState(prefs.showEstimates ?? true);
   // Client SMS 2026-09-25: "techs with jobs" -- only list employees who have something in the period on screen.
@@ -288,9 +279,7 @@ export default function ScheduleCalendar({
     else { setHiddenTechIds(new Set()); setShowUnassigned(true); }
   };
 
-  // Client SMS 2026-09-21: "we created recurring jobs and they only appear on the first date ... it needs to
-  // repeat on the calendar view". The server only creates the next real job once the current one is completed,
-  // so the dates after the latest real occurrence are projected here (dashed, read-only, click = open the series).
+  // Client SMS 2026-09-21: "we created recurring jobs and they only appear on the first date ...
   const rangeEnd = Array.from(rangeKeys).sort().pop() as string;
   const ghosts: ScheduleJob[] = recurring.filter((rj) => rj.active).flatMap((rj) => {
     return projectedDates(rj, allJobs, rangeEnd, todayKey)
@@ -324,12 +313,7 @@ export default function ScheduleCalendar({
   }
   const listed = busyOnly ? people.filter((p) => (countByTech.get(p.id) ?? 0) > 0) : people;
   const jobsOn = (key: string) => visible.filter((j) => j.scheduled_date === key);
-  // Client video 2026-10-15: "regardless of the job is closed or not, we still need to see it" in
-  // the Route order dialog -- that list previously inherited the "Show Completed Jobs" toggle from
-  // the main calendar (off by default for some sessions, via the persisted schedule-prefs), so a
-  // completed stop could silently drop out of the route being planned. Route order always needs
-  // the full, real stop order regardless of that toggle, so it's built from `scheduled` directly
-  // (same tech/unassigned visibility as `shownBase`, but skipping the showCompleted gate).
+  // Client video 2026-10-15: "regardless of the job is closed or not, we still need to see it" in the Route
   const routeVisible = scheduled
     .filter((j) => !(j.tech_id ? hiddenTechIds.has(j.tech_id) : !showUnassigned))
     .filter((j) => rangeKeys.has(j.scheduled_date as string));
@@ -399,8 +383,7 @@ export default function ScheduleCalendar({
     );
   };
 
-  // Client video 2026-09-21 (their Day view): one column per employee with that person's job count and
-  // day total in the header. Week view stays one column per date.
+  // Client video 2026-09-21 (their Day view): one column per employee with that person's job count and day total in the
   const money = (n: number) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const dayKey = toKey(anchor);
   const gridCols: GridCol[] = view === "day"

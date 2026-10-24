@@ -3,9 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useLanguage } from "@/lib/language-context";
 import type { CategoryTaxonomyRow } from "@/lib/api/inventory";
 
-// Client's configuration_categories.xlsx (2026-09-05, 351 rows): a 4-level product taxonomy
-// (Category -> Subcategory -> Sub-subcategory -> Sub-sub-subcategory), seeded into
-// category_taxonomy. Each level's options narrow to what's actually valid under the level above.
+// Client's configuration_categories.xlsx (2026-09-05, 351 rows): a 4-level product taxonomy (Category -> Subcategory -> Sub-subcategory -> Sub-sub-subcategory), seeded into category_taxonomy.
 export default function CategoryPicker({
   taxonomy,
   category,

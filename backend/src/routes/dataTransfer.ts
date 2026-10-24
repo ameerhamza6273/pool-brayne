@@ -1,11 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 
-// Client SMS 2026-09-21 ("Under Data: need import and export fields with CSV file"): bulk import for
-// Customers, Inventory, Vendors, Inventory Categories, Inventory Manufacturers and the two Library lists.
-// Exports are built in the browser from the existing list endpoints; imports come here (the frontend sends
-// parsed rows in chunks). Every import is safe to re-run: rows are matched to what's already there
-// (customers by name+address, inventory by SKU, vendors by name, ...) and only changed fields are updated.
+// Client SMS 2026-09-21 ("Under Data: need import and export fields with CSV file"): bulk import for Customers, Inventory, Vendors, Inventory
 
 type Row = Record<string, string | undefined>;
 type Result = { created: number; updated: number; skipped: number; errors: string[] };
@@ -128,9 +124,7 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
           }
           const tax = bool(row.taxable); if (tax !== null) values.taxable = tax;
           const pos = bool(row.pos_enabled); if (pos !== null) values.pos_enabled = pos;
-          // Client video 2026-10-15: "whenever we import or export functionality, it is not on
-          // the list as an option" -- Maintenance (the 3rd line-item type alongside Material/Labor,
-          // previously only settable via a one-off script) is now a real import/export column.
+          // Client video 2026-10-15: "whenever we import or export functionality, it is not on the list as an option" -- Maintenance
           const maint = bool(row.maintenance_priority); if (maint !== null) values.maintenance_priority = maint;
           const found = bySku.get(lc(sku));
           if (found) {
@@ -205,10 +199,7 @@ export default async function dataTransferRoutes(app: FastifyInstance) {
         return result;
       }
 
-      // ---------------------------------------------------------------- directory (phone contacts)
-      // Client SMS 2026-10-16: "download" of their real sales-rep/manufacturer-rep contact list
-      // (name, description/role, phone, email), same matched-by-name/update-only-changed-fields
-      // pattern as vendors above. Re-importing an updated copy of the same file later is safe.
+      // ---------------------------------------------------------------- directory (phone contacts) Client SMS 2026-10-16: "download" of their real sales-rep/manufacturer-rep contact list (name, description/role, phone, email), same matched-by-name/update-only-changed-fields
       if (dataset === "directory") {
         const existing = (await tx`select id, name, role, description, phone, email from directory_contacts`) as unknown as Record<string, string | null>[];
         const byName = new Map(existing.map((c) => [lc(c.name), c]));

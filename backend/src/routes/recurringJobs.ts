@@ -24,11 +24,7 @@ type RecurringJob = {
   active: boolean;
 };
 
-// Parsed/mutated/serialized entirely in UTC -- `new Date(dateOnlyString)` without a "Z" parses
-// as LOCAL time, so setDate()+toISOString() would silently drift the date by one day depending
-// on the server's timezone offset (caught in testing: server in UTC+5 turned a 7-day-later
-// Sept-15 into Sept-14). Using the "Z" suffix + getUTC*/setUTC* keeps the whole round-trip in
-// one timezone.
+// Parsed/mutated/serialized entirely in UTC -- `new Date(dateOnlyString)` without a "Z" parses as LOCAL time, so setDate()+toISOString() would silently drift the
 function nextOccurrenceDate(fromDate: string, rj: Pick<RecurringJob, "frequency" | "day_of_month">): string {
   const d = new Date(`${fromDate}T00:00:00Z`);
   if (rj.frequency === "weekly") d.setUTCDate(d.getUTCDate() + 7);
@@ -40,17 +36,7 @@ function nextOccurrenceDate(fromDate: string, rj: Pick<RecurringJob, "frequency"
   return d.toISOString().slice(0, 10);
 }
 
-// Generates the real `jobs` row for one occurrence of a recurring job, carrying the
-// tech-only note forward ("Able to show notes for all recurring jobs moving forward").
-// Client SMS 2026-09-21: "forms for all jobs" (selected_form_ids is copied onto every occurrence) and
-// "notes for this job only" (next_job_notes goes onto THIS occurrence's description, then is cleared so
-// it doesn't repeat).
-// Client video 2026-10-06: "map view doubled up the customer on recurring jobs" -- two concurrent
-// requests (e.g. two tabs, or two components loading jobs around the same time) could both pass
-// catchUpOccurrences()'s "does this occurrence already exist" check before either committed its
-// insert, creating two real rows for the same series+date (confirmed in production, see migration
-// 20261006130000). `on conflict do nothing` against that migration's unique index makes the loser
-// of the race a harmless no-op instead of a duplicate row.
+// Generates the real `jobs` row for one occurrence of a recurring job, carrying the tech-only note forward ("Able to show..."
 async function generateOccurrence(tx: postgres.TransactionSql, tenantId: string, rj: RecurringJob, scheduledDate: string) {
   const oneShot = rj.next_job_notes?.trim();
   const description = oneShot ? [rj.description, `Note (this job only): ${oneShot}`].filter(Boolean).join("\n\n") : rj.description;
@@ -65,16 +51,10 @@ async function generateOccurrence(tx: postgres.TransactionSql, tenantId: string,
   return job;
 }
 
-// Client PDF 2026-09-05: "+New Recurring" next to "+New Job" -- a real recurring-job schedule
-// (the old `recurring_routes` table was a read-only display never tied to actual jobs). No
-// cron/scheduler runs in this environment, so occurrences are generated eagerly at creation and
-// roll forward one-at-a-time when the previous occurrence is marked Completed (jobs.ts PATCH
-// hook) -- the same "generate the next one when the current one finishes" pattern already used
-// for customer reminders (reports.ts mark-done).
+// Client PDF 2026-09-05: "+New Recurring" next to "+New Job" -- a real recurring-job schedule (the old `recurring_routes` table was a
 type TemplateOpts = { frequency: "weekly" | "biweekly" | "monthly"; dayOfWeek: number | null; dayOfMonth: number | null; endDate: string | null };
 
-// Builds a recurring template from an existing job and links the job to it. Returns the new template row,
-// or "missing" / "already" when the job doesn't exist / is already in a series.
+// Builds a recurring template from an existing job and links the job to it.
 async function createTemplateFromJob(tx: postgres.TransactionSql, jobId: string, o: TemplateOpts) {
   const [job] = (await tx`select * from jobs where id = ${jobId} limit 1`) as unknown as {
     id: string; tenant_id: string; customer_id: string; tech_id: string | null; type: string; description: string | null;
@@ -130,9 +110,7 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // "make it ask us: is this a temporary change or a permanent change?" -- a permanent change
-  // updates the template (this route); a temporary one just PATCHes the one generated job's own
-  // scheduled_date via the normal /api/jobs/:id route and never touches the template.
+  // "make it ask us: is this a temporary change or a permanent change?" -- a permanent change updates the template
   app.patch<{
     Params: { id: string };
     Body: Partial<{
@@ -164,9 +142,6 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
   });
 
   // Client SMS 2026-09-21: "a way to convert a job to a recurring job or vice versa".
-  // Job -> recurring: the job becomes the first occurrence (linked to a new template), so completing it
-  // rolls the series forward like any other recurring job; no extra job is generated now. The job's start
-  // time becomes the series' standard time.
   app.post<{
     Params: { jobId: string };
     Body: { frequency: "weekly" | "biweekly" | "monthly"; dayOfWeek?: number | null; dayOfMonth?: number | null; endDate?: string | null };
@@ -181,11 +156,7 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client SMS 2026-09-21 ("standard time on all jobs ... weekly routes maintain the same order"): give a
-  // tech's stops for a day sequential start times in one go. Real jobs get the time; jobs that belong to a
-  // series also set the series' standard time (so every future week keeps the same order); series with no
-  // job on that date yet (projected on the calendar) just get their standard time; jobs that aren't
-  // recurring can optionally be made weekly at the same time.
+  // Client SMS 2026-09-21 ("standard time on all jobs ...
   app.post<{
     Body: { items: { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean; date?: string | null }[] };
   }>("/route-order", async (req, reply) => {
@@ -199,10 +170,7 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
         if (!time) continue;
         // Client SMS 2026-09-25: a "temporary" reorder only re-times this day's real jobs.
         if (it.permanent === false) {
-          // Client video 2026-10-18: a temporary reorder on a future day did nothing ("0 jobs timed")
-          // because every stop there was still a projection with no real job row yet. Create that
-          // day's occurrence now (same generator + unique index the roll-forward uses, so it can't
-          // duplicate later) and time it; the series' standard time stays untouched.
+          // Client video 2026-10-18: a temporary reorder on a future day did nothing ("0 jobs timed") because every stop there was
           let jobId = it.jobId;
           if (!jobId && it.recurringId && it.date && /^\d{4}-\d{2}-\d{2}$/.test(it.date)) {
             const [rj] = (await tx`select * from recurring_jobs where id = ${it.recurringId} limit 1`) as unknown as RecurringJob[];
@@ -242,8 +210,7 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Recurring -> one-time: the series is dissolved; its upcoming job stays as a normal one-off job (if every
-  // occurrence was already completed, one standalone job is created at the next date so nothing is lost).
+  // Recurring -> one-time: the series is dissolved; its upcoming job stays as a normal one-off job (if every occurrence was
   app.post<{ Params: { id: string } }>("/:id/make-one-time", async (req, reply) => {
     const { id } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -268,40 +235,24 @@ export default async function recurringJobsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client SMS 2026-09-09: "recurring fields, full functionality" -- a real delete, distinct
-  // from Pause (which just flips `active` and is reversible). Jobs already generated from this
-  // template keep existing (jobs.recurring_job_id is on-delete-set-null) -- only the template
-  // itself, and any future auto-generated occurrences, go away.
+  // Client SMS 2026-09-09: "recurring fields, full functionality" -- a real delete, distinct from Pause (which just flips `active` and is
   app.delete<{ Params: { id: string } }>("/:id", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`delete from recurring_jobs where id = ${id}`);
   });
 }
 
-// Poor-man's cron (client SMS 2026-09-30: "no jobs on Schedule" / Map showing 0 for today, both
-// traced to the same cause): roll-forward previously only ever ran when a generated occurrence was
-// marked Completed, so a series whose prior visit was never explicitly completed just stalls --
-// its due date shows on the office Schedule as a projected/dashed "ghost" (client-side only), but
-// nothing real ever gets created, so Field.tsx's job list (a real `jobs` query, no ghost concept)
-// and the Map (same) show nothing at all for that tech/day. Confirmed on prod: 18 active series had
-// no real row for today. This runs at the top of the job-list endpoints and catches any series up
-// to today, so a stalled series heals itself on the next request instead of staying invisible until
-// someone happens to complete the old occurrence. Capped at 20 catch-up steps per series per call.
+// Poor-man's cron (client SMS 2026-09-30: "no jobs on Schedule" / Map showing 0 for today, both traced to the same
 async function catchUpOccurrences(tx: postgres.TransactionSql, tenantId: string) {
   const today = new Date().toISOString().slice(0, 10);
   const active = (await tx`select * from recurring_jobs where tenant_id = ${tenantId} and active = true`) as unknown as RecurringJob[];
   if (active.length === 0) return;
-  // Perf fix 2026-10-05: this used to issue one `max(scheduled_date)` query per active series --
-  // 74 series meant 74+ sequential round-trips to the Supabase pooler on every single GET
-  // /api/jobs or /api/jobs/mine/active call (confirmed live: ~10-15s per request), which read as
-  // "buttons that do nothing" (Mark En Route, etc. all reload the job/list afterward and just sat
-  // on a spinner). One batched query replaces all of those per-series lookups.
+  // Perf fix 2026-10-05: this used to issue one `max(scheduled_date)` query per active series -- 74 series meant 74+ sequential round-trips
   const lastRows = (await tx`
     select recurring_job_id, max(scheduled_date) filter (where scheduled_date <= ${today}) as d from jobs
     where recurring_job_id = any(${active.map((rj) => rj.id)}) group by recurring_job_id
   `) as unknown as { recurring_job_id: string; d: string | null }[];
-  // Latest occurrence up to today (2026-10-18): a temporary route change can create one future
-  // occurrence early; anchoring on that would skip generating the weeks before it.
+  // Latest occurrence up to today (2026-10-18): a temporary route change can create one future occurrence early; anchoring on that would
   const lastBySeries = new Map(lastRows.map((r) => [r.recurring_job_id, r.d]));
   for (const rj of active) {
     let anchor = lastBySeries.get(rj.id) ?? rj.start_date;

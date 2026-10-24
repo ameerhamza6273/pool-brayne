@@ -1,10 +1,4 @@
-// One-time / re-runnable seed script: loads the realistic mock data from src/lib/data.ts into the
-// live Supabase project for a single demo tenant, so the app shows real data once pages are
-// migrated off the mock arrays. Uses the service-role key (bypasses RLS) — never run this against
-// a real customer's production data.
-//
-// Usage: SUPABASE_SERVICE_ROLE_KEY=... VITE_SUPABASE_URL=... npx tsx scripts/seed-supabase.ts
-// (or just `npx tsx scripts/seed-supabase.ts` if .env already has both — this script loads .env itself)
+// One-time / re-runnable seed script: loads the realistic mock data from src/lib/data.ts into the live Supabase project for a single
 
 import { config } from "dotenv";
 import { createClient } from "@supabase/supabase-js";

@@ -37,8 +37,7 @@ const statusColors: Record<string, string> = {
   "Written Off": "bg-[#64748B]/10 text-[#64748B]",
 };
 
-// MM/DD/YYYY, matching the client's previous invoice. Date-only strings are split rather than parsed
-// so a timezone cannot shift the day.
+// MM/DD/YYYY, matching the client's previous invoice. Date-only strings are split rather than parsed so a timezone cannot shift the day.
 const fmtDate = (d?: string | null) => {
   if (!d) return "—";
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
@@ -69,16 +68,13 @@ export default function InvoiceDetail() {
   const [writeOffOpen, setWriteOffOpen] = useState(false);
   const [writeOffReason, setWriteOffReason] = useState("");
   const [writingOff, setWritingOff] = useState(false);
-  // Client video 2026-10-06: "Send via Email" was decorative (no handler). Real now -- emails the
-  // customer a link to the new public invoice/pay page (PublicInvoice.tsx). Fails with a clear
-  // message (not a silent no-op) until the server's SMTP password is configured.
+  // Client video 2026-10-06: "Send via Email" was decorative (no handler).
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendEmailResult, setSendEmailResult] = useState<string | null>(null);
   // Client video 2026-10-23: "Send via Email" opens a ServiceWorks-style Send Invoice popup.
   const [emailOpen, setEmailOpen] = useState(false);
   const docRef = useRef<HTMLDivElement>(null);
-  // 2026-09-25: Documents on invoices -- same section as Jobs / Estimates (upload, attach from Library,
-  // rename, delete). Staff-only: hidden on the printed / PDF invoice.
+  // 2026-09-25: Documents on invoices -- same section as Jobs / Estimates (upload, attach from Library, rename, delete).
   const { tenantId } = useAuth();
   const [documents, setDocuments] = useState<InvoiceAttachment[]>([]);
   const [docsUploading, setDocsUploading] = useState(false);
@@ -162,18 +158,14 @@ export default function InvoiceDetail() {
   // Client sample estimate PDF (2026-09-06): Parts & Materials / Labor as separate subtotal lines.
   const materialsSubtotal = items.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const laborSubtotal = items.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
-  // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
   const taxableSubtotal = items.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const tax = taxableSubtotal * taxRate;
   const total = subtotal + tax;
   const downPayment = invoice.down_payment ?? 0;
   const remainingBalance = total - downPayment;
 
-  // Client doc 2026-10-05 (sample bulk-invoice PDF): a combined invoice shows a full breakdown
-  // PER JOB (that job's own line items, sub-total, tax, job total) instead of one "Breakdown of
-  // Services" for the whole invoice. bulkJobs is only populated for a combined invoice (2+ jobs
-  // contributed real line items); a normal single-job invoice renders exactly as before.
+  // Client doc 2026-10-05 (sample bulk-invoice PDF): a combined invoice shows a full breakdown PER JOB (that job's own line items
   const isBulk = bulkJobs.length > 1;
   const jobBreakdowns = isBulk
     ? bulkJobs.map((bj) => {
@@ -317,9 +309,7 @@ export default function InvoiceDetail() {
                   <TabsTrigger value="check" className="flex-1">{t("Check")}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="card" className="space-y-4 mt-4">
-                  {/* Charges the full invoice total, matching the backend's computeInvoiceTotal
-                      — down_payment is recorded on the invoice but not yet subtracted from what
-                      gets charged here (that would need a separate down-payment-collection flow). */}
+                  {/* Charges the full invoice total, matching the backend's computeInvoiceTotal — down_payment is recorded on the invoice but not yet subtracted */}
                   <CardPaymentForm amount={total} onCharge={(opaqueData) => handleCollectPayment("Card", opaqueData)} />
                 </TabsContent>
                 <TabsContent value="ach" className="space-y-4 mt-4">
@@ -381,9 +371,7 @@ export default function InvoiceDetail() {
       </div>
       {qboError && <div className="text-xs text-red-600 -mt-2 print:hidden">{qboError}</div>}
 
-      {/* Invoice Document — layout mirrors the emailed invoice PDF from the client's previous
-          system (client SMS 2026-09-21): dark header band with Business / Client Details /
-          Billing Address / Service Details boxes, then a Breakdown of Services. */}
+      {/* Invoice Document — layout mirrors the emailed invoice PDF from the client's previous system (client SMS 2026-09-21): dark header band */}
       <SendEmailDialog
         open={emailOpen}
         onOpenChange={setEmailOpen}
@@ -456,9 +444,7 @@ export default function InvoiceDetail() {
           )}
 
           {isBulk ? (
-            // Client doc 2026-10-05 (sample bulk-invoice PDF): one section per combined job --
-            // that job's own line items, then its own Sub total / Tax / Job Total, matching their
-            // old software's combined-invoice layout exactly.
+            // Client doc 2026-10-05 (sample bulk-invoice PDF): one section per combined job -- that job's own line items, then its own
             jobBreakdowns.map(({ job: bj, items: jobItems, tax: jobTax, jobTotal }) => (
               <div key={bj.id} className="rounded-xl border border-[#E2E8F0] bg-white p-4 mb-3">
                 <div className="flex items-center justify-between mb-2">

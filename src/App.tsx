@@ -35,9 +35,7 @@ import ResetPassword from "@/pages/ResetPassword";
 import { Toaster } from "@/components/ui/sonner";
 import { ConfirmProvider } from "@/components/ConfirmDialog";
 
-// Client feedback 2026-09-11: "Allow us to set up permission: Admin / Tech view / Contractor
-// view" -- technician/contractor accounts are restricted to the Field page; every other route
-// (including "/") bounces them there instead of exposing the full admin app.
+// Client feedback 2026-09-11: "Allow us to set up permission: Admin / Tech view / Contractor view" -- technician/contractor accounts are
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading, role, permissions } = useAuth();
   const location = useLocation();

@@ -16,14 +16,7 @@ import { useSort, sortHeader } from "@/components/SortableTh";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { safeFileName } from "@/lib/storage-path";
 
-// Sidebar restructure (client PDF 2026-09-06, "Employee section > Library") — a generic
-// tenant document repository (SOPs, price sheets, training material), reusing the same
-// job-attachments storage bucket under a `library/` sub-path (its RLS only checks the
-// tenant_id path segment, same established pattern as tasks/customer-photos/estimate-docs).
-//
-// Client meeting 2026-09: category + manufacturer need to be dropdowns (not free text) so they
-// match the same vocabulary used in Inventory/POS, and every PDF can be tagged after the fact,
-// not just at upload time.
+// Sidebar restructure (client PDF 2026-09-06, "Employee section > Library") — a generic tenant document repository (SOPs, price sheets, training material)
 export default function Library() {
   const { t } = useLanguage();
   const confirm = useConfirm();
@@ -31,9 +24,7 @@ export default function Library() {
   const readOnly = isFieldOnlyRole(useAuth().role);
   const [documents, setDocuments] = useState<LibraryDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  // Client excel sheet 2026-09-18: Library's category/manufacturer lists are its own fixed
-  // vocabulary now, not shared with Inventory's product taxonomy (see src/lib/data.ts).
-  // Client SMS 2026-09-21: these two lists are now DB-backed so they can be imported/exported as CSV.
+  // Client excel sheet 2026-09-18: Library's category/manufacturer lists are its own fixed vocabulary now, not shared with Inventory's product taxonomy (see
   const { lists: configLists } = useConfigLists();
   const categories = configLists.library_categories.map((i) => i.label);
   const manufacturers = configLists.library_manufacturers.map((i) => i.label);
@@ -94,11 +85,7 @@ export default function Library() {
     load();
   };
 
-  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "NO CATEGORY / NO MANUFACTURER -- not
-  // filtering properly". Those two dropdowns at the top were the *upload* tags, never filters; the
-  // real filters had no way to find untagged documents, and tags on a document that aren't in the
-  // configured list couldn't be picked at all. Filters now include "No category"/"No manufacturer"
-  // ("__none__") plus every value actually used, and the upload tags are labelled as such.
+  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "NO CATEGORY / NO MANUFACTURER -- not filtering properly".
   const NONE = "__none__";
   const categoryOptions = [...new Set([...categories, ...documents.map((d) => d.category).filter((c): c is string => !!c)])].sort((a, b) => a.localeCompare(b));
   const manufacturerOptions = [...new Set([...manufacturers, ...documents.map((d) => d.manufacturer).filter((m): m is string => !!m)])].sort((a, b) => a.localeCompare(b));

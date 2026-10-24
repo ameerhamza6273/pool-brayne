@@ -48,8 +48,7 @@ type Job = Database["public"]["Tables"]["jobs"]["Row"] & {
   profiles: { name: string; avatar: string | null } | null;
 };
 
-// Client doc 2026-10-05: Booked -> Scheduled, Dispatched -> En Route (display only; `id` stays
-// the real stage key, see jobStatusDisplayLabel in lib/data.ts for why the stored value doesn't change).
+// Client doc 2026-10-05: Booked -> Scheduled, Dispatched -> En Route (display only; `id` stays the real stage key, see jobStatusDisplayLabel
 const stages = [
   { id: "lead", label: "Lead", color: "bg-[#F59E0B]/10 border-t-[#F59E0B]" },
   { id: "booked", label: "Scheduled", color: "bg-[#0891B2]/10 border-t-[#0891B2]" },
@@ -64,9 +63,7 @@ const typeStyle = (label: string, jobTypes: ConfigListItem[]): React.CSSProperti
   return { backgroundColor: `${color}1A`, color };
 };
 
-// Client SMS 2026-09-21: "make the center of the map 2900 Holcomb Bridge Rd, Alpharetta GA 30022" (it was
-// starting in Austin, TX). Street-level point on Holcomb Bridge Rd from OpenStreetMap; the view then
-// re-fits to the day's pins once they load.
+// Client SMS 2026-09-21: "make the center of the map 2900 Holcomb Bridge Rd, Alpharetta GA 30022" (it was starting in
 const DEFAULT_MAP_CENTER: [number, number] = [33.988, -84.2754];
 
 // Stop order on the map / route list: timed jobs by time, then untimed ones by customer name.
@@ -83,7 +80,6 @@ const orderStops = (list: Job[]) =>
 const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // Numbered round pin in the tech's color (client wants numbered stops like their old software).
-// Unassigned jobs get a plain gray dot; approximate locations are dashed + slightly faded.
 const stopIcon = (label: string, color: string, approx: boolean) =>
   L.divIcon({
     className: "",
@@ -106,17 +102,11 @@ export default function Jobs() {
     const tab = searchParams.get("tab");
     if (tab === "pipeline" || tab === "dispatch" || tab === "schedule" || tab === "map") setActiveTab(tab);
   }, [searchParams]);
-  // Local (not UTC) YYYY-MM-DD -- toISOString() re-serializes in UTC, which silently rolls the
-  // date back a day in any timezone ahead of UTC once local midnight has passed. Same class of
-  // bug as the 2026-09-25 Timesheets/POS "local day" fix.
+  // Local (not UTC) YYYY-MM-DD -- toISOString() re-serializes in UTC, which silently rolls the date back a day in any timezone
   const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const [search, setSearch] = useState("");
   const [techFilter, setTechFilterState] = useState("all");
-  // Client SMS 2026-09-25: Technician defaults to whoever signs in, and the date range to today (with quick
-  // Today / Week / Month buttons). These automatic defaults are only used where they make sense -- the
-  // Schedule keeps its own employee panel + calendar navigation, the Dispatch board still shows every tech's
-  // column, and the Map has its own date -- until someone changes the filter by hand, which then applies everywhere
-  // like before. The default "today" range never hides unscheduled jobs (leads have no date yet).
+  // Client SMS 2026-09-25: Technician defaults to whoever signs in, and the date range to today (with quick Today / Week
   const { profileId } = useAuth();
   const [techTouched, setTechTouched] = useState(false);
   const [dateTouched, setDateTouched] = useState(false);
@@ -132,8 +122,7 @@ export default function Jobs() {
   const [quickView, setQuickView] = useState<{ kind: "task" | "estimate" | "job"; id: string } | null>(null);
   const [quickJobPhotos, setQuickJobPhotos] = useState<{ id: string; url: string }[] | null>(null);
   const [quickLines, setQuickLines] = useState<EstimateLineItem[] | null>(null);
-  // Client PDF 2026-09-05: "+New Recurring" next to "+New Job" -- real recurring-job schedule
-  // replacing the old read-only, never-linked-to-real-jobs recurring_routes display.
+  // Client PDF 2026-09-05: "+New Recurring" next to "+New Job" -- real recurring-job schedule replacing the old read-only, never-linked-to-real-jobs recurring_routes display.
   const [recurringJobs, setRecurringJobs] = useState<RecurringJob[]>([]);
   const [newRecurringOpen, setNewRecurringOpen] = useState(false);
   const [newRecurring, setNewRecurring] = useState({
@@ -142,8 +131,7 @@ export default function Jobs() {
     startDate: localKey(new Date()), endDate: "",
     nextJobNotes: "", selectedFormIds: [] as string[], startTime: "",
   });
-  // Client SMS 2026-09-21: Recurring Jobs list gets a grid (table) view by default + a search field
-  // (customer, technician, day of the week, job type); Search row gets a date range.
+  // Client SMS 2026-09-21: Recurring Jobs list gets a grid (table) view by default + a search field (customer, technician, day
   const [recSearch, setRecSearch] = useState("");
   const [recView, setRecView] = useViewMode("recurring-jobs");
   const [dateFrom, setDateFromState] = useState(() => localKey(new Date()));
@@ -166,25 +154,13 @@ export default function Jobs() {
   const [oneTimeTarget, setOneTimeTarget] = useState<RecurringJob | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newJob, setNewJob] = useState({ customerId: "", jobType: "", date: "", time: "", techId: "", description: "", amount: "", selectedFormIds: [] as string[] });
-  // Client PDF 2026-09-18: "allow us to select the forms needed for the job. Not automatically
-  // [applied] to each job" -- staff pick per-job now instead of the set being purely derived from
-  // job type; templates whose Applies-To/Required setting (Form Builder) matches are pre-checked
-  // as a starting point, but every checkbox is togglable.
+  // Client PDF 2026-09-18: "allow us to select the forms needed for the job.
   const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
-  // Client bug report 2026-09-04: "dynamic search or autofill for SKUs... ability to add
-  // multiple line items" — New Job's old Item SKU/Labor SKU text fields weren't wired to
-  // inventory at all. Same LineItemsEditor + inventory search as Estimates/Invoices now.
+  // Client bug report 2026-09-04: "dynamic search or autofill for SKUs...
   const [newJobLineItems, setNewJobLineItems] = useState<DraftLineItem[]>([]);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [mapDate, setMapDate] = useState(() => localKey(new Date()));
-  // Client video 2026-09-30: "I go to Dispatch, see plenty of jobs lined up on the 28th... I go
-  // to Map view... zero jobs... I go to the date range on the 28th and it still shows zero."
-  // Map only ever shows one day (`mapDate`, moved with its own </> arrows) and never followed the
-  // page's shared date-range filter at all -- so editing the top date range (the one prominent
-  // control that looks like it drives every tab) silently did nothing to Map, and the tech had no
-  // way to know Map was still sitting on a completely different, unrelated day. Now the top
-  // range's start date always drives Map's day too; Map's own </> arrows still work for browsing
-  // day by day from there without touching the top filter.
+  // Client video 2026-09-30: "I go to Dispatch, see plenty of jobs lined up on the 28th...
   useEffect(() => {
     setMapDate(dateFrom);
   }, [dateFrom]);
@@ -199,10 +175,7 @@ export default function Jobs() {
   const mapRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const navigate = useNavigate();
-  // Client video 2026-10-05: "give us the opportunity to click this and deselect a person... so we
-  // don't get cluttered" -- click a technician in the Map's "Daily Route by Technician" legend to
-  // hide/show just their pins+route, without touching the top Technician filter (which would also
-  // hide them from Dispatch/Schedule). "" = the Unassigned group.
+  // Client video 2026-10-05: "give us the opportunity to click this and deselect a person...
   const [hiddenMapTechIds, setHiddenMapTechIds] = useState<Set<string>>(new Set());
   const toggleMapTech = (id: string) => {
     setHiddenMapTechIds((prev) => {
@@ -240,8 +213,7 @@ export default function Jobs() {
     }));
   };
 
-  // Pre-check templates Form Builder already marks as applying to this job type (or "any") and
-  // required -- staff can still uncheck them, this just saves re-picking the obvious ones.
+  // Pre-check templates Form Builder already marks as applying to this job type (or "any") and required -- staff can still
   const handleNewJobTypeChange = (jobType: string) => {
     const suggested = formTemplates.filter((tpl) => tpl.required && (tpl.applies_to === jobType || tpl.applies_to === null)).map((tpl) => tpl.id);
     setNewJob((p) => ({ ...p, jobType, selectedFormIds: Array.from(new Set([...suggested, ...p.selectedFormIds])) }));
@@ -299,8 +271,7 @@ export default function Jobs() {
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
   };
 
-  // Client SMS 2026-09-08: "Jobs and dispatch... should be able to drag and drop. It should
-  // work. But it's not active" -- native HTML5 drag/drop, no library needed.
+  // Client SMS 2026-09-08: "Jobs and dispatch...
   const [dragOverTechId, setDragOverTechId] = useState<string | null>(null);
 
   const assignTech = async (jobId: string, techId: string) => {
@@ -308,9 +279,7 @@ export default function Jobs() {
     loadJobs();
   };
 
-  // Client meeting 2026-09-14: "you need to make that drag and drop like we have on the full
-  // schedule" -- the Pipeline board's stage columns, same native drag/drop pattern as the
-  // Dispatch Board (assignTech, above) and Schedule tab.
+  // Client meeting 2026-09-14: "you need to make that drag and drop like we have on the full schedule" -- the
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const stageStatusLabels: Record<string, string> = {
     lead: "Lead", booked: "Booked", dispatched: "Dispatched", in_progress: "In Progress", completed: "Completed",
@@ -320,22 +289,14 @@ export default function Jobs() {
     loadJobs();
   };
 
-  // Bug found 2026-09-29: this used `d.toISOString().slice(0, 10)`, which re-serializes in UTC --
-  // in a timezone ahead of UTC (this client's is, e.g. UTC+5), that silently rolls the date back
-  // one more day on top of the intended shift, so "previous day" jumped back 2 and "next day" did
-  // nothing (the extra -1 canceled the +1). Same class of bug as the 2026-09-25 Timesheets/POS
-  // "local day" fix -- reuse `localKey` (local getters all the way through) instead of toISOString().
+  // Bug found 2026-09-29: this used `d.toISOString().slice(0, 10)`, which re-serializes in UTC -- in a timezone ahead of UTC (this client's
   const shiftMapDate = (days: number) => {
     const d = new Date(mapDate + "T00:00:00");
     d.setDate(d.getDate() + days);
     setMapDate(localKey(d));
   };
 
-  // Schedule view state (month/week/day, employee filters) lives in ScheduleCalendar; these are
-  // just the job-mutating callbacks it needs.
-  // time is only passed when dropped onto a specific hour slot (week/day view); a month-view drop
-  // moves the day and keeps the job's existing time.
-  // techId (day view's employee columns): undefined leaves the tech alone, null unassigns, a string reassigns.
+  // Schedule view state (month/week/day, employee filters) lives in ScheduleCalendar; these are just the job-mutating callbacks it needs.
   const handleRescheduleDrop = async (jobId: string, dateKey: string, time?: string, techId?: string | null) => {
     await jobsApi.update(jobId, {
       scheduled_date: dateKey,
@@ -355,8 +316,7 @@ export default function Jobs() {
     setNewJobOpen(true);
   };
 
-  // Recurring Jobs card actions -- backend already supported update/delete, only the UI to
-  // reach them was missing.
+  // Recurring Jobs card actions -- backend already supported update/delete, only the UI to reach them was missing.
   const [editRecurring, setEditRecurring] = useState<RecurringJob | null>(null);
   const [editRecurringDraft, setEditRecurringDraft] = useState({ techId: "", amount: "", endDate: "", techNotes: "", nextJobNotes: "", selectedFormIds: [] as string[], startTime: "" });
 
@@ -389,7 +349,7 @@ export default function Jobs() {
     recurringJobsApi.list().then((data) => setRecurringJobs(data ?? []));
   };
 
-  // Client SMS 2026-09-21: "a way to convert a job to a recurring job or vice versa" (this is the vice versa).
+  // Client SMS 2026-09-21: "a way to convert a job to a recurring job or vice versa" (this is the vice
   const handleMakeOneTime = async () => {
     if (!oneTimeTarget) return;
     await recurringJobsApi.makeOneTime(oneTimeTarget.id);
@@ -433,9 +393,7 @@ export default function Jobs() {
     invoicingApi.estimateDetail(quickView.id).then((d) => setQuickLines(d.lineItems ?? [])).catch(() => setQuickLines([]));
   }, [quickView]);
 
-  // Client video 2026-09-29: "when I click task here it shows the pictures too... not doing that
-  // on this one" -- a job's quick view now shows the customer's saved reference photos (pool,
-  // equipment pad) the same way the task quick view already shows its own photos.
+  // Client video 2026-09-29: "when I click task here it shows the pictures too...
   useEffect(() => {
     setQuickJobPhotos(null);
     if (quickView?.kind !== "job") return;
@@ -469,12 +427,7 @@ export default function Jobs() {
   const recurringSort = useSort(recurringFiltered, (rj, key) => key === "customer" ? rj.customers?.name : key === "tech" ? rj.profiles?.name : key === "active" ? (rj.active ? 1 : 0) : (rj as unknown as Record<string, string | number | null>)[key]);
   const typeColors = Object.fromEntries(configLists.job_types.map((jt) => [jt.label, jt.color ?? unassignedColor]));
 
-  // Client SMS 2026-09-30 ("Maps still not working"): Map only ever plotted real `jobs` table rows,
-  // never a recurring series' projected occurrence for the day -- the same gap Schedule already
-  // covers (see ScheduleCalendar's `ghosts`, same idea, duplicated here since Map computes its own
-  // single-day job list). On a day where a due weekly maintenance visit is still just a projection
-  // (the prior occurrence hasn't been marked Completed yet, so the server hasn't generated the next
-  // real row), Map silently showed 0/0 while Schedule/Dispatch showed a full day of stops.
+  // Client SMS 2026-09-30 ("Maps still not working"): Map only ever plotted real `jobs` table rows, never a recurring series' projected
   const customerById = new Map(customers.map((c) => [c.id, c]));
   const mapGhostJobs: Job[] = recurringJobs
     .filter((rj) => rj.active && passesRecurringFilters(rj))
@@ -495,9 +448,7 @@ export default function Jobs() {
     });
   const mapJobs = [...jobs.filter((j) => j.scheduled_date === mapDate && passesTopFilters(j)), ...mapGhostJobs];
 
-  // Jobs map view (client request 2026-08-27): plot the selected day's jobs on a free
-  // OpenStreetMap/Leaflet map (no Google Maps billing account available), color-coded by tech —
-  // also doubles as the "daily route view" request via the per-tech stop list beside it.
+  // Jobs map view (client request 2026-08-27): plot the selected day's jobs on a free OpenStreetMap/Leaflet map (no Google Maps billing
   useEffect(() => {
     if (activeTab !== "map" || !mapContainerRef.current) return;
     if (!mapRef.current) {
@@ -514,15 +465,11 @@ export default function Jobs() {
     };
   }, [activeTab]);
 
-  // Ids of the day's (filtered) jobs -- the effects below re-run when the set changes, including when the
-  // Search / Technician / Job Type filters do.
+  // Ids of the day's (filtered) jobs -- the effects below re-run when the set changes, including when the Search /
   const mapJobsKey = mapJobs.map((j) => j.id).join(",");
   const mapIdle = mapProgress === null;
 
   // 1) Locate every job. Client SMS 2026-09-21: "not all addresses are shown on the map" -- the old code only
-  // tried job.address (often empty) and dropped a job silently if that one lookup failed. Now: the customer's
-  // saved coordinates -> the job's address, else the customer's address -> if the street address can't be
-  // found, an approximate city/zip location (flagged) -> only then "location not found" in the list.
   useEffect(() => {
     if (activeTab !== "map") return;
     let cancelled = false;
@@ -563,8 +510,7 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, mapJobsKey]);
 
-  // 2) Draw: one numbered pin per located job, and per technician a line joining their stops in order
-  // (straight first, swapped for the real road route when the routing service answers).
+  // 2) Draw: one numbered pin per located job, and per technician a line joining their stops in order (straight first
   useEffect(() => {
     if (activeTab !== "map" || !mapRef.current || !markersLayerRef.current) return;
     const layer = markersLayerRef.current;
@@ -602,8 +548,7 @@ export default function Jobs() {
       }
     });
 
-    // Fit the view once when the first pin lands and again when every address has been looked up
-    // (not on every progressive update, which would fight the user panning).
+    // Fit the view once when the first pin lands and again when every address has been looked up (not on
     const fit = fitStateRef.current;
     const key = `${mapDate}|${mapJobsKey}`;
     if (fit.key !== key) { fit.key = key; fit.started = false; fit.done = false; }
@@ -615,10 +560,7 @@ export default function Jobs() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, stopCoords, mapJobsKey, mapIdle, mapDate, hiddenMapTechIds]);
 
-  // Client video 2026-10-18 (Map): "is there a way to just click here and then drag to the bottom?"
-  // -- the stop list was click-to-open only, and a projected stop (no real job yet) opened "Job not
-  // found". Projected stops now open their series, and each tech gets the same Route order dialog
-  // the Schedule's day view has.
+  // Client video 2026-10-18 (Map): "is there a way to just click here and then drag to the bottom?" -- the
   const openMapStop = (s: Job) => {
     if (s.id.startsWith("rec:")) {
       const rj = recurringJobs.find((r) => r.id === s.id.split(":")[1]);
@@ -644,8 +586,7 @@ export default function Jobs() {
   const jobTypeFilterOptions = Array.from(new Set([...configLists.job_types.map((jt) => jt.label), ...jobs.map((j) => j.type)])).filter(Boolean);
   const filteredJobs = jobs.filter(passesTopFilters);
 
-  // Tasks + open estimates for the Schedule, narrowed by the same top Search / Technician / date filters
-  // (a Job Type filter hides them -- they aren't jobs).
+  // Tasks + open estimates for the Schedule, narrowed by the same top Search / Technician / date filters (a Job
   const inDateRange = (d: string) => (!effFrom || d >= effFrom) && (!effTo || d <= effTo);
   const scheduleExtras: ScheduleJob[] = typeFilter !== "all" ? [] : [
     ...scheduleEstimates
@@ -663,7 +604,7 @@ export default function Jobs() {
       .filter((k) => effTech === "all" || (effTech === "unassigned" ? !k.tech_id : k.tech_id === effTech))
       .filter((k) => matchesQuery(search, [k.customers?.name, k.type, k.notes, k.address, k.profiles?.name]))
       .flatMap((k) => {
-        // A task with a date range shows on every day of it (capped so a typo'd end date can't flood the calendar).
+        // A task with a date range shows on every day of it (capped so a typo'd end date can't flood
         const start = (k.start_date ?? k.end_date) as string;
         const end = k.end_date && k.end_date >= start ? k.end_date : start;
         const days: string[] = [];
@@ -864,8 +805,7 @@ export default function Jobs() {
                   <Input className="mt-1" value={newRecurring.description} onChange={(e) => setNewRecurring((p) => ({ ...p, description: e.target.value }))} />
                 </div>
                 <div>
-                  {/* Client PDF 2026-09-05: "Able to show notes for all recurring jobs moving
-                      forward" -- carried onto every generated occurrence, tech-only. */}
+                  {/* Client PDF 2026-09-05: "Able to show notes for all recurring jobs moving forward" -- carried onto every generated occurrence, tech-only. */}
                   <Label>{t("Tech-Only Notes (carries to every occurrence)")}</Label>
                   <Input className="mt-1" value={newRecurring.techNotes} onChange={(e) => setNewRecurring((p) => ({ ...p, techNotes: e.target.value }))} />
                 </div>
@@ -975,8 +915,7 @@ export default function Jobs() {
       </div>
 
       {/* Search */}
-      {/* Live QA 2026-09-25: one tidy row that wraps cleanly instead of squeezing -- date range and the
-          Today / Week / Month presets are a single grouped control, the active preset highlighted. */}
+      {/* Live QA 2026-09-25: one tidy row that wraps cleanly instead of squeezing -- date range and the Today / Week */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative w-full sm:w-auto sm:flex-1 sm:min-w-[220px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
@@ -995,10 +934,7 @@ export default function Jobs() {
             {technicians.map((tech) => <SelectItem key={tech.id} value={tech.id}>{tech.name}</SelectItem>)}
           </SelectContent>
         </Select>
-        {/* Client video 2026-10-05: "always have it present here so we can toggle back and forth"
-            -- Admin View resets Technician + Job Type to All (matching the video: "revert
-            everything back to all technicians and all job types"); Tech View goes back to this
-            login's own jobs, same default this page already starts on. */}
+        {/* Client video 2026-10-05: "always have it present here so we can toggle back and forth" -- Admin View resets Technician */}
         {profileId && (
           <div className="flex h-10 rounded-md border border-[#E2E8F0] bg-white overflow-hidden text-xs font-medium">
             <button
@@ -1044,8 +980,7 @@ export default function Jobs() {
           })}
         </div>
       </div>
-      {/* The automatic "my jobs, today" default can leave the board empty (e.g. the owner has no jobs today) --
-          say what's being shown and offer one click to see everyone, so it never looks broken. */}
+      {/* The automatic "my jobs, today" default can leave the board empty (e.g. */}
       {(activeTab === "pipeline" || activeTab === "map") && !techTouched && techFilter !== "all" && (
         <div className="flex flex-wrap items-center gap-2 -mt-2 text-xs text-[#64748B]">
           <span>
@@ -1195,11 +1130,7 @@ export default function Jobs() {
                         <p className="font-medium text-sm text-[#0F172A]">{tech.name}</p>
                         <Badge className={`${statusColors[tech.status] || ""} text-[10px] px-1.5 py-0`}>{tech.status}</Badge>
                       </div>
-                      {/* Client video 2026-10-05: "we're not able to drag and drop jobs and move
-                          them on different orders" on this tab -- Dispatch Board only ever shows a
-                          job count per tech, never an orderable list (that's Schedule > day view's
-                          Route order dialog, with its own drag + Permanent/Temporary prompt). Links
-                          straight there instead of duplicating that whole feature here. */}
+                      {/* Client video 2026-10-05: "we're not able to drag and drop jobs and move them on different orders" on this tab */}
                       <button className="text-xs text-[#0891B2] hover:underline" onClick={() => setActiveTab("schedule")}>
                         {jobs.filter((j) => j.tech_id === tech.id).length} {t("jobs today")} — {t("reorder in Schedule")}
                       </button>
@@ -1218,8 +1149,7 @@ export default function Jobs() {
       {/* Schedule View */}
       {activeTab === "schedule" && (
         <div className="space-y-4">
-          {/* Client SMS 2026-09-09: real add/delete/change/drag-and-drop schedule. Client SMS 2026-09-21:
-              month/week/day views + an employee panel to show/hide individual people. */}
+          {/* Client SMS 2026-09-09: real add/delete/change/drag-and-drop schedule. Client SMS 2026-09-21: month/week/day views + an employee panel to show/hide individual people. */}
           <ScheduleCalendar
             jobs={filteredJobs}
             technicians={technicians}
@@ -1308,10 +1238,7 @@ export default function Jobs() {
                     <div className="flex justify-between gap-3"><span className="text-[#64748B]">{t("Scheduled")}</span><span>{quickJob.scheduled_date ?? "—"}{quickJob.scheduled_time ? ` · ${quickJob.scheduled_time}` : ""}</span></div>
                     {quickJob.description && <p className="rounded-lg bg-[#F8FAFC] p-2.5 whitespace-pre-wrap">{quickJob.description}</p>}
                     <div>
-                      {/* Client doc 2026-10-05: "automatically uploads customer photos" on a job that
-                          had none uploaded -- these are the customer's existing saved reference
-                          photos (property-level, same ones on their Customer page), not anything
-                          added to this job. Label made explicit so that reads as "on file", not "uploaded". */}
+                      {/* Client doc 2026-10-05: "automatically uploads customer photos" on a job that had none uploaded -- these are the customer's existing */}
                       <p className="text-xs font-medium text-[#64748B] mb-1">{t("Customer's Photos on File (not uploaded to this job)")}</p>
                       {quickJobPhotos === null ? (
                         <p className="text-xs text-[#64748B]">{t("Loading...")}</p>
@@ -1333,11 +1260,7 @@ export default function Jobs() {
             </DialogContent>
           </Dialog>
 
-          {/* Recurring Jobs -- client PDF 2026-09-05: real schedule, not the old read-only
-              "Recurring Routes" (never linked to actual jobs). Each generates a real job
-              occurrence and rolls forward automatically as the current one completes.
-              Client SMS 2026-09-09: "recurring fields, full functionality" -- pause/resume,
-              edit, and delete a series (backend already supported this, UI didn't expose it). */}
+          {/* Recurring Jobs -- client PDF 2026-09-05: real schedule, not the old read-only "Recurring Routes" (never linked to actual jobs). */}
           <div className="bg-white rounded-xl border border-[#E2E8F0] shadow-sm p-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
               <h3 className="font-semibold text-[#0F172A]">{t("Recurring Jobs")}</h3>

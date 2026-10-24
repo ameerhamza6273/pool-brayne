@@ -2,16 +2,15 @@ import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 import { withQuickbooksConnection, getChartOfAccounts } from "../lib/quickbooks.js";
 import { nextDocNumber, peekNextDocNumber } from "../lib/numbering.js";
-import { cleanEmailList, invalidEmails } from "../lib/documentEmail.js";
+import { cleanEmailList, invalidEmails, purchaseOrderEmailHtml } from "../lib/documentEmail.js";
+import { resolveRecipients, sendMailOrFail, pdfAttachment, type SendDocumentBody } from "./invoicing.js";
+import { isMailerConfigured } from "../lib/mailer.js";
 
 type Location = { id: string; type: string };
 type Stock = { item_id: string; location_id: string; quantity: number };
 type Item = { id: string; reorder_threshold: number; name?: string; category?: string; is_inventory?: boolean };
 
-// Labor/service SKUs (client's 67 "service-N" SKUs, category "Labor"; older demo items use
-// "Services") aren't stocked, so they must never show as Out/Low or land on the reorder list.
-// Client screenshots 2026-10-06: generalized to a real per-item `is_inventory` flag (ServiceWorks'
-// "Inventory Type: Inventory / Non-Inventory") instead of only those two hardcoded category names.
+// Labor/service SKUs (client's 67 "service-N" SKUs, category "Labor"; older demo items use "Services") aren't stocked, so they must never show
 const isNonStock = (item: Item) => item.is_inventory === false || item.category === "Labor" || item.category === "Services";
 
 export default async function inventoryRoutes(app: FastifyInstance) {
@@ -106,8 +105,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client request 2026-08-28: Price (customer-facing) needs to be editable separately from
-  // Cost (internal-only) after an item has already been created.
+  // Client request 2026-08-28: Price (customer-facing) needs to be editable separately from Cost (internal-only) after an item has already been created.
   app.patch<{ Params: { id: string }; Body: { unitCost: number; price: number | null } }>("/items/:id/pricing", async (req) => {
     const { id } = req.params;
     const { unitCost, price } = req.body;
@@ -116,10 +114,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client request 2026-09-04: editing a product only ever let you change Cost/Price -- every
-  // other field (name, SKU, category, descriptions, department, manufacturer, barcode,
-  // distributor, unit, taxable) had no edit path once the item was created. Full-record edit,
-  // same field set as "Add Product" plus the extra fields real imported items actually carry.
+  // Client request 2026-09-04: editing a product only ever let you change Cost/Price -- every other field (name, SKU, category, descriptions
   app.patch<{
     Params: { id: string };
     Body: {
@@ -169,11 +164,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
         returning *
       `;
 
-      // Client request 2026-09-04: "if stock runs out, be able to mark it Out; if it's back, mark
-      // it In Stock" from the same edit screen — status is computed live from real quantity
-      // everywhere else in the app (Catalog, Dashboard, POS, notifications), so the honest way to
-      // do this is to let the edit set the actual on-hand Store quantity, not a separate flag
-      // that could disagree with it.
+      // Client request 2026-09-04: "if stock runs out, be able to mark it Out; if it's back, mark it In Stock"
       if (storeQuantity !== null && storeQuantity !== undefined) {
         const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;
         if (store) {
@@ -192,8 +183,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  // Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list") — distinct
-  // manufacturers already recorded on inventory_items, with an item count each.
+  // Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list") — distinct manufacturers already recorded on inventory_items, with an item count
   app.get("/manufacturers", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
       select manufacturer, count(*)::int as item_count
@@ -243,12 +233,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     },
   );
 
-  // Client PDF 2026-09-05: "Vendor list (with addresses, contact names, phone numbers — some
-  // vendors have multiple locations we put from)". A supplier is the vendor identity; each
-  // location is a separate address/contact a PO can be placed from.
-  // Client SMS 2026-09-23: delete button on inventory SKUs (behind a "this is permanent" confirm).
-  // Stock rows cascade and past POS sales keep their line description (item_id set null), but a SKU
-  // that was used as a part on a job (FK restrict) or written off is refused, so no history is lost.
+  // Client PDF 2026-09-05: "Vendor list (with addresses, contact names, phone numbers — some vendors have multiple locations we put from)".
   app.delete<{ Params: { id: string } }>("/items/:id", async (req, reply) => {
     const { id } = req.params;
     return withTenantContext(req.userId, async (tx) => {
@@ -269,9 +254,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client SMS 2026-09-09: "able to edit and delete vendors from list" — cascades to that
-  // vendor's locations and vendor bills (schema-level on-delete-cascade), and clears
-  // purchase_orders.supplier_id (on-delete-set-null) rather than deleting past POs.
+  // Client SMS 2026-09-09: "able to edit and delete vendors from list" — cascades to that vendor's locations and vendor bills
   app.delete<{ Params: { id: string } }>("/suppliers/:id", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`delete from suppliers where id = ${id}`);
@@ -282,10 +265,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`select * from supplier_locations where supplier_id = ${id} order by label`);
   });
 
-  // Client video 2026-10-15: "we need to have a set of emails on here as a group... primarily we
-  // do pool builder supply as a default... if we need a change, the ability to change the email
-  // from our selected list" -- email + a single default flag added to the existing
-  // "named contacts under one vendor" concept (label/contact_name/phone, built 2026-09-05).
+  // Client video 2026-10-15: "we need to have a set of emails on here as a group...
   app.post<{ Params: { id: string }; Body: { label: string; address: string | null; contactName: string | null; phone: string | null; email: string | null; isDefault?: boolean } }>(
     "/suppliers/:id/locations",
     async (req) => {
@@ -335,9 +315,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`delete from supplier_locations where id = ${locationId}`);
   });
 
-  // Sidebar restructure / inventory: cascading category picker seeded from the client's own
-  // configuration_categories.xlsx (351 rows). Reference data for the Add/Edit Product dialog,
-  // not a per-tenant CRUD surface.
+  // Sidebar restructure / inventory: cascading category picker seeded from the client's own configuration_categories.xlsx (351 rows).
   app.get("/category-taxonomy", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`select * from category_taxonomy order by category, subcategory, sub_subcategory, sub_sub_subcategory`);
   });
@@ -357,9 +335,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage — deducts
-  // store stock the same way a POS sale or job-parts-used does (allowed to go negative, same as
-  // POS, since a write-off can be recording shrinkage discovered after the fact).
+  // Client request 2026-09-02: write off SKUs for store use / truck use / shrinkage — deducts store stock the same
   app.get("/writeoffs", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`
       select w.*, jsonb_build_object('name', ii.name, 'sku', ii.sku) as inventory_items
@@ -394,9 +370,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
 
   type PoLineItemInput = { description: string; sku: string | null; quantity: number; unitCost: number };
 
-  // Client SMS 2026-10-16: "when creating a po to a vendor allow us to change it if we need to" --
-  // the New PO dialog shows this as a prefilled, editable suggestion. Peek-only, doesn't reserve
-  // the number (see numbering.ts).
+  // Client SMS 2026-10-16: "when creating a po to a vendor allow us to change it if we need to"
   app.get("/purchase-orders/next-number", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
@@ -404,13 +378,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  // QA sweep 2026-09-30: the PO number used to be guessed client-side from the locally-loaded
-  // list's length (Inventory.tsx) -- it drifts from reality (deletions, concurrent staff, a
-  // filtered view) and produced two unrelated real POs both named "PO-20260914-001". The server is
-  // the source of truth, now via the shared per-tenant sequence (numbering.ts) -- format "PO-0001"
-  // (client SMS 2026-10-16: "numbers only", no date embedded). A client-supplied `number` (the
-  // editable suggestion above, possibly hand-changed) is used as-is; on a unique-constraint
-  // conflict it falls back to a freshly-generated number instead of failing the create outright.
+  // QA sweep 2026-09-30: the PO number used to be guessed client-side from the locally-loaded list's length (Inventory.tsx) -- it drifts
   app.post<{ Body: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string; number?: string } }>("/purchase-orders", async (req) => {
     const { supplierId, locationId, lineItems, paymentTerms } = req.body;
     return withTenantContext(req.userId, async (tx) => {
@@ -462,9 +430,7 @@ export default async function inventoryRoutes(app: FastifyInstance) {
         returning *
       `;
 
-      // Client PDF 2026-09-15: "Ability to receive PO to 'put in inventory'" -- marking a PO
-      // Received used to only flip the status label; it now actually adds the ordered quantities
-      // into store stock (matched by SKU, since PO line items don't carry an item_id).
+      // Client PDF 2026-09-15: "Ability to receive PO to 'put in inventory'" -- marking a PO Received used to only flip
       if (status === "Received" && existing?.status !== "Received") {
         const [tenant] = await tx`select current_tenant_id() as id`;
         const [store] = await tx`select id from inventory_locations where type = 'store' limit 1` as unknown as { id: string }[];
@@ -492,9 +458,48 @@ export default async function inventoryRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client feedback 2026-09-11: "I cannot add any products" -- product line items for a PO,
-  // mirroring the job_line_items / estimate_line_items replace-all pattern. Recomputes the
-  // parent PO's item_count/total from the saved lines so the list/detail totals stay honest.
+  // Client feedback 2026-09-11: "I cannot add any products" -- product line items for a PO, mirroring the job_line_items / estimate_line_items
+  app.post<{ Params: { id: string }; Body: SendDocumentBody }>("/purchase-orders/:id/send-email", { bodyLimit: 25 * 1024 * 1024 }, async (req, reply) => {
+    if (!isMailerConfigured()) return reply.code(503).send({ error: "Email isn't set up yet." });
+    const { id } = req.params;
+    const body = req.body ?? {};
+    return withTenantContext(req.userId, async (tx) => {
+      const [po] = (await tx`
+        select po.number, po.order_date, po.payment_terms, po.total, s.name as vendor_name, coalesce(s.emails, '{}') as vendor_emails,
+          coalesce(t.invoice_business_name, t.name) as business_name, t.phone as business_phone, t.logo_url
+        from purchase_orders po left join suppliers s on s.id = po.supplier_id join tenants t on t.id = po.tenant_id
+        where po.id = ${id} limit 1
+      `) as unknown as { number: string; order_date: string | null; payment_terms: string | null; total: number | string; vendor_name: string | null; vendor_emails: string[]; business_name: string; business_phone: string | null; logo_url: string | null }[];
+      if (!po) return reply.code(404).send({ error: "Purchase order not found" });
+      const to = cleanEmailList(body.to);
+      const recipients = resolveRecipients({ ...body, to: to.length ? to : po.vendor_emails }, null);
+      if ("error" in recipients) return reply.code(400).send({ error: recipients.error });
+      const lines = (await tx`select description, sku, quantity, unit_cost from purchase_order_line_items where po_id = ${id} order by description`) as unknown as { description: string; sku: string | null; quantity: number | string; unit_cost: number | string }[];
+      const attachments = pdfAttachment(body, `PO-${po.number}.pdf`);
+      await sendMailOrFail({
+        to: recipients.to,
+        cc: recipients.cc,
+        subject: body.subject?.trim() || `Purchase Order ${po.number} from ${po.business_name}`,
+        html: purchaseOrderEmailHtml({
+          logoUrl: po.logo_url,
+          businessName: po.business_name,
+          businessPhone: po.business_phone,
+          vendorName: po.vendor_name ?? "there",
+          message: body.message ?? "Please see our purchase order below.",
+          number: po.number,
+          orderDate: po.order_date,
+          paymentTerms: po.payment_terms,
+          lines: lines.map((l) => ({ description: l.description, sku: l.sku, quantity: Number(l.quantity), unitCost: Number(l.unit_cost) })),
+          total: Number(po.total),
+          pdfAttached: attachments.length > 0,
+        }),
+        attachments,
+      });
+      await tx`update purchase_orders set status = 'Sent - Email' where id = ${id} and status in ('Pending', 'Draft')`;
+      return { sent: true, to: recipients.to, cc: recipients.cc };
+    });
+  });
+
   app.get<{ Params: { id: string } }>("/purchase-orders/:id/line-items", async (req) => {
     const { id } = req.params;
     return withTenantContext(req.userId, (tx) => tx`select * from purchase_order_line_items where po_id = ${id} order by description`);

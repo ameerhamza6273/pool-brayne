@@ -9,15 +9,7 @@ const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "http://localhost:5175";
 // Forgot-password: one email per address per minute, so the button can't be used to spam an inbox.
 const resetCooldown = new Map<string, number>();
 
-// Client PDF 2026-09-06: "I am sending a sample email for an estimate it will have an 'Approve
-// Estimation' button and we will get a notification via email and test for approval". No email
-// SENDING service is wired up (no SendGrid) — so the actual email round-trip isn't automatic —
-// but the customer-facing approval link itself is real: staff copies/emails the link, the
-// customer opens it (no login) and approves/declines, and staff sees it land in the real
-// Notifications bell (notifications.ts). The unguessable `approval_token` (uuid) is the only
-// thing gating access, so this runs OUTSIDE withTenantContext/RLS on purpose — there's no logged
-// in user here to bind a JWT to. `sql` connects as the pooler's `postgres` role, which is not
-// subject to RLS, so every query below filters by the token itself to stay tenant-scoped.
+// Client PDF 2026-09-06: "I am sending a sample email for an estimate it will have an 'Approve Estimation' button and..."
 export default async function publicRoutes(app: FastifyInstance) {
   app.get<{ Params: { token: string } }>("/estimates/:token", async (req, reply) => {
     const { token } = req.params;
@@ -44,9 +36,7 @@ export default async function publicRoutes(app: FastifyInstance) {
     return { estimate, lineItems, business: business ?? null };
   });
 
-  // Client PDF 2026-09-05 (check list forms.pdf / inspection form.pdf): "make sure customers
-  // can see form" -- same no-login pattern as the estimate approval link. Only forms whose
-  // template has `customer_visible = true` are ever served here.
+  // Client PDF 2026-09-05 (check list forms.pdf / inspection form.pdf): "make sure customers can see form" -- same no-login pattern as
   app.get<{ Params: { token: string } }>("/forms/:token", async (req, reply) => {
     const { token } = req.params;
     const [row] = await sql`
@@ -97,10 +87,7 @@ export default async function publicRoutes(app: FastifyInstance) {
     },
   );
 
-  // Client video 2026-10-06: "text them a hyperlink on an estimate and an invoice so they can
-  // pay on their phone" -- invoices had no public-facing page at all before this. Same
-  // unguessable-token, no-login pattern as the estimate routes above, scoped by payment_token
-  // instead of RLS. Excludes `cost` (internal margin), same as the estimate route.
+  // Client video 2026-10-06: "text them a hyperlink on an estimate and an invoice so they can pay on their phone"
   app.get<{ Params: { token: string } }>("/invoices/:token", async (req, reply) => {
     const { token } = req.params;
     const [invoice] = await sql`
@@ -179,12 +166,7 @@ export default async function publicRoutes(app: FastifyInstance) {
     },
   );
 
-  // Client video 2026-10-23: "When doing a forgot password ... I'm not getting an email reply" --
-  // the Login page's "Forgot password?" was a bare button with no handler. Sent through the
-  // tenant's own Office 365 SMTP (Supabase's built-in mailer only delivers to project team
-  // members). The link carries Supabase's hashed recovery token; /reset-password verifies it only
-  // when the new password is submitted, so Outlook's link scanner opening the page doesn't use it up.
-  // Always answers ok for an unknown email so the form can't be used to discover accounts.
+  // Client video 2026-10-23: "When doing a forgot password ...
   app.post<{ Body: { email?: string } }>("/forgot-password", async (req, reply) => {
     const email = (req.body?.email ?? "").trim().toLowerCase();
     if (!email || !email.includes("@")) return reply.code(400).send({ error: "Enter your email address." });

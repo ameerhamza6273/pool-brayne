@@ -1,7 +1,4 @@
-// Client video 2026-10-23 ("what we're used to seeing"): the invoice/estimate email mirrors the one
-// their old system sent -- greeting + message, a "Breakdown of Services" (invoice #, dates, job
-// description, service performed), a big pay/approve button, then Call Us -- with the full
-// document attached as a PDF. Kept in our own colors (cyan/navy), same rule as the invoice page.
+// Client video 2026-10-23 ("what we're used to seeing"): the invoice/estimate email mirrors the one their old system sent -- greeting
 
 const esc = (s: string | null | undefined) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -32,6 +29,46 @@ export function cleanEmailList(list: unknown): string[] {
   return out;
 }
 export const invalidEmails = (list: string[]) => list.filter((e) => !EMAIL_RE.test(e));
+
+// Client video 2026-10-24: "similar to the way we send emails to customers we need to send emails to vendors ...
+export function purchaseOrderEmailHtml(opts: {
+  logoUrl: string | null;
+  businessName: string;
+  businessPhone: string | null;
+  vendorName: string;
+  message: string;
+  number: string;
+  orderDate: string | Date | null;
+  paymentTerms: string | null;
+  lines: { description: string; sku: string | null; quantity: number; unitCost: number }[];
+  total: number;
+  pdfAttached?: boolean;
+}) {
+  const money = (n: number) => `${n.toFixed(2)}`;
+  const row = (label: string, value: string | null) =>
+    value ? `<p style="margin:0 0 10px;font-size:16px"><strong>${esc(label)}:</strong> ${esc(value)}</p>` : "";
+  const td = "padding:8px;border-bottom:1px solid #E2E8F0;font-size:14px";
+  const lineRows = opts.lines
+    .map((l) => `<tr><td style="${td}">${esc(l.description)}${l.sku ? `<br/><span style="color:#64748B;font-size:12px">${esc(l.sku)}</span>` : ""}</td><td style="${td};text-align:right">${esc(String(l.quantity))}</td><td style="${td};text-align:right">${money(l.unitCost)}</td><td style="${td};text-align:right">${money(l.quantity * l.unitCost)}</td></tr>`)
+    .join("");
+  const th = "padding:8px;border-bottom:2px solid #0C2A3A;font-size:12px;text-transform:uppercase;color:#0C2A3A";
+  const phoneDigits = (opts.businessPhone ?? "").replace(/[^\d+]/g, "");
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#0F172A;max-width:640px">
+${opts.pdfAttached ? `<p style="margin:0 0 16px;padding:10px 14px;background:#ECFEFF;border-left:4px solid #0891B2;font-size:14px">The purchase order PDF is attached to this email. If you would like to see a detailed view, please click the PDF.</p>` : ""}
+${opts.logoUrl ? `<p style="margin:0 0 18px"><img src="${esc(opts.logoUrl)}" alt="${esc(opts.businessName)}" width="180" style="display:block;width:180px;max-width:180px;height:auto;border:0" /></p>` : ""}
+<p style="margin:0 0 14px">Hi ${esc(opts.vendorName)},</p>
+${paragraphs(opts.message)}
+<p style="margin:22px 0 10px;font-size:19px;font-weight:700;color:#0C2A3A;border-bottom:2px solid #0C2A3A;padding-bottom:6px">Purchase Order</p>
+${row("PO #", opts.number)}
+${row("Order Date", fmtDate(opts.orderDate))}
+${row("Payment Terms", opts.paymentTerms)}
+${opts.lines.length ? `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:8px 0 0"><thead><tr><th style="${th};text-align:left">Item</th><th style="${th};text-align:right">Qty</th><th style="${th};text-align:right">Unit Cost</th><th style="${th};text-align:right">Amount</th></tr></thead><tbody>${lineRows}</tbody></table>` : ""}
+<p style="margin:12px 0 0;text-align:right;font-size:17px;font-weight:700">Total: ${money(opts.total)}</p>
+<p style="margin:26px 0 16px;text-align:center;font-weight:700">Please reply to this email to confirm the order. Thank you!</p>
+${phoneDigits ? `<p style="margin:0 0 6px;text-align:center"><a href="tel:${esc(phoneDigits)}" style="display:inline-block;background:#0C2A3A;color:#ffffff;padding:9px 20px;border-radius:8px;text-decoration:none;font-weight:700">Call Us ${esc(opts.businessPhone)}</a></p>` : ""}
+<p style="margin:16px 0 0;text-align:center;color:#64748B;font-size:12px">${esc(opts.businessName)}</p>
+</div>`;
+}
 
 export function documentEmailHtml(opts: {
   kind: "invoice" | "estimate";

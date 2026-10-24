@@ -32,8 +32,7 @@ import { useConfirm } from "@/components/ConfirmDialog";
 import InvoicePreviewDialog from "@/components/InvoicePreviewDialog";
 import { safeFileName } from "@/lib/storage-path";
 
-// `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches
-// what InvoiceDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
+// `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches what InvoiceDetail.tsx
 type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { name: string } | null; total?: number };
 type UninvoicedJob = Database["public"]["Tables"]["jobs"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
@@ -57,10 +56,7 @@ const paymentMethods: Record<string, { icon: typeof CreditCard; label: string }>
 };
 
 const daysBetween = (a: string, b: string) => Math.round((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
-// QA sweep 2026-09-30 follow-up: `total` (materials * (1 + tax rate) + labor) is a floating-point result --
-// plain toLocaleString() shows up to 3 fraction digits by default, so a value like 4216.3149999998
-// rendered as "$4,216.315" instead of "$4,216.32". Every money amount in this file should go
-// through this instead of calling toLocaleString() directly.
+// QA sweep 2026-09-30 follow-up: `total` (materials * (1 + tax rate) + labor) is a floating-point result -- plain toLocaleString()
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function Invoicing() {
@@ -68,8 +64,7 @@ export default function Invoicing() {
   const confirm = useConfirm();
   const [search, setSearch] = useState("");
   const [paymentSearch, setPaymentSearch] = useState("");
-  // Client video 2026-10-18: search box on every Invoicing tab ("a search field for a customer name
-  // or estimate number") + every column sortable.
+  // Client video 2026-10-18: search box on every Invoicing tab ("a search field for a customer name or estimate number") +
   const [estimateSearch, setEstimateSearch] = useState("");
   const [reminderSearch, setReminderSearch] = useState("");
   const [taskSearch, setTaskSearch] = useState("");
@@ -93,16 +88,14 @@ export default function Invoicing() {
   const [newEstimateLines, setNewEstimateLines] = useState<DraftLineItem[]>([]);
   const [estimateTemplates, setEstimateTemplates] = useState<EstimateTemplate[]>([]);
   const [searchParams] = useSearchParams();
-  // Client SMS 2026-09-09: Vendor Bills moved out of this page to Inventory > Vendor Tools
-  // (under Purchase Orders) -- "vendor-bills" is no longer a tab here.
+  // Client SMS 2026-09-09: Vendor Bills moved out of this page to Inventory > Vendor Tools (under Purchase Orders) -- "vendor-bills"
   const validTabs = ["all", "estimates", "other-reminders", "tasks", "recurring", "payments"];
   const [activeTab, setActiveTab] = useState(() => {
     const tab = searchParams.get("tab");
     return tab && validTabs.includes(tab) ? tab : "all";
   });
   const [bulkOpen, setBulkOpen] = useState(false);
-  // Client video 2026-10-18: "Combine completed jobs ... does not do anything" -- nothing showed
-  // until From and To were both typed. Prefilled with the last 90 days.
+  // Client video 2026-10-18: "Combine completed jobs ...
   const [bulkForm, setBulkForm] = useState(() => {
     const end = new Date();
     const start = new Date(end.getTime() - 90 * 86400000);
@@ -111,9 +104,7 @@ export default function Invoicing() {
   });
   const [bulkJobs, setBulkJobs] = useState<UninvoicedJob[]>([]);
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
-  // Client request 2026-09-02: a second Bulk Invoice mode — combine several of a customer's
-  // already-open invoices and collect payment on all of them at once (card on file, manual
-  // check, or email the customer), distinct from the original "combine completed jobs" mode.
+  // Client request 2026-09-02: a second Bulk Invoice mode — combine several of a customer's already-open invoices and collect payment on
   const [bulkTab, setBulkTab] = useState<"jobs" | "invoices">("invoices");
   const [bulkInvoiceCustomerId, setBulkInvoiceCustomerId] = useState("");
   const [bulkInvoiceSelected, setBulkInvoiceSelected] = useState<Set<string>>(new Set());
@@ -123,9 +114,7 @@ export default function Invoicing() {
   const navigate = useNavigate();
   const { tenantId } = useAuth();
 
-  // Client request 2026-09-02: a freeform "Tasks" tab under Estimates — assign a
-  // Renovation/Repair/Go-back task to a tech at a customer/address, with photos, notes, and a
-  // date range, independent of the jobs/estimates pipelines.
+  // Client request 2026-09-02: a freeform "Tasks" tab under Estimates — assign a Renovation/Repair/Go-back task to a tech at a customer/address
   const [tasks, setTasks] = useState<FreeformTask[]>([]);
   const [techs, setTechs] = useState<{ id: string; name: string }[]>([]);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
@@ -134,10 +123,7 @@ export default function Invoicing() {
   const [newTaskPhotos, setNewTaskPhotos] = useState<string[]>([]);
   const [taskPhotoUploading, setTaskPhotoUploading] = useState(false);
 
-  // Client video 2026-10-06: "I would add another tab between estimates and tasks and put other
-  // reminders right here" -- same customer_reminders data Reports > Reminders already shows, now
-  // also here where staff work day-to-day; "other reminders will be the same thing as leads...
-  // we have to call these people" -- each row gets a real tel: Call link.
+  // Client video 2026-10-06: "I would add another tab between estimates and tasks and put other reminders right here" -- same
   const [reminders, setReminders] = useState<CustomerReminder[]>([]);
   const [remindersRange, setRemindersRange] = useState<"30" | "60" | "90" | "all">("all");
   const [reminderOpen, setReminderOpen] = useState(false);
@@ -193,9 +179,7 @@ export default function Invoicing() {
 
   const handleCreateInvoice = async () => {
     if (!newInvoice.customerId || !newInvoice.issueDate) return;
-    // Client SMS 2026-10-16: "numbers only" -- the server now assigns a sequential INV-0001 (see
-    // backend/src/lib/numbering.ts), replacing this date-based guess (the same duplicate-number
-    // bug class already found and fixed once for PO numbers).
+    // Client SMS 2026-10-16: "numbers only" -- the server now assigns a sequential INV-0001 (see backend/src/lib/numbering.ts), replacing this date-based guess (the
     await invoicingApi.create({
       customerId: newInvoice.customerId,
       issueDate: newInvoice.issueDate,
@@ -212,8 +196,7 @@ export default function Invoicing() {
     loadInvoicing();
   };
 
-  // Client PDF 2026-09-06: when creating an estimate, default the issue date to today and
-  // expiry to 30 days out (still editable) instead of leaving both blank.
+  // Client PDF 2026-09-06: when creating an estimate, default the issue date to today and expiry to 30 days out (still
   const openNewEstimateDialog = () => {
     const today = new Date().toISOString().slice(0, 10);
     const expiry = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
@@ -370,8 +353,7 @@ export default function Invoicing() {
     loadInvoicing();
   };
 
-  // Client request 2026-08-28: bulk invoicing — combine several weeks of completed (but not
-  // yet invoiced) jobs for one customer into a single invoice, one line item per job.
+  // Client request 2026-08-28: bulk invoicing — combine several weeks of completed (but not yet invoiced) jobs for one customer into
   const loadBulkJobs = useCallback(async () => {
     const { customerId, start, end } = bulkForm;
     if (!customerId || !start || !end) {
@@ -398,8 +380,7 @@ export default function Invoicing() {
 
   const customerOptions = customers.map(customerOption);
   const customersWithOpenInvoices = customers.filter((c) => invoices.some((i) => i.customer_id === c.id && i.status !== "Paid"));
-  // QA 2026-10-18: arriving here from "Combine Completed Jobs" with a customer who has no open
-  // invoices left the picker blank ("Select customer") -- keep that customer's name showing.
+  // QA 2026-10-18: arriving here from "Combine Completed Jobs" with a customer who has no open invoices left the picker blank
   const bulkPicked = bulkInvoiceCustomerId && !customersWithOpenInvoices.some((c) => c.id === bulkInvoiceCustomerId)
     ? customers.find((c) => c.id === bulkInvoiceCustomerId) : undefined;
   const customersWithOpenInvoicesOptions = [
@@ -416,8 +397,7 @@ export default function Invoicing() {
     });
   };
 
-  // Client video 2026-10-18: the email used to be a mailto: link (opened desktop Outlook). Now a
-  // real email from the server with a view/pay link per invoice; the dialog stays open with the result.
+  // Client video 2026-10-18: the email used to be a mailto: link (opened desktop Outlook).
   const [bulkEmailResult, setBulkEmailResult] = useState<{ ok: boolean; text: string } | null>(null);
   const handleBulkEmail = async () => {
     const ids = Array.from(bulkInvoiceSelected);
@@ -480,9 +460,7 @@ export default function Invoicing() {
     payments.filter((pay) => matchesQuery(paymentSearch, [pay.customers?.name, pay.invoices?.number, String(pay.amount), pay.paid_at, pay.method])),
     (pay, key) => key === "invoice" ? pay.invoices?.number : key === "customer" ? pay.customers?.name : (pay as unknown as Record<string, string | number | null>)[key]);
 
-  // QA sweep 2026-09-30: these summed the stored pre-tax `amount`, which never matched the real
-  // Total on the invoice document/charge -- `total` (backend-computed, materials-only tax) is what
-  // was actually charged/is actually owed.
+  // QA sweep 2026-09-30: these summed the stored pre-tax `amount`, which never matched the real Total on the invoice document/charge
   const totalOutstanding = invoices.filter((i) => i.status !== "Paid").reduce((sum, i) => sum + (i.total ?? i.amount), 0);
   const paidThisMonth = invoices.filter((i) => i.status === "Paid").reduce((sum, i) => sum + (i.total ?? i.amount), 0);
   const overdue = invoices.filter((i) => i.status === "Overdue").reduce((sum, i) => sum + (i.total ?? i.amount), 0);
@@ -513,10 +491,7 @@ export default function Invoicing() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="text-2xl font-bold text-[#0F172A]">{t("Invoicing")}</h1>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Client PDF 2026-09-05: top-right button order "New Estimate - New Task - New
-              Invoice" -- achieved with CSS order rather than physically relocating each dialog's
-              JSX (New Task's full dialog lives in the Tasks tab below; this button just switches
-              to that tab and opens it). */}
+          {/* Client PDF 2026-09-05: top-right button order "New Estimate - New Task - New Invoice" -- achieved with CSS order rather */}
           <Button
             className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10 order-2"
             onClick={() => { setActiveTab("tasks"); setNewTaskOpen(true); }}
@@ -677,8 +652,7 @@ export default function Invoicing() {
                         />
                       ) : (
                         <>
-                        {/* Client SMS 2026-10-16 + 2026-10-18 ("accepting a check there is no spot for a check
-                            number") -- the field existed but was an unlabeled box; now labelled and focused. */}
+                        {/* Client SMS 2026-10-16 + 2026-10-18 ("accepting a check there is no spot for a check number") -- the field existed */}
                         {bulkPayMethod === "Check" && (
                           <div>
                             <label className="text-sm font-medium text-[#0F172A]">{t("Check #")}</label>
@@ -911,16 +885,12 @@ export default function Invoicing() {
 
       {!isLoading && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        {/* Client PDF 2026-09-05: tab order "Estimates - Tasks - Recurring - Customer Invoices -
-            Payments". Vendor Bills moved out entirely (client SMS 2026-09-09) to Inventory >
-            Vendor Tools, next to Purchase Orders. */}
+        {/* Client PDF 2026-09-05: tab order "Estimates - Tasks - Recurring - Customer Invoices - Payments". */}
         <TabsList className="bg-white border border-[#E2E8F0] h-10 p-1 rounded-lg flex-wrap h-auto">
           <TabsTrigger value="estimates" className="order-1 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Copy className="w-4 h-4" /> {t("Estimates")}
           </TabsTrigger>
-          {/* Client video 2026-10-06: "I would add another tab between estimates and tasks and
-              put other reminders right here" -- same customer_reminders data as Reports >
-              Reminders / CustomerDetail's Other Reminders card, surfaced where staff already work. */}
+          {/* Client video 2026-10-06: "I would add another tab between estimates and tasks and put other reminders right here" -- same */}
           <TabsTrigger value="other-reminders" className="order-2 text-sm data-[state=active]:bg-[#0891B2] data-[state=active]:text-white rounded-md px-4 gap-1.5">
             <Bell className="w-4 h-4" /> {t("Other Reminders")}
           </TabsTrigger>

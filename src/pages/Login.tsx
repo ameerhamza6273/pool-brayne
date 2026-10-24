@@ -14,14 +14,12 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Client video 2026-10-23: "Forgot password?" was a bare button with no handler -- it now emails a
-  // reset link (backend public.ts /forgot-password -> /reset-password).
+  // Client video 2026-10-23: "Forgot password?" was a bare button with no handler -- it now emails a reset link (backend
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotSending, setForgotSending] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
   const { signIn } = useAuth();
-  // Dev 2026-10-23: the company logo replaces the droplet + "Clear Pool CRM" in the brand panel, on a
-  // device that has signed in before (remembered-logo.ts); the form itself is unchanged.
+  // Dev 2026-10-23: the company logo replaces the droplet + "Clear Pool CRM" in the brand panel, on a device that
   const [logo] = useState(getRememberedLogo);
   const navigate = useNavigate();
 

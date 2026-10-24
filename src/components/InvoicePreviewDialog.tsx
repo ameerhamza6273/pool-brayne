@@ -8,9 +8,7 @@ import { invoicingApi, type InvoiceDetailBundle } from "@/lib/api/invoicing";
 import { useTaxRate } from "@/hooks/use-tax-rate";
 import { useLanguage } from "@/lib/language-context";
 
-// Client video 2026-10-15: "click here and then see the invoice pop up ... without going into the
-// actual invoice or job." Quick read-only look at an invoice; "Open Full Invoice" for everything
-// else (payments, email, print). Totals use the same formula as InvoiceDetail.tsx.
+// Client video 2026-10-15: "click here and then see the invoice pop up ...
 export default function InvoicePreviewDialog({ invoiceId, onClose, allowOpenFull = true }: { invoiceId: string | null; onClose: () => void; allowOpenFull?: boolean }) {
   const { t } = useLanguage();
   const navigate = useNavigate();

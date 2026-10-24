@@ -6,11 +6,7 @@ import { type ItemMovementRow } from "@/lib/api/reports";
 import { receiptNumber } from "@/lib/api/pos";
 import { useLanguage } from "@/lib/language-context";
 
-// Client video 2026-10-18 + screenshots of their old QuickBooks POS "Item Summary": "I would like
-// the quantity to be the primary lookup ... total quantity sold within a certain time period, not
-// the customer who sold two". One row per item, Qty Sold totalled across the date range (POS sales
-// + parts used on jobs), sorted most-sold first; click an item to see every transaction behind it
-// (their "Sales Detail" screen). Write-offs aren't sales -- shown in their own column.
+// Client video 2026-10-18 + screenshots of their old QuickBooks POS "Item Summary": "I would like the quantity to be the..."
 export type ItemSummaryRow = {
   itemId: string; itemNumber: string | null; item: string; sku: string; category: string;
   qtySold: number; extPrice: number; extCost: number; writtenOff: number; transactions: number;

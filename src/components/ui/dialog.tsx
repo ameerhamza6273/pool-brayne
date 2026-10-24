@@ -7,9 +7,7 @@ import { useLanguage } from '@/lib/language-context';
 
 const Dialog = DialogPrimitive.Root;
 
-// Client feedback 2026-09-21: dropdown lists (Select / SearchableSelect) inside a dialog hung out
-// past the dialog's edge. Dropdowns read this to (a) use the dialog as their collision boundary, so
-// they flip/shrink to stay inside it, and (b) cap their height. The dialog itself never resizes.
+// Client feedback 2026-09-21: dropdown lists (Select / SearchableSelect) inside a dialog hung out past the dialog's edge.
 export const DialogBoundaryContext = React.createContext<HTMLElement | null>(null);
 
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -49,10 +47,7 @@ const DialogContent = React.forwardRef<
         else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
       }}
       className={cn(
-        // Long unbreakable content (e.g. a long vendor name in a select trigger) used to push
-        // this grid's implicit column past max-w-lg, so the dialog visually bled/scrolled
-        // horizontally instead of clipping. overflow-x-hidden + min-w-0 on every direct child
-        // forces those grid items to actually respect the dialog's own width.
+        // Long unbreakable content (e.g.
         'fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 overflow-x-hidden [&>*]:min-w-0 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg',
         className
       )}

@@ -57,11 +57,7 @@ type KnownIssueItem = string | { text: string; photoUrl: string | null };
 const issueText = (item: KnownIssueItem): string => (typeof item === "string" ? item : item.text);
 const issuePhoto = (item: KnownIssueItem): string | null => (typeof item === "string" ? null : item.photoUrl);
 
-// Client doc 2026-10-05: "change verbiage in drop-down menu: Booked -> Scheduled, Dispatched ->
-// En Route". Display-only -- `status`/`stage` (what actually gets written to jobs.status/.stage)
-// stay "Booked"/"Dispatched" so old and newly-moved jobs keep one consistent stored value; only
-// `label` (what the dropdown shows) changes. See jobStatusDisplayLabel in lib/data.ts for the
-// same rename applied anywhere else a raw job.status reaches the screen as text.
+// Client doc 2026-10-05: "change verbiage in drop-down menu: Booked -> Scheduled, Dispatched -> En Route".
 const realStatuses = [
   { status: "Lead", stage: "lead", label: "Lead", color: "#6366F1" },
   { status: "Booked", stage: "booked", label: "Scheduled", color: "#0891B2" },
@@ -134,8 +130,7 @@ export default function JobDetail() {
   const [job, setJob] = useState<JobRow | null>(null);
   const [knownIssues, setKnownIssues] = useState<KnownIssueItem[]>([]);
   const [newKnownIssue, setNewKnownIssue] = useState("");
-  // Client doc 2026-10-05: "Model & Serial" tab -- real per-customer equipment list (name/model/
-  // serial), replacing 3 hardcoded demo rows. Stored as `items` inside customers.equipment jsonb.
+  // Client doc 2026-10-05: "Model & Serial" tab -- real per-customer equipment list (name/model/ serial), replacing 3 hardcoded demo rows.
   const [customerEquipment, setCustomerEquipment] = useState<Record<string, unknown>>({});
   const [equipmentItems, setEquipmentItems] = useState<EquipmentItem[]>([]);
   const [newEquipment, setNewEquipment] = useState({ equip: "", model: "", serial: "" });
@@ -153,10 +148,7 @@ export default function JobDetail() {
   const [activeTab, setActiveTab] = useState("trip_details");
   const [noteText, setNoteText] = useState("");
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
-  // Client video 2026-10-18: "it's not allowing me to select a date ... I can only reschedule, I
-  // cannot schedule" -- a job converted from an estimate has no date, and the only way in was
-  // "Reschedule" in the ⋯ menu (one datetime box). Now the Scheduled tile itself opens this panel,
-  // titled "Schedule Job" when there's no date yet, with separate date + (optional) time.
+  // Client video 2026-10-18: "it's not allowing me to select a date ...
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
   const [cloning, setCloning] = useState(false);
@@ -167,25 +159,18 @@ export default function JobDetail() {
   }, [wantsSchedule, job?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [rescheduleScope, setRescheduleScope] = useState<"temporary" | "permanent">("temporary");
-  // Client meeting 2026-09-14: "write off a job... customer refuses to pay" -- modeled on the
-  // existing Invoice write-off (InvoiceDetail.tsx), distinct from SKU write-offs in Inventory.
+  // Client meeting 2026-09-14: "write off a job...
   const [writeOffOpen, setWriteOffOpen] = useState(false);
   const [writeOffReason, setWriteOffReason] = useState("");
   const [writingOff, setWritingOff] = useState(false);
-  // Dev request 2026-09-30 (QA sweep found stale/mistaken jobs with no way to remove them) --
-  // mirrors Inventory's SKU delete (2026-09-23): permanent, behind a confirm, refused with a
-  // reason if the job has real downstream history (see backend jobs.ts DELETE /:id).
+  // Dev request 2026-09-30 (QA sweep found stale/mistaken jobs with no way to remove them) -- mirrors Inventory's SKU delete (2026-09-23)
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [invoiceId, setInvoiceId] = useState<string | null>(null);
   const [generatingInvoice, setGeneratingInvoice] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
-  // Client doc 2026-10-05 ("Job Notes - not saving, not able to view, not able to edit"): the
-  // note always went to the customer record (by design, same as Field.tsx), but this card never
-  // showed what had already been saved -- typing a note, clicking Save, and watching the box go
-  // blank with no confirmation and nothing displayed looks exactly like "did nothing" even though
-  // it worked. Shows the customer's recent notes here too, and confirms the save explicitly.
+  // Client doc 2026-10-05 ("Job Notes - not saving, not able to view, not able to edit"): the note always went
   const [recentCustomerNotes, setRecentCustomerNotes] = useState<CustomerNoteRow[]>([]);
   const [noteSavedAt, setNoteSavedAt] = useState<number | null>(null);
   const [partsUsed, setPartsUsed] = useState<JobPartUsed[]>([]);
@@ -194,28 +179,20 @@ export default function JobDetail() {
   const taxRate = useTaxRate();
   const { states: trStates, translateDebounced } = useTranslator();
 
-  // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously
-  // only had a flat `amount`, no itemized breakdown.
+  // Client question 2026-09-03: "How to add items to a service ticket/Job" — jobs previously only had a flat `amount`, no
   const [jobLineItems, setJobLineItems] = useState<JobLineItem[]>([]);
   const [lineItemsEditing, setLineItemsEditing] = useState(false);
   const [lineItemsDraft, setLineItemsDraft] = useState<DraftLineItem[]>([]);
   const [inventoryItems, setInventoryItems] = useState<ItemWithStock[]>([]);
   const [documents, setDocuments] = useState<JobAttachment[]>([]);
   const [docsUploading, setDocsUploading] = useState(false);
-  // Client video 2026-09-29: "checked all these off... shows under submitted forms, but this is
-  // not clickable, nor can I open and preview each form." -- view (not re-edit) a past submission.
+  // Client video 2026-09-29: "checked all these off...
   const [viewingForm, setViewingForm] = useState<JobForm | null>(null);
-  // Client video 2026-09-29: the "Before / After Photos" tab was static placeholder images with
-  // no upload wired up -- reuses the same job-attachments (type "photo", label "before"/"after")
-  // Field.tsx already writes, so photos a tech takes on their phone show up here too.
+  // Client video 2026-09-29: the "Before / After Photos" tab was static placeholder images with no upload wired up -- reuses
   const [photos, setPhotos] = useState<JobAttachment[]>([]);
   const photoLabelRef = useRef<"before" | "after" | null>(null);
   const photoFileInputRef = useRef<HTMLInputElement>(null);
-  // Pre-existing bug fixed 2026-09-08: this was declared after the `if (isLoading)`/`if (!job)`
-  // early returns below, which only runs the hook on some renders and not others -- a real Rules
-  // of Hooks violation ("Rendered more hooks than during the previous render", a real crash,
-  // reproduced navigating straight to a JobDetail page). Hooks must never sit after a conditional
-  // return.
+  // Pre-existing bug fixed 2026-09-08: this was declared after the `if (isLoading)`/`if (!job)` early returns below, which only runs the hook
   const [convertingToEstimate, setConvertingToEstimate] = useState(false);
   const { tenantId } = useAuth();
 
@@ -224,14 +201,10 @@ export default function JobDetail() {
   const [allTechs, setAllTechs] = useState<{ id: string; name: string }[]>([]);
   const [addingCrew, setAddingCrew] = useState(false);
 
-  // Client PDF 2026-09-06: WaterTestingForm/MaintenanceChecklist/OneOffJobChecklist previously
-  // had no save at all — this loads what's already been submitted for this job.
+  // Client PDF 2026-09-06: WaterTestingForm/MaintenanceChecklist/OneOffJobChecklist previously had no save at all — this loads what's already been submitted for this job.
   const [pastForms, setPastForms] = useState<JobForm[]>([]);
 
-  // Client SMS 2026-09-06: custom Form Builder -- the 3 legacy checklists are now real, editable
-  // form_templates rows rendered through DynamicForm (so editing "Water Testing Form" in the
-  // Form Builder actually changes what a tech sees here), plus any other template can be tagged
-  // to this job on demand ("need to be able to... tag to a job").
+  // Client SMS 2026-09-06: custom Form Builder -- the 3 legacy checklists are now real, editable form_templates rows rendered through DynamicForm
   const [allTemplates, setAllTemplates] = useState<FormTemplate[]>([]);
   const [extraTemplateIds, setExtraTemplateIds] = useState<string[]>([]);
   const [addFormPickerOpen, setAddFormPickerOpen] = useState(false);
@@ -241,8 +214,7 @@ export default function JobDetail() {
     formTemplatesApi.list().then(setAllTemplates);
   }, []);
 
-  // Client feedback 2026-09-11: "link to select a document from the document folder" -- lets
-  // Documents attach an existing Library file instead of re-uploading it.
+  // Client feedback 2026-09-11: "link to select a document from the document folder" -- lets Documents attach an existing Library file
   const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocument[]>([]);
   useEffect(() => {
     libraryApi.list().then(setLibraryDocuments);
@@ -264,9 +236,7 @@ export default function JobDetail() {
     await customersApi.update(job.customer_id, { knownIssues: next });
   };
 
-  // Client doc 2026-10-05: "Known Issue -- would like a place to upload photos". Converts that
-  // one entry from a plain string into { text, photoUrl } (migration 20261006090000 made the
-  // column jsonb for exactly this); every other entry keeps whatever shape it already had.
+  // Client doc 2026-10-05: "Known Issue -- would like a place to upload photos".
   const uploadKnownIssuePhoto = async (index: number, file: File) => {
     if (!job?.customer_id || !tenantId) return;
     const path = `${tenantId}/customers/${job.customer_id}/known-issue-${Date.now()}-${safeFileName(file.name)}`;
@@ -283,8 +253,7 @@ export default function JobDetail() {
     const next = [...equipmentItems, { ...newEquipment, equip: newEquipment.equip.trim() }];
     setEquipmentItems(next);
     setNewEquipment({ equip: "", model: "", serial: "" });
-    // equipment is a full-replace jsonb column (see backend customers.ts) -- merge in `items`
-    // alongside whatever pump/heater/filter/salt values CustomerDetail's Edit dialog already set.
+    // equipment is a full-replace jsonb column (see backend customers.ts) -- merge in `items` alongside whatever pump/heater/filter/salt values CustomerDetail's Edit dialog
     await customersApi.update(job.customer_id, { equipment: { ...customerEquipment, items: next } });
   };
 
@@ -359,8 +328,7 @@ export default function JobDetail() {
     setFormError("");
   };
 
-  // DynamicForm's photo fields upload here -- same job-attachments bucket/path convention as
-  // documents/signature, just a "forms/" sub-path so they don't collide.
+  // DynamicForm's photo fields upload here -- same job-attachments bucket/path convention as documents/signature, just a "forms/" sub-path so they don't collide.
   const handleFormPhotoUpload = async (file: File): Promise<string> => {
     if (!id || !tenantId) throw new Error("Not ready");
     const path = `${tenantId}/${id}/forms/${Date.now()}-${safeFileName(file.name)}`;
@@ -370,8 +338,7 @@ export default function JobDetail() {
     return data.publicUrl;
   };
 
-  // Client request 2026-09-03: Documents section on a job (same storage bucket/path convention
-  // as the existing photo/signature uploads, just a "document" attachment type).
+  // Client request 2026-09-03: Documents section on a job (same storage bucket/path convention as the existing photo/signature uploads, just a "document"
   const handleUploadDocument = async (file: File, label: string) => {
     if (!id || !tenantId) return;
     setDocsUploading(true);
@@ -387,9 +354,7 @@ export default function JobDetail() {
     }
   };
 
-  // Client video 2026-09-29: "Before and after pictures are not clickable... would like to
-  // upload a photograph" -- this tab had hardcoded placeholder icons, no real upload. Same
-  // upload mechanism as Field.tsx's tech-facing Before/After photos, so either view stays in sync.
+  // Client video 2026-09-29: "Before and after pictures are not clickable...
   const pickPhoto = (label: "before" | "after") => {
     photoLabelRef.current = label;
     photoFileInputRef.current?.click();
@@ -413,13 +378,7 @@ export default function JobDetail() {
   useEffect(() => {
     inventoryApi.summary().then((data) => setInventoryItems(data.items));
   }, []);
-  // Client video 2026-09-29: "Known Issue" tab was decorative mock text with no save. Lives on
-  // the customer (property), not the job, so every job at that address shows the same list --
-  // visible to all technicians, matching the tab's own description text.
-  // Client doc 2026-10-05: "Model & Serial" tab showed the same 3 fake demo entries on every job
-  // -- also moved to the customer/property record (same reasoning as Known Issue), under a new
-  // `items` array inside the existing `customers.equipment` jsonb (additive, doesn't disturb the
-  // existing pump/heater/filter/salt text fields CustomerDetail.tsx's Edit dialog already uses).
+  // Client video 2026-09-29: "Known Issue" tab was decorative mock text with no save.
   useEffect(() => {
     if (!job?.customer_id) return;
     customersApi.detail(job.customer_id).then((data) => {
@@ -483,9 +442,7 @@ export default function JobDetail() {
   const handleStatusChange = async (statusId: string) => {
     const s = realStatuses.find((r) => r.stage === statusId);
     if (!s || !job) return;
-    // Completing a job always needs to go through handleMarkComplete so an invoice gets
-    // generated — picking "Completed" from this dropdown used to just flip the status field,
-    // leaving the job stuck with no invoice and a permanently-disabled Generate Invoice button.
+    // Completing a job always needs to go through handleMarkComplete so an invoice gets generated — picking "Completed" from this dropdown
     if (s.stage === "completed") {
       await handleMarkComplete();
       return;
@@ -494,17 +451,14 @@ export default function JobDetail() {
     loadJob();
   };
 
-  // Client request 2026-08-28: an "en route" icon on the status changer — reuses the
-  // en_route_at timestamp Field.tsx already sets during the tech's own start-job flow, but lets
-  // staff toggle it manually from here too.
+  // Client request 2026-08-28: an "en route" icon on the status changer — reuses the en_route_at timestamp Field.tsx already sets during
   const handleToggleEnRoute = async () => {
     if (!job) return;
     await jobsApi.update(job.id, { en_route_at: job.en_route_at ? null : new Date().toISOString() });
     loadJob();
   };
 
-  // Client question 2026-09-03: "How to reverse a Job back to an estimate" — spins off a new
-  // Estimate from this job's current data/line items rather than mutating the job itself.
+  // Client question 2026-09-03: "How to reverse a Job back to an estimate" — spins off a new Estimate from this
   const handleConvertToEstimate = async () => {
     if (!job) return;
     setConvertingToEstimate(true);
@@ -512,8 +466,7 @@ export default function JobDetail() {
     navigate(`/invoicing/estimates/${estimateId}`);
   };
 
-  // Client bug report 2026-09-03: "How to put job description on a job" (after creation) —
-  // Description was previously set once at creation only, never editable afterward.
+  // Client bug report 2026-09-03: "How to put job description on a job" (after creation) — Description was previously set once
   const handleSaveDescription = async () => {
     if (!job) return;
     await jobsApi.update(job.id, { description: descDraft });
@@ -528,9 +481,7 @@ export default function JobDetail() {
     loadJob();
   };
 
-  // Client meeting 2026-09: "Once we have a job here, we're unable to change this assigned tech."
-  // Crew (below) covers additional techs; this reassigns the primary/lead tech (job.tech_id).
-  // "" (the QA sweep's "Unassigned" option below) means clear the tech, not an empty id.
+  // Client meeting 2026-09: "Once we have a job here, we're unable to change this assigned tech." Crew (below) covers additional
   const handleReassignTech = async (techId: string) => {
     if (!job) return;
     await jobsApi.update(job.id, { tech_id: techId || null });
@@ -538,9 +489,7 @@ export default function JobDetail() {
     loadJob();
   };
 
-  // Client meeting 2026-09-14: "write off a job... customer refuses to pay." Reuses the generic
-  // job update endpoint (same one used everywhere else in this file) rather than a new route --
-  // mirrors invoicingApi.writeOffInvoice's field shape (status + reason + date).
+  // Client meeting 2026-09-14: "write off a job...
   const handleWriteOff = async () => {
     if (!job || !writeOffReason.trim()) return;
     setWritingOff(true);
@@ -571,8 +520,7 @@ export default function JobDetail() {
     setRescheduleOpen(true);
   };
 
-  // Clone Job used to just navigate to /jobs -- it never copied anything. Now a real copy (same
-  // customer, type, tech, description, address, line items), no date, opened with Schedule ready.
+  // Clone Job used to just navigate to /jobs -- it never copied anything.
   const handleCloneJob = async () => {
     if (!job || cloning) return;
     setCloning(true);
@@ -599,8 +547,7 @@ export default function JobDetail() {
     const date = rescheduleDate;
     const time = rescheduleTime || null;
     await jobsApi.update(job.id, { scheduled_date: date, scheduled_time: time });
-    // Client PDF 2026-09-05: a "permanent" move also updates the recurring template so future
-    // occurrences generate on the new day; "temporary" only touches this one job (above).
+    // Client PDF 2026-09-05: a "permanent" move also updates the recurring template so future occurrences generate on the new day; "temporary"
     if (job.recurring_job_id && rescheduleScope === "permanent") {
       const newDay = new Date(`${date}T00:00:00`).getDay();
       await recurringJobsApi.update(job.recurring_job_id, { dayOfWeek: newDay, dayOfMonth: new Date(`${date}T00:00:00`).getDate() });
@@ -623,10 +570,7 @@ export default function JobDetail() {
     setNoteSavedAt(Date.now());
   };
 
-  // Client PDF 2026-09-18: "allow us to select the forms needed for the job. Not automatically
-  // [applied] to each job" -- jobs created after this feature carry an explicit selected_form_ids
-  // list (set at creation, see Jobs.tsx); jobs created before it have an empty array, so they
-  // fall back to the old applies_to-derived set rather than silently losing their required forms.
+  // Client PDF 2026-09-18: "allow us to select the forms needed for the job.
   const jobSelectedFormIds = job && Array.isArray(job.selected_form_ids) ? (job.selected_form_ids as string[]) : [];
   const applicableTemplates = job
     ? (jobSelectedFormIds.length > 0
@@ -637,9 +581,7 @@ export default function JobDetail() {
   // Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted into the job."
   const missingRequiredTemplates = applicableTemplates.filter((t) => t.required && !pastForms.some((f) => f.template_id === t.id));
 
-  // Client doc 2026-10-05: "Labor sku is still adding sales tax -- need to remove that." This
-  // card taxed job.amount in full (materials + labor); Estimates/Invoices already exclude labor
-  // (see Architecture > Labor vs materials), this one just never got the same treatment.
+  // Client doc 2026-10-05: "Labor sku is still adding sales tax -- need to remove that." This card taxed job.amount in
   const jobMaterialsTotal = jobLineItems.reduce((sum, li) => sum + (li.item_type === "labor" ? 0 : li.amount), 0);
   const jobTax = jobMaterialsTotal * taxRate;
 
@@ -664,10 +606,7 @@ export default function JobDetail() {
           issueDate,
           dueDate: dueDate.toISOString().slice(0, 10),
           amount: job.amount,
-          // Client doc 2026-10-05: "screen pops up that says INVOICE (sent) -- does this mean the
-          // invoice has been automatically sent to customer?" No -- nothing is actually emailed/
-          // texted (SendGrid/Twilio aren't connected, see Integrations). "Sent" claimed otherwise;
-          // "Draft" is honest about what actually happened.
+          // Client doc 2026-10-05: "screen pops up that says INVOICE (sent) -- does this mean the invoice has been automatically sent..."
           status: "Draft",
           lineItems: jobLineItems.length > 0
             ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes }))
@@ -707,8 +646,7 @@ export default function JobDetail() {
         <div className="flex-1">
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
             <h1 className="text-xl font-bold text-[#0F172A]">{t("Job")} {job.number ?? job.id.slice(0, 8).toUpperCase()}</h1>
-            {/* Client video 2026-10-18 (phone): a job converted from an estimate "is still locked in
-                as an estimate" -- its job type was literally saved as "Estimate". Editable here. */}
+            {/* Client video 2026-10-18 (phone): a job converted from an estimate "is still locked in as an estimate" -- its job */}
             <Select value={job.type} onValueChange={async (v) => { await jobsApi.update(job.id, { type: v }); loadJob(); }}>
               <SelectTrigger className="h-6 w-auto gap-1 px-2 text-[10px] font-semibold border-0 rounded-full" style={typeBadgeStyle(job.type, configLists.job_types)} title={t("Change job type")}>
                 <SelectValue>{t(job.type)}</SelectValue>
@@ -742,9 +680,7 @@ export default function JobDetail() {
               <span className="sm:hidden">{t("Complete")}</span>
             </Button>
           )}
-          {/* Client feedback 2026-10-05: 6+ equal-weight buttons in a row either overflowed the
-              page horizontally, or (once wrapped) stacked one-per-line and looked unprofessional.
-              Only the primary CTA stays a button; everything else lives in one "More" menu. */}
+          {/* Client feedback 2026-10-05: 6+ equal-weight buttons in a row either overflowed the page horizontally, or (once wrapped) stacked one-per-line and */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="h-9 w-9 p-0 border-[#E2E8F0] shrink-0">
@@ -925,8 +861,7 @@ export default function JobDetail() {
               </div>
             </div>
             <Textarea placeholder={t("Reschedule notes...")} className="text-sm" rows={2} />
-            {/* Client PDF 2026-09-05: "When moving a recurring job make it ask us: is this a
-                temporary change or a permanent change?" */}
+            {/* Client PDF 2026-09-05: "When moving a recurring job make it ask us: is this a temporary change or a permanent..." */}
             {job.recurring_job_id && (
               <div>
                 <Label className="text-xs">{t("This job repeats — is this move...")}</Label>
@@ -1083,8 +1018,7 @@ export default function JobDetail() {
             </CardContent>
           </Card>
 
-          {/* Crew — client PDF 2026-09-06: "set up more than one tech on a job". job.tech_id
-              stays the lead tech (dispatch/on-time logic); these are additional crew members. */}
+          {/* Crew — client PDF 2026-09-06: "set up more than one tech on a job". */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex items-center justify-between">
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Crew")}</CardTitle>
@@ -1178,9 +1112,7 @@ export default function JobDetail() {
                 </TabsContent>
 
                 {/* Documents */}
-                {/* Client video 2026-09-29: "This document button is not active" -- this tab used
-                    to be a static hardcoded mockup with no handlers; it's now the exact same real
-                    Documents section rendered lower on this page (same state, same uploads). */}
+                {/* Client video 2026-09-29: "This document button is not active" -- this tab used to be a static hardcoded mockup with */}
                 <TabsContent value="documents" className="mt-4">
                   <DocumentsSection
                     documents={documents}
@@ -1220,10 +1152,7 @@ export default function JobDetail() {
                   <Textarea placeholder={t("Notes for office / dispatch...")} className="text-sm" rows={3} />
                 </TabsContent>
 
-                {/* Known Issue — client video 2026-09-29: "this is not clickable here" -- this
-                    tab was hardcoded mock text with an "Add Known Issue" button with no handler.
-                    Now real, stored on the customer (property) so it's the same list on every
-                    job at that address, matching the tab's own "visible to all technicians" copy. */}
+                {/* Known Issue — client video 2026-09-29: "this is not clickable here" -- this tab was hardcoded mock text with an */}
                 <TabsContent value="known_issue" className="mt-4 space-y-3">
                   <div className="rounded-lg bg-[#F59E0B]/5 border border-[#F59E0B]/20 p-3 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-[#F59E0B] shrink-0 mt-0.5" />
@@ -1300,10 +1229,7 @@ export default function JobDetail() {
                   </Button>
                 </TabsContent>
 
-                {/* Before / After Photos — client video 2026-09-29: "before and after pictures
-                    are not clickable, so we cannot upload photographs here" -- this tab was
-                    hardcoded placeholder icons only. Now real job_attachments uploads, same
-                    mechanism (and same data) as Field.tsx's tech-facing Before/After photos. */}
+                {/* Before / After Photos — client video 2026-09-29: "before and after pictures are not clickable, so we cannot upload photographs..." */}
                 <TabsContent value="before_after" className="mt-4 space-y-4">
                   <input
                     ref={photoFileInputRef}
@@ -1334,10 +1260,7 @@ export default function JobDetail() {
                   ))}
                 </TabsContent>
 
-                {/* Model & Serial -- client doc 2026-10-05: this was 3 hardcoded demo rows on
-                    every job ("need blank, these should be specific to individual customer") and
-                    "Add Equipment" had no handler. Real now, same property-level pattern as Known
-                    Issue (every job at that address shows the same list). */}
+                {/* Model & Serial -- client doc 2026-10-05: this was 3 hardcoded demo rows on every job ("need blank, these should..." */}
                 <TabsContent value="model_serial" className="mt-4 space-y-3">
                   <p className="text-xs text-[#94A3B8]">{t("Equipment on file for this property. Visible to all technicians.")}</p>
                   <div className="space-y-2">
@@ -1366,10 +1289,7 @@ export default function JobDetail() {
                   </Button>
                 </TabsContent>
 
-                {/* Receipts — client video 2026-09-29: "Upload or attach receipts... this button
-                    here is not clickable." Reuses the same document-attachment mechanism as
-                    Documents (job_attachments, type "document"), tagged with the "Receipt" label
-                    so it lists separately here instead of a new table/upload path. */}
+                {/* Receipts — client video 2026-09-29: "Upload or attach receipts... */}
                 <TabsContent value="receipts" className="mt-4">
                   <DocumentsSection
                     title="Receipts"
@@ -1495,11 +1415,7 @@ export default function JobDetail() {
             collapseWhenEmpty
           />
 
-          {/* Client PDF 2026-09-18: "put the forms under documents" -- Service Forms now render
-              directly under the Documents section instead of as a separate card elsewhere on the
-              page. Client SMS 2026-09-06: custom Form Builder. Templates that suggest themselves
-              for this job's type render automatically; any other template can be tagged on
-              ("Add Another Form") without leaving the job. */}
+          {/* Client PDF 2026-09-18: "put the forms under documents" -- Service Forms now render directly under the Documents section instead of */}
           {(() => {
             const suggested = applicableTemplates;
             const extra = allTemplates.filter((t) => extraTemplateIds.includes(t.id) && !suggested.some((s) => s.id === t.id));
@@ -1543,8 +1459,7 @@ export default function JobDetail() {
             );
           })()}
 
-          {/* Past submitted forms for this job — client PDF 2026-09-06: "view all forms from
-              previous jobs". */}
+          {/* Past submitted forms for this job — client PDF 2026-09-06: "view all forms from previous jobs". */}
           {pastForms.length > 0 && (
             <Card className="border-[#E2E8F0] shadow-sm">
               <CardHeader className="pb-3">
@@ -1666,10 +1581,7 @@ export default function JobDetail() {
           </Card>
         </div>
 
-        {/* Sidebar -- client feedback 2026-10-05: "right side part scrolls with the whole page,
-            it should scroll on its own" -- a long main column (many line items, long notes, many
-            content-category tabs) pushed Update Status / Quick Actions off-screen with no way
-            back without scrolling all the way up. Sticky + its own scroll keeps it reachable. */}
+        {/* Sidebar -- client feedback 2026-10-05: "right side part scrolls with the whole page, it should scroll on its own" */}
         <div className="space-y-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
           {/* Status Timeline */}
           <Card className="border-[#E2E8F0] shadow-sm">
@@ -1772,9 +1684,7 @@ export default function JobDetail() {
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Quick Actions")}</CardTitle>
             </CardHeader>
             <CardContent className="pt-0 space-y-2">
-              {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension
-                  detects real `tel:` links, not JS button handlers -- a plain onClick with
-                  `window.location.href` was invisible to it. */}
+              {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension detects real `tel:` links, not JS button handlers -- a plain */}
               {job.customers?.phone ? (
                 <Button variant="outline" asChild className="w-full justify-start gap-2 h-10 border-[#E2E8F0] text-[#0F172A]">
                   <a href={`tel:${job.customers.phone}`}>

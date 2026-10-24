@@ -34,7 +34,6 @@ export const settingsApi = {
   savePayrollWeekStart: (payrollWeekStartDay: number) => api.patch("/api/settings/payroll", { payrollWeekStartDay }),
 
   // Client video 2026-09-25: POS receipt header + editable return/refund disclaimer.
-  // Client SMS 2026-09-30: + which identifier (SKU or Item #) prints under each line.
   receipt: () => api.get<{ businessName: string; phone: string; address: string; disclaimer: string; lineId: "sku" | "item_number" }>("/api/settings/receipt"),
 
   saveReceiptDisclaimer: (disclaimer: string) => api.patch<{ disclaimer: string }>("/api/settings/receipt", { disclaimer }),
@@ -43,9 +42,7 @@ export const settingsApi = {
 
   selectPlan: (planId: string) => api.patch("/api/settings/plan", { planId }),
 
-  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- real tenant
-  // sales tax rate (was hardcoded 8.25% everywhere). Kept as its own light endpoint since every
-  // Estimate/Invoice/Job/POS page reads it, not just Settings.
+  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- real tenant sales tax rate (was
   getTaxRate: () => api.get<{ taxRate: number }>("/api/settings/tax-rate"),
 
   saveTaxRate: (taxRate: number) => api.patch<{ taxRate: number }>("/api/settings/tax-rate", { taxRate }),

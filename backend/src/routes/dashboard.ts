@@ -36,9 +36,7 @@ export default async function dashboardRoutes(app: FastifyInstance) {
       const stock = stockRaw as unknown as Stock[];
       const varianceRows = varianceRaw as unknown as VarianceRow[];
       const posItems = posItemsRaw as unknown as PosOrderItem[];
-      // QA sweep 2026-09-30: "Outstanding Invoices" showed the pre-tax `amount`, while the actual
-      // invoice document/charge is taxed (materials only, see invoicing.ts `taxedTotal`) -- so this
-      // tile always understated what's really owed. `total` matches that same formula.
+      // QA sweep 2026-09-30: "Outstanding Invoices" showed the pre-tax `amount`, while the actual invoice document/charge is taxed (materials only, see invoicing.ts
       const lineItemsByInvoice = invoiceLineItemsRaw as unknown as { invoice_id: string; amount: number; item_type: string | null }[];
       const taxRate = await getTaxRate(tx);
       const invoices = (invoicesRaw as unknown as { id: string; amount: number; status: string; issue_date: string }[]).map((i) => {

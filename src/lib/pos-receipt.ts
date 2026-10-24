@@ -1,6 +1,4 @@
-// Client video 2026-09-25: POS receipts had no printout at all (the dialog's Print button only closed it)
-// and no place for a return/refund disclaimer ("no returns on chemicals", "30 days to return", ...). This
-// builds a narrow printable receipt in its own window, with the tenant's editable disclaimer at the bottom.
+// Client video 2026-09-25: POS receipts had no printout at all (the dialog's Print button only closed it) and no place
 
 export type ReceiptLine = { name: string; sku: string; itemNumber?: string | number | null; qty: number; price: number };
 export type ReceiptData = {

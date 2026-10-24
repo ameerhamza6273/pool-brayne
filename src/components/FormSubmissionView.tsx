@@ -4,11 +4,7 @@ import { useLanguage } from "@/lib/language-context";
 import type { FormTemplate } from "@/lib/api/formTemplates";
 import type { JobForm } from "@/lib/api/jobs";
 
-// Client video 2026-09-29: "checked all these off... shows under submitted forms, but this is not
-// clickable, nor can I open and preview each form. I wrote notes, and they're not visible." —
-// DynamicForm only ever renders blank (never seeded from a past submission) and "Submitted Forms"
-// only offered "Copy Customer Link", no way to see what was actually filled in. This is a
-// read-only replay of one job_forms row against its template's field definitions.
+// Client video 2026-09-29: "checked all these off...
 export default function FormSubmissionView({
   template,
   form,
@@ -83,8 +79,7 @@ export default function FormSubmissionView({
           );
         })}
 
-        {/* Raw fallback — no template found (deleted since submission) or template has no fields
-            matching the saved keys, but the row still has real data. */}
+        {/* Raw fallback — no template found (deleted since submission) or template has no fields matching the saved keys, but the */}
         {(!template || fields.length === 0) && Object.keys(data).length > 0 && (
           <div className="space-y-2">
             {Object.entries(data).map(([k, v]) => (

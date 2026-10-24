@@ -1,11 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 
-// Client video 2026-10-06: "the top search field is not working... doesn't matter which section
-// I'm in" -- the topbar search box (AppShell.tsx) was pure decoration, no value/onChange/handler
-// at all (flagged as deliberately out of scope in Feature Completeness until now). Real global
-// search across the record types its own placeholder promises: customers, jobs, invoices, plus
-// estimates since they live on the same page as invoices.
+// Client video 2026-10-06: "the top search field is not working...
 export default async function searchRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { q?: string } }>("/", async (req) => {
     const q = (req.query.q ?? "").trim();

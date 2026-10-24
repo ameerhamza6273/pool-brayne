@@ -126,10 +126,7 @@ export default function Campaigns() {
 
         {/* Automations */}
         <TabsContent value="automations" className="mt-4 space-y-4">
-          {/* QA sweep 2026-09-30: this tab's rows were 100% demo seed data (no UI anywhere creates
-              an automation) shown as "Active" over SMS/Email, which aren't connected (see
-              Integrations status in CLAUDE.md) -- nothing here actually sends. Make that explicit
-              instead of letting it look like real automation is running. */}
+          {/* QA sweep 2026-09-30: this tab's rows were 100% demo seed data (no UI anywhere creates an automation) shown as "Active" */}
           <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl p-4 text-sm text-[#92400E]">
             {t("SMS and Email aren't connected yet (Twilio / SendGrid), so automations can't actually send. Set those up in Settings before turning one on.")}
           </div>
@@ -308,10 +305,7 @@ export default function Campaigns() {
 
         {/* SMS Inbox */}
         <TabsContent value="sms" className="mt-4">
-          {/* QA sweep 2026-09-30: this banner claimed real two-way SMS ("Customers reply inside
-              Clear Pool CRM"), and the reply box below only ever wrote a local row -- no Twilio
-              connection exists, so nothing was ever actually sent to a customer. A tech relying on
-              this to think they'd replied would be wrong. Made that explicit instead. */}
+          {/* QA sweep 2026-09-30: this banner claimed real two-way SMS ("Customers reply inside Clear Pool CRM"), and the reply box below */}
           <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-t-xl p-3 text-sm text-[#92400E] flex items-center gap-2">
             <MessageSquare className="w-4 h-4 shrink-0" />
             <span className="font-medium">{t("SMS isn't connected yet (needs a Twilio account) — nothing typed here is actually sent to the customer's phone.")}</span>
@@ -402,10 +396,7 @@ export default function Campaigns() {
 
         {/* Reviews */}
         <TabsContent value="reviews" className="mt-4 space-y-4">
-          {/* QA sweep 2026-09-30: every row here was demo seed data (no review platform is
-              connected, no UI anywhere creates a review) -- one even referenced "PoolBrayne", the
-              internal dev codename, not the client's brand. Nothing currently pulls real Google/
-              Facebook reviews in, so say so instead of showing fabricated ones. */}
+          {/* QA sweep 2026-09-30: every row here was demo seed data (no review platform is connected, no UI anywhere creates a */}
           <div className="bg-[#F59E0B]/10 border border-[#F59E0B]/30 rounded-xl p-4 text-sm text-[#92400E]">
             {t("No review platform is connected yet — this list is empty until Google/Facebook reviews are wired up.")}
           </div>

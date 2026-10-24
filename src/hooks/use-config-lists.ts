@@ -10,9 +10,7 @@ import {
 const slugify = (label: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "item";
 const asItems = (labels: string[]): ConfigListItem[] => labels.map((label) => ({ id: slugify(label), label, color: null }));
 
-// Client PDF 2026-09-18: these lists moved from static src/lib/data.ts arrays to a DB-backed,
-// per-tenant, Settings-editable table (`tenant_config_lists`, see backend/src/routes/settings.ts).
-// Fallback below is only what renders before the first fetch resolves, so nothing flashes empty.
+// Client PDF 2026-09-18: these lists moved from static src/lib/data.ts arrays to a DB-backed, per-tenant, Settings-editable table (`tenant_config_lists`, see backend/src/routes/settings.ts).
 const FALLBACK: ConfigLists = {
   job_types: staticJobTypes,
   job_statuses: staticJobStatuses,

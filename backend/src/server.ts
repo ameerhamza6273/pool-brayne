@@ -36,8 +36,7 @@ app.get("/health", async () => ({ ok: true }));
 
 app.addHook("onRequest", async (req, reply) => {
   if (req.url === "/health") return;
-  // Intuit redirects the browser here directly after OAuth consent, so it carries no Bearer
-  // token — identity is instead recovered from the `state` param (see routes/quickbooks.ts).
+  // Intuit redirects the browser here directly after OAuth consent, so it carries no Bearer token — identity is instead recovered
   if (req.url.startsWith("/api/quickbooks/callback")) return;
   // Customer-facing "Approve Estimation" link (public.ts) — opened without a login.
   if (req.url.startsWith("/api/public/")) return;

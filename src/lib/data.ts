@@ -541,8 +541,7 @@ export const jobStatuses = [
   { id: "rescheduled", label: "Rescheduled", color: "#F59E0B" },
   { id: "no_answer", label: "No Answer / Customer Not Available", color: "#EF4444" },
   { id: "callback", label: "Needs Callback", color: "#EC4899" },
-  // Client meeting 2026-09-14: "write off a job... customer refuses to pay" -- bad-debt marker,
-  // distinct from Cancelled (job never happened) or SKU write-offs (inventory).
+  // Client meeting 2026-09-14: "write off a job...
   { id: "written_off", label: "Written Off", color: "#64748B" },
 ];
 
@@ -626,9 +625,7 @@ export const estimateAgreements = [
   "Renovation Contract",
 ];
 
-// Client excel sheet 2026-09-18 ("Copy of Library category.manufacture.xlsx"): the Library's own
-// category/manufacturer dropdowns, separate from Inventory's product taxonomy (pool equipment
-// documentation categories, not sellable product categories).
+// Client excel sheet 2026-09-18 ("Copy of Library category.manufacture.xlsx"): the Library's own category/manufacturer dropdowns, separate from Inventory's product taxonomy (pool equipment
 export const libraryCategories = [
   "Electrical", "Miscellaneous", "Infloor Cleaner", "Automation", "Salt System", "Cleaners",
   "Water Feature / Landscape", "Acid Feeder", "Chlorinator / Feeder", "Ozinator / UV",
@@ -697,11 +694,7 @@ export const spanishTranslations: Record<string, string> = {
   "Extra Job Info": "Información Adicional",
 };
 
-// Client doc 2026-10-05: "Booked" -> "Scheduled", "Dispatched" -> "En Route" is a display-only
-// rename -- jobs.status/.stage keep storing the literal "Booked"/"Dispatched" (written by
-// Jobs.tsx's stageStatusLabels and JobDetail.tsx's realStatuses) so old and newly-moved jobs never
-// diverge into two different stored values for the same stage. Wrap any raw job.status string
-// that reaches the screen as read-only text with this before rendering.
+// Client doc 2026-10-05: "Booked" -> "Scheduled", "Dispatched" -> "En Route" is a display-only rename -- jobs.status/.stage keep storing the literal
 export const jobStatusDisplayLabel = (status: string): string => {
   if (status === "Booked") return "Scheduled";
   if (status === "Dispatched") return "En Route";

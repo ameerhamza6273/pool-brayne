@@ -24,9 +24,7 @@ async function refreshAccessToken(refreshToken: string) {
   return (await res.json()) as { access_token: string; refresh_token: string; expires_in: number };
 }
 
-// Runs `fn` with a valid access token + realm id for the caller's tenant, transparently
-// refreshing the token first if it's expired or about to expire. Throws a clear error if the
-// tenant hasn't connected QuickBooks yet.
+// Runs `fn` with a valid access token + realm id for the caller's tenant, transparently refreshing the token first if
 export async function withQuickbooksConnection<T>(userId: string, fn: (conn: QboConnection) => Promise<T>): Promise<T> {
   return withTenantContext(userId, async (tx) => {
     const [row] = (await tx`
@@ -67,8 +65,7 @@ async function qboRequest(conn: QboConnection, method: string, path: string, bod
   return res.json() as Promise<any>;
 }
 
-// Client request 2026-08-27: lets Inventory map each product to a QBO Income/COGS/Asset
-// account. Fetches the tenant's live chart of accounts so those mappings use real account ids.
+// Client request 2026-08-27: lets Inventory map each product to a QBO Income/COGS/Asset account.
 export async function getChartOfAccounts(conn: QboConnection): Promise<{ id: string; name: string; accountType: string; classification: string }[]> {
   const result = await qboRequest(conn, "GET", `/query?query=${encodeURIComponent("select * from Account where Active = true maxresults 1000")}`);
   const accounts = result.QueryResponse?.Account ?? [];
@@ -89,9 +86,7 @@ export async function pushCustomer(
   return result.Customer.Id as string;
 }
 
-// Every QBO invoice line needs an ItemRef (a Product/Service record) — we don't map PoolBrayne's
-// own inventory to QBO Items, so we bill the whole invoice as one line against whichever Item the
-// company already has (every QBO company, sandbox or real, has at least one by default).
+// Every QBO invoice line needs an ItemRef (a Product/Service record) — we don't map PoolBrayne's own inventory to QBO Items
 async function getDefaultItemRef(conn: QboConnection): Promise<{ value: string; name: string }> {
   const result = await qboRequest(conn, "GET", `/query?query=${encodeURIComponent("select * from Item maxresults 1")}`);
   const item = result.QueryResponse?.Item?.[0];

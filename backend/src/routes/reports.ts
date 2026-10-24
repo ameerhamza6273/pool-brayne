@@ -2,19 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { withTenantContext } from "../db.js";
 import { getTaxRate } from "./invoicing.js";
 
-// Client request 2026-09-02: a dedicated Reports section — item movement, customer deposits,
-// invoices total-due per customer, recurring reminder-job types, and inventory valuation.
+// Client request 2026-09-02: a dedicated Reports section — item movement, customer deposits, invoices total-due per customer, recurring reminder-job types, and
 export default async function reportsRoutes(app: FastifyInstance) {
-  // Client xlsx 2026-10-15 ("sample sales analysis report.xlsx", from their old ServiceWorks):
-  // "lists all sales for a specified date range and includes the columns as shown". One row per
-  // payment received in the range (invoice payments + POS tenders), same columns as their sample:
-  // Amount / Delivered / Sales check / Diff-AR / Labor / Item Cost / Labor Cost / Cust Dep (not
-  // delivered) / Merch / In Store Labor / Job Labor / Sales Discount / Sales Tax. The breakdown
-  // columns are the whole invoice/ticket's figures (like the sample -- a half payment shows the
-  // full Sales check and a negative Diff/AR). A payment on an invoice whose job isn't completed yet
-  // is a customer deposit: Delivered/Sales check/breakdown are 0 and the amount goes to Cust Dep.
-  // Not tracked here, so not faked: check numbers / card brand+last4 (Payment Mode is just the
-  // method) and sales discounts (always 0 -- the app has no discount field).
+  // Client xlsx 2026-10-15 ("sample sales analysis report.xlsx", from their old ServiceWorks): "lists all sales for a specified date range and..."
   app.get<{ Querystring: { start: string; end: string; tz?: string } }>("/sales-analysis", async (req) => {
     const { start, end } = req.query;
     const tzRaw = req.query.tz ?? "";
@@ -45,8 +35,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
         ? await tx`select invoice_id, item_type, quantity, amount, cost, taxable from invoice_line_items where invoice_id in ${tx(invoiceIds)}`
         : []) as unknown as InvLine[];
 
-      // POS: one row per tender (split payments), falling back to the order itself for older
-      // orders saved before per-tender rows existed.
+      // POS: one row per tender (split payments), falling back to the order itself for older orders saved before per-tender rows
       type PosPay = { order_id: string; pos_number: string | null; payment_id: string | null; amount: number; paid_date: string; method: string | null; txn: string | null; check_number: string | null; card_brand: string | null; card_last4: string | null; subtotal: number; tax: number; total: number; customer_name: string | null; phone: string | null };
       const posPayments = await tx`
         select o.id as order_id, o.number as pos_number, pp.id as payment_id, coalesce(pp.amount, o.total) as amount,
@@ -76,9 +65,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
         if (m === "card" || m.includes("credit")) return "Credit Card";
         return "Other";
       };
-      // Client video 2026-10-18: Payment Mode shows the check # for checks and the card brand
-      // (Visa / MasterCard / Discover ...) for cards. Card payments made before brand capture
-      // existed have no brand stored and keep showing the plain method.
+      // Client video 2026-10-18: Payment Mode shows the check # for checks and the card brand (Visa / MasterCard / Discover
       const brandLabel = (b: string) => ({ AmericanExpress: "American Express", MasterCard: "MasterCard" } as Record<string, string>)[b] ?? b;
       const paymentMode = (method: string | null, checkNumber: string | null, brand: string | null, last4: string | null) => {
         const m = (method ?? "").toLowerCase();
@@ -144,14 +131,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client PDF 2026-10-15 ("Sales Tax - Accrual Basis - ServiceWorks.pdf"): a detail sales-tax
-  // report, parameters date range + accrual/cash basis, "by order/job then item". Covers both
-  // sources of sales: invoices (job work) and POS orders. Accrual = invoices by issue date; Cash =
-  // invoices by the real payments received in the range (lines scaled by the share of the invoice
-  // paid in the range, so partial payments count only what was actually collected). POS orders are
-  // paid at the register, so they count on their sale date under both bases. Invoice tax uses the
-  // tenant's current rate and each line's `taxable` flag -- the same formula as every invoice total
-  // (`taxedTotal`); POS tax is the order's real stored tax, split across its taxable lines.
+  // Client PDF 2026-10-15 ("Sales Tax - Accrual Basis - ServiceWorks.pdf"): a detail sales-tax report, parameters date range + accrual/cash basis
   app.get<{ Querystring: { start: string; end: string; basis?: string; tz?: string } }>("/sales-tax-detail", async (req) => {
     const { start, end } = req.query;
     const basis = req.query.basis === "cash" ? "cash" : "accrual";
@@ -258,8 +238,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
           const taxable = l.taxable ?? true;
           let tax = 0;
           if (taxable && taxableAmount !== 0) {
-            // Split the order's real stored tax across its taxable lines; the last one takes the
-            // rounding remainder so the lines always add up to exactly what was collected.
+            // Split the order's real stored tax across its taxable lines; the last one takes the rounding remainder so the lines
             tax = i === lastTaxable ? round(remainingTax) : round(Number(o.tax) * (Number(l.amount) / taxableAmount));
             remainingTax -= tax;
           }
@@ -284,15 +263,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client doc 2026-10-05 ("CRM REPORTS SCREEN", reference screenshots from their old software):
-  // wanted a search bar, per-transaction rows (not aggregated totals) with Item/Description/
-  // Location/Invoice Date/Invoice #/Category/Cost/Price/Qty/Total Cost/Total Price, Invoice # as a
-  // clickable link ("open up individual job"), and an Export button. Rebuilt from aggregated
-  // per-item-per-type sums into one row per actual sale/job-use/write-off. Cost/Price reflect
-  // today's inventory_items values (job_parts_used and inventory_writeoffs don't snapshot a
-  // historical cost, same limitation already documented for Inventory Valuation). "Location" has
-  // no per-transaction record in this schema -- falls back to wherever that item currently has the
-  // most stock, which is the closest real equivalent, not a stored fact about that specific line.
+  // Client doc 2026-10-05 ("CRM REPORTS SCREEN", reference screenshots from their old software): wanted a search bar, per-transaction rows (not aggregated
   app.get<{ Querystring: { start: string; end: string } }>("/item-movement", async (req) => {
     const { start, end } = req.query;
     return withTenantContext(req.userId, async (tx) => {
@@ -365,19 +336,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
     });
   });
 
-  // QA sweep 2026-09-30: this summed the stored pre-tax `amount`, which never matched the real
-  // Total on the invoice document/charge (materials-only tax, see invoicing.ts `taxedTotal`) --
-  // same fix as Invoicing's list and Dashboard's Outstanding Invoices tile, so a customer's real
-  // amount due is consistent everywhere it's shown.
-  // Client doc 2026-10-05 ("CRM REPORTS SCREEN", reference screenshots): rebuilt as an aging
-  // report -- Customer Name, Account #, 0-30/31-60/61-90/90+ day buckets, Total. "Account #" has
-  // no real equivalent in this schema, so the customer's phone number fills that column (closest
-  // match to the reference screenshots, which show phone-number-shaped account numbers). Bucketed
-  // by days past due_date (or issue_date when no due_date is set), floored at 0 so a not-yet-due
-  // invoice still lands in the 0-30 bucket -- there is no separate "Current" column, matching the
-  // reference. Negative bucket amounts (client's ask: "reflect negative charges... if a return was
-  // made") would need a real credit/overpayment record, which doesn't exist in this schema yet --
-  // not fabricated here; every bucket is a real sum of unpaid invoice totals, never invented.
+  // QA sweep 2026-09-30: this summed the stored pre-tax `amount`, which never matched the real Total on the invoice document/charge (materials-only
   app.get("/invoices-due", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const taxMultiplier = 1 + (await getTaxRate(tx));
@@ -431,9 +390,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client video 2026-10-06: "need to be a way to see or click on it here to see what this other
-  // reminder is" -- CustomerDetail's Other Reminders list only had Mark Done / Delete, no way to
-  // view or correct a reminder's label/frequency/date after creating it.
+  // Client video 2026-10-06: "need to be a way to see or click on it here to see what this other..."
   app.patch<{ Params: { id: string }; Body: { label?: string; frequencyMonths?: number; nextDue?: string } }>("/reminders/:id", async (req) => {
     const { id } = req.params;
     const { label, frequencyMonths, nextDue } = req.body;
@@ -478,15 +435,7 @@ export default async function reportsRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client SMS 2026-09-30: "allow us to change the inventory valuation as of date" (QBO's own
-  // Inventory Valuation Summary lets you pick any as-of date). There's no stock-history table, so
-  // a past date is reconstructed by walking today's on-hand quantity backwards through every
-  // dated movement that happened AFTER that date: add back what left (POS sales, job parts used,
-  // write-offs), subtract what came in (received PO line items, matched by SKU the same way
-  // receiving a PO does in inventory.ts). Today (the default) skips all of that and just reflects
-  // current stock. Cost is always today's `unit_cost` -- historical cost-per-unit isn't tracked,
-  // so this (like the rest of the app) has no FIFO/average-cost layers; a genuine limitation, not
-  // a bug, worth knowing if a past-dated figure doesn't reconcile with QBO to the cent.
+  // Client SMS 2026-09-30: "allow us to change the inventory valuation as of date" (QBO's own Inventory Valuation Summary lets you
   app.get<{ Querystring: { asOf?: string } }>("/inventory-valuation", async (req) => {
     const asOf = req.query.asOf || new Date().toISOString().slice(0, 10);
     return withTenantContext(req.userId, (tx) => tx`

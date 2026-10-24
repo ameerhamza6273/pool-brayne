@@ -1,10 +1,6 @@
 import JsBarcode from "jsbarcode";
 
-// Client SMS 2026-09-21: "remove all headers and footers". Printing labels through the browser's
-// own print dialog stamps the date, page title, "about:blank" and page number onto every label
-// (@page { margin: 0 } didn't stop it on their Zebra setup). A PDF opened in the browser's PDF
-// viewer prints with none of that, at exactly the label size, so labels are now generated as
-// PDFs. jsPDF is loaded on demand so it isn't part of the main bundle.
+// Client SMS 2026-09-21: "remove all headers and footers".
 
 export type LabelItem = {
   name: string;

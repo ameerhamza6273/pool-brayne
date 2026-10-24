@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 
-// Client videos 2026-10-18: a phone tab still showed the old grey "Map view" box days after the
-// real map shipped, and Inventory columns "were spinnable yesterday, not now ... I signed out and
-// back in and it was spinnable" -- both were browser tabs left open on an older deploy (a
-// single-page app never reloads its code on its own). Every few minutes, and whenever the tab
-// comes back into view, compare the deployed index.html's main script with the one this tab
-// loaded; when they differ, AppShell offers a one-click reload.
+// Client videos 2026-10-18: a phone tab still showed the old grey "Map view" box days after the real map shipped
 const SCRIPT_RE = /\/assets\/index-[^"']+\.js/;
 const CHECK_EVERY_MS = 5 * 60 * 1000;
 

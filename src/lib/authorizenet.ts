@@ -1,7 +1,4 @@
-// Real card payment collection via Authorize.net Accept.js (client's confirmed real processor,
-// sandbox developer account created 2026-09-03). Accept.js tokenizes the card client-side into
-// an opaque payment nonce — the raw card number/CVV never reach our own server, only the
-// resulting dataDescriptor/dataValue do.
+// Real card payment collection via Authorize.net Accept.js (client's confirmed real processor, sandbox developer account created 2026-09-03).
 const API_LOGIN_ID = import.meta.env.VITE_AUTHORIZENET_API_LOGIN_ID as string | undefined;
 const PUBLIC_CLIENT_KEY = import.meta.env.VITE_AUTHORIZENET_PUBLIC_CLIENT_KEY as string | undefined;
 const ENVIRONMENT = (import.meta.env.VITE_AUTHORIZENET_ENVIRONMENT as string | undefined) ?? "sandbox";
@@ -32,10 +29,7 @@ type AcceptResponse = {
 
 let scriptPromise: Promise<void> | null = null;
 
-// Accept.js's onload fires before it's actually finished initializing internally (it loads a
-// second script and does device-fingerprinting setup after that), so calling dispatchData
-// immediately after onload can fail with "Accept.js is not loaded correctly" even though the
-// script is present. A short grace period after onload avoids that race.
+// Accept.js's onload fires before it's actually finished initializing internally (it loads a second script and does device-fingerprinting setup after that)
 const ACCEPT_JS_INIT_DELAY_MS = 1200;
 
 function loadAcceptJs(): Promise<void> {
@@ -51,9 +45,7 @@ function loadAcceptJs(): Promise<void> {
   return scriptPromise;
 }
 
-// Kick off the load as soon as this module is imported (well before the user opens a payment
-// dialog and clicks Charge), rather than waiting for the first tokenizeCard() call — the biggest
-// factor in avoiding the race above is simply giving Accept.js more head start.
+// Kick off the load as soon as this module is imported (well before the user opens a payment dialog and
 if (typeof window !== "undefined" && API_LOGIN_ID && PUBLIC_CLIENT_KEY) {
   loadAcceptJs().catch(() => {});
 }
@@ -89,8 +81,7 @@ export async function tokenizeCard(card: CardInput): Promise<{ dataDescriptor: s
   try {
     return await dispatchToAccept(card);
   } catch (err) {
-    // Transparently retry once — "not loaded correctly" on the very first attempt is the known
-    // Accept.js init race, not a real card/config problem, and a second attempt reliably works.
+    // Transparently retry once — "not loaded correctly" on the very first attempt is the known Accept.js init race, not a
     if (err instanceof Error && err.message.includes("not loaded correctly")) {
       await new Promise((r) => setTimeout(r, 500));
       return dispatchToAccept(card);

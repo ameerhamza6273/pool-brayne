@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 
-// Client video 2026-09-25: line-item price boxes always showed a "0" you had to delete first ("it looks
-// wonky"). Shows an empty box (with a placeholder) for 0 and keeps the typed text as-is while editing
-// (so "0." / "1.50" type naturally); the number handed back is still 0 when empty, same as before.
+// Client video 2026-09-25: line-item price boxes always showed a "0" you had to delete first ("it looks wonky").
 export default function NumberField({
   value, onValueChange, placeholder = "0.00", ...rest
 }: Omit<React.ComponentProps<typeof Input>, "value" | "onChange" | "type"> & {

@@ -11,13 +11,7 @@ export type SearchableSelectOption = { value: string; label: string; sublabel?: 
 
 const RESULT_CAP = 50;
 
-// Client request 2026-09-03: plain <Select> dropdowns became unusable once the real
-// customer (3,600+) and inventory (2,500+) lists were imported — needs type-to-filter search.
-// Client request 2026-09-04: cmdk mounts every item it's given regardless of the filter text, so
-// passing it the full 2,500-3,600-item array directly (as this component originally did) still
-// meant thousands of DOM nodes on every open — filtering is done here in JS instead, and only a
-// capped number of matches is ever rendered (same "unpaginated big list" issue as the Catalog/
-// Customers/Valuation tables, just inside a combobox instead of a plain table).
+// Client request 2026-09-03: plain <Select> dropdowns became unusable once the real customer (3,600+) and inventory (2,500+) lists were imported
 export function SearchableSelect({
   options,
   value,
@@ -41,9 +35,7 @@ export function SearchableSelect({
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  // Client feedback 2026-09-21: inside a dialog the list must not hang out past the dialog's edge or
-  // resize the dialog -- it stays a floating list, but uses the dialog as its collision boundary
-  // (flips/shrinks to fit inside it) and is capped at 150px tall, scrolling beyond that.
+  // Client feedback 2026-09-21: inside a dialog the list must not hang out past the dialog's edge or resize the dialog
   const dialogBoundary = useContext(DialogBoundaryContext);
   const closeAndReset = (o: boolean) => { setOpen(o); if (!o) setQuery(""); };
   const selected = options.find((o) => o.value === value);

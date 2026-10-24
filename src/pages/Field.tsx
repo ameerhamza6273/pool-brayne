@@ -53,14 +53,11 @@ export default function Field() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const jobDetailRef = useRef<HTMLDivElement>(null);
   const [jobStatus, setJobStatus] = useState<"dispatched" | "en_route" | "arrived" | "completed">("dispatched");
-  // label: "before" / "after" / "internal" for photos taken in this view; anything else (no label)
-  // is a photo that was already on the job before the tech got there.
+  // label: "before" / "after" / "internal" for photos taken in this view; anything else (no label) is a photo that
   const [photos, setPhotos] = useState<{ id: string; url: string; label: string | null }[]>([]);
   const [internalNotes, setInternalNotes] = useState("");
   const [librarySearch, setLibrarySearch] = useState("");
-  // Client video feedback 2026-10-15: Library's always-open result list trapped the page's own
-  // scroll on mobile (a finger scrolling the page would get "grabbed" by this inner scrollable
-  // list instead) -- collapsed by default, only renders its list/search once opened.
+  // Client video feedback 2026-10-15: Library's always-open result list trapped the page's own scroll on mobile (a finger scrolling the page
   const [libraryOpen, setLibraryOpen] = useState(false);
   const photoLabelRef = useRef<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
@@ -72,8 +69,7 @@ export default function Field() {
   const [partsUsed, setPartsUsed] = useState<Record<string, number>>({});
   const [partsSearch, setPartsSearch] = useState("");
 
-  // Client feedback 2026-09-11: Field view was missing the job's line items, its forms, and its
-  // documents -- techs only ever work from this page, not the desktop JobDetail.
+  // Client feedback 2026-09-11: Field view was missing the job's line items, its forms, and its documents -- techs only ever
   const [jobLineItems, setJobLineItems] = useState<JobLineItem[]>([]);
   const [jobForms, setJobForms] = useState<JobForm[]>([]);
   const [viewingForm, setViewingForm] = useState<JobForm | null>(null);
@@ -84,23 +80,13 @@ export default function Field() {
   const [formError, setFormError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Client video 2026-10-15: "When uploading a photo we need to give an option to take a live photo.
-  // It's currently only going through the gallery." Android Chrome opens the gallery for a plain
-  // file input; `capture` opens the camera directly, so there's one input of each.
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
 
-  // Client video 2026-10-05: "Admin view... just reversed back to the dashboard, doesn't really
-  // do anything" -- it used to navigate away entirely instead of toggling what this same page
-  // shows. Now an in-place toggle: Admin View = jobsApi.list() (every job, same source the desktop
-  // Jobs page uses), Tech View = jobsApi.mine() (just this login's assigned jobs, the original
-  // default) -- "revert back to the person assigned to whatever login we're under", per the video.
+  // Client video 2026-10-05: "Admin view...
   const [adminView, setAdminView] = useState(false);
-  // Client video feedback 2026-10-15: "add an arrow here so we can scroll up and down dates and
-  // look at one, two, three days in the future" -- this list previously showed every assigned job
-  // at once with no date filter at all. Client-side filter of the already-fetched list (same
-  // pattern Jobs.tsx's Map tab uses), parsed/compared as local dates per the established gotcha
-  // (never toISOString() for a local day).
+  // Client video feedback 2026-10-15: "add an arrow here so we can scroll up and down dates and look at one..."
   const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const [selectedDate, setSelectedDate] = useState(() => localKey(new Date()));
   const shiftDate = (delta: number) => {
@@ -158,9 +144,7 @@ export default function Field() {
   const unscheduledJobs = myJobs.filter((j) => !j.scheduled_date);
   const visibleJobs = [...dayJobs, ...unscheduledJobs];
 
-  // Jump to whichever day has the active job when jobs first load; after that, moving the date
-  // forward/back re-picks the first job of the newly-selected day so the right-hand panel doesn't
-  // keep showing a job from a day you've navigated away from.
+  // Jump to whichever day has the active job when jobs first load; after that, moving the date forward/back re-picks the
   useEffect(() => {
     if (dayJobs.length > 0 && !dayJobs.some((j) => j.id === activeJobId)) {
       selectJob(dayJobs[0]);
@@ -168,18 +152,14 @@ export default function Field() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, myJobs]);
 
-  // Client video feedback 2026-10-15: "there is no way to delete a picture if you uploaded the
-  // wrong picture."
-  // Client doc 2026-10-15 ("CRM BUTTON FUNCTIONALITY"): "Need to add a DELETE icon on Documents"
-  // -- same delete JobDetail's Documents already has (DocumentsSection asks to confirm first).
+  // Client video feedback 2026-10-15: "there is no way to delete a picture if you uploaded the wrong picture." Client doc
   const handleDeleteDocument = async (doc: { id: string }) => {
     if (!currentJob) return;
     await jobsApi.deleteDocument(currentJob.id, doc.id);
     setJobDocuments((prev) => prev.filter((d) => d.id !== doc.id));
   };
 
-  // Client video 2026-10-18: "the tech may not need all these items ... cannot delete items in the
-  // field." Same full-list save JobDetail's line-items editor uses, so job.amount stays in sync.
+  // Client video 2026-10-18: "the tech may not need all these items ...
   const [savingLineItems, setSavingLineItems] = useState(false);
   const saveJobLineItems = async (next: JobLineItem[]) => {
     if (!currentJob) return;
@@ -240,12 +220,7 @@ export default function Field() {
     (source === "camera" ? cameraInputRef : fileInputRef).current?.click();
   };
 
-  // Client video 2026-09-29: "When I typed the notes here last time, it did not save." -- this
-  // textarea only ever flushed to the customer record when the job was marked Complete in the
-  // same sitting; typing notes, then switching jobs or closing the tab before completing, lost
-  // them silently. Explicit save now (same "Save Note to Customer Record" pattern JobDetail's
-  // desktop notes already use); Complete Job below still flushes leftover unsaved text as a
-  // safety net, but clearing `notes` here after a save avoids posting it twice.
+  // Client video 2026-09-29: "When I typed the notes here last time, it did not save." -- this textarea only ever
   const saveJobNotes = async () => {
     if (!currentJob || !notes.trim()) return;
     setSavingNotes(true);
@@ -313,10 +288,7 @@ export default function Field() {
     });
   };
 
-  // Client feedback 2026-09-11: forms weren't reachable here at all (Field techs never see
-  // desktop JobDetail) -- same suggested-templates rule as JobDetail. Client PDF 2026-09-18: a
-  // job's own selected_form_ids (chosen at creation) now takes priority; falls back to the old
-  // applies_to-derived rule for jobs created before that feature existed.
+  // Client feedback 2026-09-11: forms weren't reachable here at all (Field techs never see desktop JobDetail) -- same suggested-templates rule as
   const currentJobSelectedFormIds = currentJob && Array.isArray(currentJob.selected_form_ids) ? (currentJob.selected_form_ids as string[]) : [];
   const suggestedTemplates = currentJob
     ? (currentJobSelectedFormIds.length > 0
@@ -373,8 +345,7 @@ export default function Field() {
     const next = statusSteps[currentStepIdx + 1];
     if (!next) return;
     setFormError("");
-    // Client video 2026-10-23: "Start Job" should take the tech to the address instead of them
-    // typing it in -- opened synchronously so the phone doesn't block it as a popup.
+    // Client video 2026-10-23: "Start Job" should take the tech to the address instead of them typing it in -- opened
     if (next.id === "en_route") openDirections();
 
     if (next.id === "completed" && missingRequiredTemplates.length > 0) {
@@ -400,8 +371,7 @@ export default function Field() {
         .map(([itemId, quantity]) => ({ itemId, quantity }));
       if (usedItems.length > 0) {
         await jobsApi.addParts(currentJob.id, usedItems);
-        // The backend also bills each part as a job line item -- reload so Job Items and the
-        // invoice generated next include them.
+        // The backend also bills each part as a job line item -- reload so Job Items and the invoice generated
         setPartsUsed({});
         setJobLineItems(await jobsApi.getLineItems(currentJob.id));
       }
@@ -424,8 +394,7 @@ export default function Field() {
         issueDate,
         dueDate: dueDate.toISOString().slice(0, 10),
         amount: jobLineItems.length > 0 ? jobLineItems.reduce((sum, li) => sum + li.amount, 0) : currentJob.amount,
-        // Client doc 2026-10-05: "Sent" claimed the invoice was emailed/texted when nothing actually
-        // was (SendGrid/Twilio aren't connected) -- "Draft" is honest about what happened.
+        // Client doc 2026-10-05: "Sent" claimed the invoice was emailed/texted when nothing actually was (SendGrid/Twilio aren't connected) -- "Draft" is honest
         status: "Draft",
         lineItems: jobLineItems.length > 0
           ? jobLineItems.map((li) => ({ description: li.description, sku: li.sku, itemType: li.item_type as "material" | "labor", quantity: li.quantity, cost: li.cost, rate: li.rate, notes: li.notes }))
@@ -454,11 +423,7 @@ export default function Field() {
           </p>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          {/* Client video 2026-10-05: "always have it present here so we can toggle back and
-              forth" -- an in-place Admin View / Tech View toggle, not the old button that just
-              navigated away to the desktop Dashboard. Admin View = every job (jobsApi.list(), same
-              source the desktop Jobs page uses); Tech View = back to this login's own jobs. Visible
-              to everyone here (including a field-only tech), not just an admin previewing. */}
+          {/* Client video 2026-10-05: "always have it present here so we can toggle back and forth" -- an in-place Admin View */}
           <div className="flex h-8 rounded-md border border-[#0891B2]/30 overflow-hidden text-xs font-medium">
             <button
               onClick={() => setAdminView(false)}
@@ -480,9 +445,7 @@ export default function Field() {
         </div>
       </div>
 
-      {/* Client video feedback 2026-10-15: day-at-a-time navigation for the job list ("scroll up
-          and down dates and look at one, two, three days in the future"). Unscheduled jobs (no
-          date) always stay visible below whichever day is selected, so nothing silently vanishes. */}
+      {/* Client video feedback 2026-10-15: day-at-a-time navigation for the job list ("scroll up and down dates and look at one, two..." */}
       <div className="flex items-center justify-between bg-white rounded-xl border border-[#E2E8F0] px-2 py-1.5">
         <button onClick={() => shiftDate(-1)} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]" aria-label={t("Previous day")}>
           <ChevronLeft className="w-5 h-5" />
@@ -514,10 +477,7 @@ export default function Field() {
           {idx === dayJobs.length && (
             <div className="pt-2">
               <p className="text-xs font-semibold text-[#64748B] uppercase">{t("No date set")}</p>
-              {/* Client video 2026-10-16: "flipping through the dates... not changing the job
-                  list... I believe these names should change" -- these jobs have no scheduled
-                  date at all, so they stay here no matter which day is selected above; ask the
-                  office to schedule them (Jobs & Dispatch > Schedule) to move them into a day. */}
+              {/* Client video 2026-10-16: "flipping through the dates... */}
               <p className="text-[11px] text-[#94A3B8]">{t("These jobs aren't scheduled yet, so they stay here no matter what date you pick above. Ask the office to schedule them.")}</p>
             </div>
           )}
@@ -572,9 +532,7 @@ export default function Field() {
               })}
             </div>
 
-            {/* Client video 2026-10-23: Start Job / I've Arrived sit right under the 1-2-3 steps
-                (they were at the very bottom, below every form). Complete Job and Generate Invoice
-                stay at the bottom -- those come after the forms, photos and signature. */}
+            {/* Client video 2026-10-23: Start Job / I've Arrived sit right under the 1-2-3 steps (they were at the very bottom */}
             {nextStep && nextStep.id !== "completed" && (
               <div className="space-y-2">
                 <Button className="w-full h-12 bg-[#0891B2] hover:bg-[#0E7490] text-white font-semibold gap-2" onClick={advanceStatus}>
@@ -661,9 +619,7 @@ export default function Field() {
               </div>
             )}
 
-            {/* Line Items — client feedback 2026-09-11: "Show all items in the job / estimate
-                for the job they are doing for that day." job_line_items already carries over an
-                estimate's items on convert-to-job, so this is the merged, single source. */}
+            {/* Line Items — client feedback 2026-09-11: "Show all items in the job / estimate for the job they are doing..." */}
             {jobLineItems.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Job Items")}</p>
@@ -723,10 +679,7 @@ export default function Field() {
                 {inventoryItems
                   .filter((item) => !isLaborCategory(item.category))
                   .filter((item) => {
-                    // Client request 2026-09-04: with 2,500+ real parts, showing everything before
-                    // the user types anything was the same "unpaginated big list" issue seen
-                    // elsewhere — always keep already-selected parts visible, otherwise require a
-                    // search term (same cap approach as SearchableSelect).
+                    // Client request 2026-09-04: with 2,500+ real parts, showing everything before the user types anything was the same "unpaginated big list"
                     if ((partsUsed[item.id] ?? 0) > 0) return true;
                     if (!partsSearch.trim()) return false;
                     return matchesQuery(partsSearch, [
@@ -768,9 +721,7 @@ export default function Field() {
               </div>
             </div>
 
-            {/* Documents — client feedback 2026-09-11: "Show documents (still need a document
-                section... these are pdfs for estimates showing scope of work)." Read/attach only
-                here; techs pick from the Library instead of re-uploading a scope-of-work PDF. */}
+            {/* Documents — client feedback 2026-09-11: "Show documents (still need a document section... */}
             <DocumentsSection
               documents={jobDocuments}
               onUpload={handleUploadDocument}
@@ -780,10 +731,7 @@ export default function Field() {
               onDelete={handleDeleteDocument}
             />
 
-            {/* Library — the company document library, browse/open only (attaching to the job is the
-                Documents section above). Client video feedback 2026-10-15: the list used to always
-                render open, and its own internal scroll "grabbed" the page's scroll on mobile --
-                collapsed by default, the search box and list only mount once opened. */}
+            {/* Library — the company document library, browse/open only (attaching to the job is the Documents section above). */}
             <div>
               <button
                 type="button"
@@ -879,8 +827,7 @@ export default function Field() {
               ))}
             </div>
 
-            {/* Forms — client feedback 2026-09-11: forms only ever showed on desktop JobDetail,
-                which a technician never opens; same suggested-template rule reused here. */}
+            {/* Forms — client feedback 2026-09-11: forms only ever showed on desktop JobDetail, which a technician never opens; same suggested-template rule */}
             {suggestedTemplates.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Forms")}</p>
@@ -897,9 +844,7 @@ export default function Field() {
               </div>
             )}
 
-            {/* Submitted Forms — client video 2026-09-29: "I checked all these off... but this is
-                not clickable, nor can I open and preview each form." Techs can now re-open what
-                was already submitted for this job (read-only) instead of only seeing a blank form. */}
+            {/* Submitted Forms — client video 2026-09-29: "I checked all these off... */}
             {jobForms.length > 0 && (
               <div>
                 <p className="text-sm font-medium text-[#0F172A] mb-2">{t("Submitted Forms")}</p>
@@ -949,8 +894,7 @@ export default function Field() {
               )}
             </div>
 
-            {/* Internal notes / photos — staff only (notes reuse jobs.tech_notes; photos are labelled
-                "internal" so the invoice's Trip Details skips them). */}
+            {/* Internal notes / photos — staff only (notes reuse jobs.tech_notes; photos are labelled "internal" so the invoice's Trip Details skips */}
             <div>
               <p className="text-sm font-medium text-[#0F172A] mb-1">{t("Internal Notes / Photos")}</p>
               <p className="text-[11px] text-[#94A3B8] mb-2">{t("Staff only — never shown to the customer.")}</p>

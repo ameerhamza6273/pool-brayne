@@ -3,10 +3,7 @@ import { withTenantContext } from "../db.js";
 
 type ConfigListRow = { item_id: string; label: string; color: string | null; sort_order: number };
 
-// Client PDF 2026-09-18: same defaults the old src/lib/data.ts static arrays had, minus the
-// requested Job Types edits (Weekly Maintenance + In Store Repair added, "New Build" dropped
-// from the Install label). Used only to lazily seed a tenant's row the first time each list is
-// requested — after that, Settings CRUD is the source of truth.
+// Client PDF 2026-09-18: same defaults the old src/lib/data.ts static arrays had, minus the requested Job Types edits (Weekly Maintenance +
 const CONFIG_LIST_DEFAULTS: Record<string, { id: string; label: string; color?: string }[]> = {
   job_types: [
     { id: "maintenance", label: "Maintenance", color: "#0891B2" },
@@ -85,18 +82,14 @@ const CONFIG_LIST_DEFAULTS: Record<string, { id: string; label: string; color?: 
     { id: "duplicate_job", label: "Duplicate job / already serviced" },
     { id: "customer_moved_cancelled_account", label: "Customer moved / cancelled account" },
   ],
-  // Client SMS 2026-09-21: the reminder "Label" was free text; they want a dropdown of labels they
-  // can add to (Filter cleaning, Salt cell cleaning, Sand change, Anode replacement, etc.).
+  // Client SMS 2026-09-21: the reminder "Label" was free text; they want a dropdown of labels they can add to (Filter
   reminder_types: [
     { id: "filter_cleaning", label: "Filter Cleaning" },
     { id: "salt_cell_cleaning", label: "Salt Cell Cleaning" },
     { id: "sand_change", label: "Sand Change" },
     { id: "anode_replacement", label: "Anode Replacement" },
   ],
-  // Client SMS 2026-09-21: Library Category/Manufacturer lists and the Inventory Manufacturer list became
-  // importable/exportable (Data > Import / Export), so they live in the DB instead of static arrays.
-  // Library ones start with the client's own fixed lists (same as src/lib/data.ts); inventory manufacturers
-  // start empty (the Manufacture List page is derived from the catalog; imported names are added on top).
+  // Client SMS 2026-09-21: Library Category/Manufacturer lists and the Inventory Manufacturer list became importable/exportable (Data > Import / Export), so they
   library_categories: [
     "Electrical", "Miscellaneous", "Infloor Cleaner", "Automation", "Salt System", "Cleaners",
     "Water Feature / Landscape", "Acid Feeder", "Chlorinator / Feeder", "Ozinator / UV",
@@ -104,8 +97,7 @@ const CONFIG_LIST_DEFAULTS: Record<string, { id: string; label: string; color?: 
   ].map((label) => ({ id: slugify(label), label })),
   library_manufacturers: ["Jandy", "Solaxx", "Raypak", "Century", "Pentair", "Intermatic"].map((label) => ({ id: slugify(label), label })),
   inventory_manufacturers: [],
-  // Client video 2026-09-25: the Documents upload label was a hardcoded 4-item list, so any other
-  // document (e.g. "Curing Process") got saved as "Sand Change Form". Now an editable Document List (Data page).
+  // Client video 2026-09-25: the Documents upload label was a hardcoded 4-item list, so any other document (e.g.
   document_types: ["Sand Change Form", "Automation Checklist", "Weekly Service Form", "Other"].map((label) => ({ id: slugify(label), label })),
 };
 
@@ -160,9 +152,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     },
   );
 
-  // Client SMS 2026-09-21: every Job Settings list needs an Edit button. Rename/recolor keeps the
-  // item's id (slug) stable. Job types are the only list whose label is stored as text on real
-  // rows, so a rename there is cascaded so existing jobs/recurring jobs/forms don't get orphaned.
+  // Client SMS 2026-09-21: every Job Settings list needs an Edit button.
   app.patch<{ Params: { key: string; itemId: string }; Body: { label?: string; color?: string | null } }>(
     "/config-lists/:key/:itemId",
     async (req, reply) => {
@@ -248,9 +238,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     },
   );
 
-  // Client text 2026-10-06: "under profile ... the upload logo is not functional" -- the button
-  // had no handler at all; now uploads to Supabase storage (frontend) and saves the public URL here.
-  // Client 2026-10-23: two logos -- full (documents/emails) and short (app sidebar/header).
+  // Client text 2026-10-06: "under profile ...
   app.patch<{ Body: { logoUrl?: string | null; logoShortUrl?: string | null } }>("/company/logo", async (req) => {
     const body = req.body;
     return withTenantContext(req.userId, (tx) => tx`
@@ -261,9 +249,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     `);
   });
 
-  // Client request 2026-09-02: "Allow us to change the first day of the week when running
-  // payroll" (they run Wed-Tue) — Timesheets computes its week_start from this instead of
-  // always assuming Monday.
+  // Client request 2026-09-02: "Allow us to change the first day of the week when running payroll" (they run Wed-Tue)
   app.patch<{ Body: { payrollWeekStartDay: number } }>("/payroll", async (req) => {
     const { payrollWeekStartDay } = req.body;
     return withTenantContext(req.userId, (tx) => tx`
@@ -272,8 +258,6 @@ export default async function settingsRoutes(app: FastifyInstance) {
   });
 
   // Client video 2026-09-25: editable return/refund disclaimer printed at the bottom of every POS receipt.
-  // Client SMS 2026-09-30: also let the tenant pick SKU vs the internal Item # as the identifier
-  // printed under each receipt line (same choice already offered for barcode labels).
   app.get("/receipt", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const [row] = (await tx`
@@ -310,11 +294,7 @@ export default async function settingsRoutes(app: FastifyInstance) {
     return withTenantContext(req.userId, (tx) => tx`update tenants set plan_id = ${planId} where id = current_tenant_id() returning *`);
   });
 
-  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- the tenant's
-  // real sales tax rate, a real editable setting (migration 20261015170000) instead of a hardcoded
-  // literal, since "for now" implies it may change later. Kept as its own light endpoint (not
-  // folded into the main GET /, which also loads team/integrations/billing) since every
-  // Estimate/Invoice/Job/POS page needs to read just this one number.
+  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- the tenant's real sales tax rate
   app.get("/tax-rate", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const [row] = (await tx`select tax_rate from tenants where id = current_tenant_id() limit 1`) as unknown as { tax_rate: string | number }[];

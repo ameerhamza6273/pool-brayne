@@ -10,20 +10,18 @@ import { customersApi } from "@/lib/api/customers";
 import type { SendDocumentEmail } from "@/lib/api/invoicing";
 import { useLanguage } from "@/lib/language-context";
 
-type Contact = { id: string; name: string; email: string | null; phone: string | null; is_primary: boolean };
+export type EmailContact = { id: string; name: string; email: string | null; phone: string | null; is_primary: boolean };
 
 const splitEmails = (s: string) => s.split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean);
 const sameEmail = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-// Client video 2026-10-23: "when we email invoice, we get a pop-up screen like this. If the
-// customer has more than one email address, we can select it ... add another email, add to the
-// body of the email, or maybe even change the subject, and then we can send it." Shared by
-// InvoiceDetail and EstimateDetail; the email itself is built server-side (documentEmail.ts).
+// Client video 2026-10-23: "when we email invoice, we get a pop-up screen like this.
 export default function SendEmailDialog({
   open,
   onOpenChange,
   kind,
   customerId,
+  presetContacts,
   defaultSubject,
   defaultMessage,
   getPdf,
@@ -32,8 +30,10 @@ export default function SendEmailDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  kind: "invoice" | "estimate";
+  kind: "invoice" | "estimate" | "purchase_order";
   customerId: string | null;
+  /** Purchase orders: the vendor's emails, passed in instead of loading the customer's household. */
+  presetContacts?: EmailContact[];
   defaultSubject: string;
   defaultMessage: string;
   getPdf: () => Promise<string | null>;
@@ -41,7 +41,7 @@ export default function SendEmailDialog({
   onSend: (data: SendDocumentEmail) => Promise<void>;
 }) {
   const { t } = useLanguage();
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contacts, setContacts] = useState<EmailContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
@@ -61,6 +61,11 @@ export default function SendEmailDialog({
     setAttachPdf(true);
     setContacts([]);
     setTo("");
+    if (presetContacts) {
+      setContacts(presetContacts);
+      setTo(presetContacts.filter((c) => c.is_primary && c.email).map((c) => c.email!).join(", "));
+      return;
+    }
     if (!customerId) return;
     let cancelled = false;
     setContactsLoading(true);
@@ -71,11 +76,11 @@ export default function SendEmailDialog({
       setTo(primary?.email ?? "");
     }).catch(() => {}).finally(() => { if (!cancelled) setContactsLoading(false); });
     return () => { cancelled = true; };
-  }, [open, customerId, defaultSubject, defaultMessage]);
+  }, [open, customerId, presetContacts, defaultSubject, defaultMessage]);
 
   const toList = splitEmails(to);
-  const isChecked = (c: Contact) => !!c.email && toList.some((e) => sameEmail(e, c.email!));
-  const toggle = (c: Contact, checked: boolean) => {
+  const isChecked = (c: EmailContact) => !!c.email && toList.some((e) => sameEmail(e, c.email!));
+  const toggle = (c: EmailContact, checked: boolean) => {
     if (!c.email) return;
     const rest = toList.filter((e) => !sameEmail(e, c.email!));
     setTo((checked ? [...rest, c.email] : rest).join(", "));
@@ -112,7 +117,7 @@ export default function SendEmailDialog({
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!busy) onOpenChange(o); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{kind === "invoice" ? t("Send Invoice") : t("Send Estimate")}</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle>{kind === "invoice" ? t("Send Invoice") : kind === "estimate" ? t("Send Estimate") : t("Send Purchase Order")}</DialogTitle></DialogHeader>
         <div className="space-y-4 pt-1">
           {contactsLoading && <p className="text-sm text-[#64748B]">{t("Loading contacts...")}</p>}
           {contacts.length > 0 && (
@@ -160,13 +165,15 @@ export default function SendEmailDialog({
             <p className="text-xs text-[#64748B] mt-1">
               {kind === "invoice"
                 ? t("Below your message the email adds the Breakdown of Services (invoice #, dates, job description, service performed) and a Click here to pay button.")
-                : t("Below your message the email adds the estimate details and a Click here to review & approve button.")}
+                : kind === "estimate"
+                  ? t("Below your message the email adds the estimate details and a Click here to review & approve button.")
+                  : t("Below your message the email adds the PO #, date, payment terms and the list of products.")}
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm text-[#0F172A] cursor-pointer">
             <Checkbox checked={attachPdf} onCheckedChange={(v) => setAttachPdf(!!v)} />
             <Paperclip className="w-4 h-4 text-[#64748B]" />
-            {kind === "invoice" ? t("Attach the invoice as a PDF") : t("Attach the estimate as a PDF")}
+            {kind === "invoice" ? t("Attach the invoice as a PDF") : kind === "estimate" ? t("Attach the estimate as a PDF") : t("Attach the purchase order as a PDF")}
           </label>
           {error && <p className="text-sm text-[#DC2626]">{t(error)}</p>}
           <div className="flex justify-end gap-2 pt-1">

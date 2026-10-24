@@ -2,13 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type postgres from "postgres";
 import { withTenantContext } from "../db.js";
 
-// Client video 2026-10-19 (approved by the boss 2026-10-20): a ServiceWorks-style report catalog --
-// Financial / Jobs / Employee & Payroll / POS columns with many more reports. The bespoke reports
-// (Sales Tax, Sales Analysis, Item Movement, ...) keep their own routes in reports.ts; every other
-// catalog report is a plain table, so each one here is just a query returning
-// { columns, rows, summary?, note? } that the frontend's generic CatalogReport renders (sort,
-// search, totals, CSV, print). Reports that need data the app never records (tips, mileage,
-// zones, commissions, product models, custom fields) are deliberately not here -- nothing faked.
+// Client video 2026-10-19 (approved by the boss 2026-10-20): a ServiceWorks-style report catalog -- Financial / Jobs / Employee & Payroll
 
 type ColType = "text" | "money" | "number" | "hours" | "percent" | "date";
 type LinkKind = "job" | "invoice" | "estimate" | "customer" | "pos";

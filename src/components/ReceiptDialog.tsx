@@ -11,8 +11,7 @@ import { settingsApi } from "@/lib/api/settings";
 import { printReceipt, receiptLabels, type ReceiptBusiness } from "@/lib/pos-receipt";
 import { useLanguage } from "@/lib/language-context";
 
-// Client SMS 2026-09-25: "click a recent transaction and bring up a receipt, then give an option to edit (add
-// notes to a receipt) then print and/or re-print" -- same from Customer > Previous Sales. One dialog for both.
+// Client SMS 2026-09-25: "click a recent transaction and bring up a receipt, then give an option to edit (add notes..."
 
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
 
@@ -27,8 +26,7 @@ export default function ReceiptDialog({ orderId, onClose, onSaved }: { orderId: 
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [business, setBusiness] = useState<ReceiptBusiness>({ businessName: "", phone: "", address: "", disclaimer: "" });
   const [printBlocked, setPrintBlocked] = useState(false);
-  // Client SMS 2026-09-30: "allow us to input serial number after taking payment" -- editable
-  // per line item, same save-in-place pattern as the note above.
+  // Client SMS 2026-09-30: "allow us to input serial number after taking payment" -- editable per line item, same save-in-place pattern
   const [serials, setSerials] = useState<Record<string, string>>({});
   const [savedSerials, setSavedSerials] = useState<Record<string, string>>({});
   const [savingSerial, setSavingSerial] = useState<string | null>(null);

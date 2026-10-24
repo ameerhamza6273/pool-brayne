@@ -29,8 +29,7 @@ export default function LineItemsEditor({
   inventoryItems: ItemWithStock[];
 }) {
   const { t } = useLanguage();
-  // Client SMS 2026-09-25: the same Category / Manufacturer dropdowns as Point of Sale to narrow the
-  // inventory picker, per line. Cleared when lines are moved or removed (they're keyed by position).
+  // Client SMS 2026-09-25: the same Category / Manufacturer dropdowns as Point of Sale to narrow the inventory picker, per line.
   const [filters, setFilters] = useState<Record<number, { category: string; manufacturer: string }>>({});
   const filterOf = (idx: number) => filters[idx] ?? { category: "All", manufacturer: "All" };
   const setFilter = (idx: number, patch: Partial<{ category: string; manufacturer: string }>) =>
@@ -53,9 +52,7 @@ export default function LineItemsEditor({
   const applyInventoryPick = (index: number, itemId: string) => {
     const picked = inventoryItems.find((i) => i.id === itemId);
     if (!picked) return;
-    // Client sample estimate PDF (2026-09-06): line items show a subtitle under the description
-    // with model/part detail (e.g. "260K BTU Natural Gas, Versaflo, Copper Hx... — JNDJXIQ260NK")
-    // -- pre-fill it from the inventory item's long description, still freely editable.
+    // Client sample estimate PDF (2026-09-06): line items show a subtitle under the description with model/part detail (e.g.
     update(index, { description: picked.name, sku: picked.sku, cost: picked.unit_cost, rate: picked.price ?? picked.unit_cost, notes: picked.long_description ?? "", taxable: picked.taxable });
   };
 
@@ -86,8 +83,7 @@ export default function LineItemsEditor({
                   <GripVertical className="w-4 h-4" />
                 </span>
               )}
-              {/* Client text + xlsx 2026-10-06: 3rd category "Maintenance" for weekly maintenance
-                  priority chemical SKUs, alongside Material/Labor. */}
+              {/* Client text + xlsx 2026-10-06: 3rd category "Maintenance" for weekly maintenance priority chemical SKUs, alongside Material/Labor. */}
               <Select value={li.itemType ?? "material"} onValueChange={(v) => update(idx, { itemType: v as "material" | "labor" | "maintenance", taxable: v !== "labor" })}>
                 <SelectTrigger className="h-8 w-32 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -105,28 +101,21 @@ export default function LineItemsEditor({
                     placeholder={t("Pick from inventory (optional)")}
                     searchPlaceholder={t("Search item #, SKU, name, or description...")}
                     emptyText={t("No matching items.")}
-                    // Client meeting 2026-09: "making sure the labor is linked to our labor SKUs
-                    // and materials are linked to our material SKUs". Client SMS 2026-09-21: the
-                    // 67 imported labor SKUs are category "Labor" (not "Services"), so they never
-                    // showed under Labor -- isLaborCategory covers both.
+                    // Client meeting 2026-09: "making sure the labor is linked to our labor SKUs and materials are linked to our material..."
                     options={inventoryItems
                       .filter((inv) => li.itemType === "maintenance" ? inv.maintenance_priority : li.itemType === "labor" ? isLaborCategory(inv.category) : !isLaborCategory(inv.category))
                       .filter((inv) => filterOf(idx).category === "All" || inv.category === filterOf(idx).category)
                       .filter((inv) => filterOf(idx).manufacturer === "All" || inv.manufacturer === filterOf(idx).manufacturer)
                       .map((inv) => ({
                       value: inv.id,
-                      // Client SMS 2026-09-04 (staff, "Michael"): "typing our item number,
-                      // nothing was populating" -- item_number wasn't in the searchable text at
-                      // all before, only SKU/name/description were.
+                      // Client SMS 2026-09-04 (staff, "Michael"): "typing our item number, nothing was populating" -- item_number wasn't in the searchable text at
                       label: `${inv.item_number ?? inv.sku} · ${inv.sku} — ${inv.name}`,
                       sublabel: [inv.long_description, inv.manufacturer].filter(Boolean).join(" · ") || undefined,
                     }))}
                   />
                 </div>
               )}
-              {/* Client video 2026-10-06: "I'm going to need [a tax yes/no icon] for individual
-                  SKUs" -- was purely item_type-driven (labor untaxed, material taxed) before; a
-                  real per-line override, defaulting to that same rule. */}
+              {/* Client video 2026-10-06: "I'm going to need [a tax yes/no icon] for individual SKUs" -- was purely item_type-driven (labor untaxed */}
               <Button
                 type="button"
                 size="sm"
@@ -165,9 +154,7 @@ export default function LineItemsEditor({
               );
             })()}
             <Input placeholder={t("Description")} value={li.description} onChange={(e) => update(idx, { description: e.target.value })} className="h-8 text-sm" />
-            {/* Client SMS 2026-09-25: "a notes section under each item ... explain the item or type in a serial
-                number" -- the existing per-line detail line, now a multi-line Notes box (same field, still shown
-                under the item on the estimate / invoice). */}
+            {/* Client SMS 2026-09-25: "a notes section under each item ... */}
             <Textarea
               placeholder={t("Notes (optional) — explain the item, serial #, model #, specs. Shown under the item.")}
               value={li.notes ?? ""}

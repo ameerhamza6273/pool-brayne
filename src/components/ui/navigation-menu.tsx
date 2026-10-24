@@ -18,13 +18,7 @@ const NavigationMenu = React.forwardRef<
     {...props}
   >
     {children}
-    {/* Fix 2026-10-15: the shared Viewport positions the open dropdown panel relative to Root's
-        OWN bounding box (which spans the full nav list, since Root wraps the whole List), not
-        the hovered trigger -- invisible on a short 2-3 item demo nav (Root is narrow enough that
-        "under Root" roughly equals "under any item"), but on a wide nav (ours has 10 items) every
-        dropdown rendered flush under the leftmost item regardless of which trigger was hovered.
-        Opting out (viewport=false) lets each Content position itself relative to its own Item
-        instead, so it always opens directly under the trigger that opened it. */}
+    {/* Fix 2026-10-15: the shared Viewport positions the open dropdown panel relative to Root's OWN bounding box (which spans the full */}
     {viewport && <NavigationMenuViewport />}
   </NavigationMenuPrimitive.Root>
 ));
@@ -76,11 +70,7 @@ const NavigationMenuContent = React.forwardRef<
   <NavigationMenuPrimitive.Content
     ref={ref}
     className={cn(
-      // The data-[motion=...] slide classes below only make sense with a shared Viewport (they
-      // slide based on index position relative to the previously-open item); with viewport=false
-      // each Content opens independently under its own trigger, so we use a plain state-based
-      // fade+zoom instead (same convention as ui/dropdown-menu.tsx) rather than a slide that has
-      // no meaningful "from" direction per item.
+      // The data-[motion=...] slide classes below only make sense with a shared Viewport (they slide based on index position relative to
       'left-0 top-0 w-full data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 md:absolute md:w-auto',
       className
     )}

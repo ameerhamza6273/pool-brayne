@@ -61,14 +61,11 @@ const statusColors: Record<string, string> = {
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  // Client SMS 2026-10-15: "need to link to customer invoices from the accounts outstanding
-  // report" -- lets a link open straight to this tab instead of always landing on Service History.
+  // Client SMS 2026-10-15: "need to link to customer invoices from the accounts outstanding report" -- lets a link open straight
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get("tab") ?? "history";
   const { user, tenantId, role } = useAuth();
-  // Client video 2026-10-15: a technician granted "Customer Lookup" (Settings > Team) can look up a
-  // customer's history, notes, invoices, photos and add notes/photos, but not edit or delete the
-  // record itself, and links into pages a field login can't open (jobs, full invoice) are hidden.
+  // Client video 2026-10-15: a technician granted "Customer Lookup" (Settings > Team) can look up a customer's history, notes, invoices, photos
   const readOnly = isFieldOnlyRole(role);
   const { t } = useLanguage();
   const confirm = useConfirm();
@@ -89,34 +86,26 @@ export default function CustomerDetail() {
   const [qboError, setQboError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Client bug report 2026-09-02: no way to edit the customer profile, add Other Contacts, or
-  // edit Equipment on File — all three are now real (Gate Codes below were rendered but never
-  // wired up to save at all, that's fixed here too).
+  // Client bug report 2026-09-02: no way to edit the customer profile, add Other Contacts, or edit Equipment on File
   const [editOpen, setEditOpen] = useState(false);
   const [editDraft, setEditDraft] = useState({ firstName: "", lastName: "", type: "Residential", phone: "", email: "", address: "", pump: "", heater: "", filter: "", salt: "" });
   const [gateDraft, setGateDraft] = useState({ frontGate: "", houseGate: "", padlock: "", subdivisionEntrance: "none", notes: "" });
-  // Client report 2026-10-05: "Save Access Info button does not do anything" -- it actually saved
-  // fine, it just gave zero feedback (no toast, no loading state), so a click looked like a no-op.
+  // Client report 2026-10-05: "Save Access Info button does not do anything" -- it actually saved fine, it just gave zero
   const [savingGateCodes, setSavingGateCodes] = useState(false);
   const [gateCodesSavedAt, setGateCodesSavedAt] = useState<number | null>(null);
   const [addContactOpen, setAddContactOpen] = useState(false);
   const [contactDraft, setContactDraft] = useState({ firstName: "", lastName: "", phone: "", email: "" });
 
-  // Client request 2026-09-03: "Add plus icon to add more service reminders in the customer
-  // profile" -- reuses the same customer_reminders system already built for the Reports page,
-  // just surfaced directly here so staff don't have to leave the customer to add one.
+  // Client request 2026-09-03: "Add plus icon to add more service reminders in the customer profile" -- reuses the same customer_reminders
   const [reminders, setReminders] = useState<CustomerReminder[]>([]);
   const [reminderTypeOpen, setReminderTypeOpen] = useState(false);
   const [reminderTypeDraft, setReminderTypeDraft] = useState({ label: "", frequencyMonths: "", nextDue: "" });
-  // Client video 2026-10-06: "need to be a way to see or click on it here to see what this other
-  // reminder is" -- the list only had Mark Done / Delete, no way to view or correct what was
-  // actually saved. Clicking a row now reopens this same dialog pre-filled, editable.
+  // Client video 2026-10-06: "need to be a way to see or click on it here to see what this other..."
   const [editingReminderId, setEditingReminderId] = useState<string | null>(null);
 
   // Client PDF 2026-09-06: "view all forms from previous jobs or maintenance jobs".
   const [serviceForms, setServiceForms] = useState<CustomerServiceForm[]>([]);
-  // Client video 2026-10-15: past invoices and service forms open in a popup instead of
-  // navigating away to the full invoice/job page.
+  // Client video 2026-10-15: past invoices and service forms open in a popup instead of navigating away to the full invoice/job
   const [openInvoiceId, setOpenInvoiceId] = useState<string | null>(null);
   const [openForm, setOpenForm] = useState<CustomerServiceForm | null>(null);
   const [formTemplates, setFormTemplates] = useState<FormTemplate[] | null>(null);
@@ -177,11 +166,7 @@ export default function CustomerDetail() {
     load();
   }, [load]);
 
-  // Client video 2026-10-16: "the map view section...we need [a real] map of the address" (it was
-  // a static placeholder icon) + "when I try to click on the map...it does not load to a map, so I
-  // can't get directions from my current location" -- real embedded map now, click opens Google
-  // Maps directions (works from a phone's current location with no origin specified). Same
-  // geocode-then-persist pattern Jobs.tsx's Map tab already uses.
+  // Client video 2026-10-16: "the map view section...we need [a real] map of the address" (it was a static placeholder icon)
   const [mapCoords, setMapCoords] = useState<{ lat: number; lng: number; approx: boolean } | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
   useEffect(() => {
@@ -206,8 +191,7 @@ export default function CustomerDetail() {
     return () => { cancelled = true; };
   }, [customer?.id, customer?.address, customer?.lat, customer?.lng]);
 
-  // Directions by address text (not the geocoded point) whenever the address exists: Google
-  // resolves it more exactly than our free geocoder, and it's ready on a phone before any lookup.
+  // Directions by address text (not the geocoded point) whenever the address exists: Google resolves it more exactly than our free
   const mapsHref = customer?.address
     ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(customer.address)}`
     : mapCoords ? `https://www.google.com/maps/dir/?api=1&destination=${mapCoords.lat},${mapCoords.lng}` : undefined;
@@ -244,9 +228,7 @@ export default function CustomerDetail() {
     load();
   };
 
-  // Client request 2026-08-28: periodic service reminder (repeat jobs 2-3x/year, e.g. "next
-  // service due in 4 months"), so office staff can see who's coming due without a separate
-  // notification/SMS channel — nothing sends automatically since none is wired up yet.
+  // Client request 2026-08-28: periodic service reminder (repeat jobs 2-3x/year, e.g.
   const handleSaveReminder = async () => {
     if (!id) return;
     await customersApi.updateReminder(
@@ -410,8 +392,7 @@ export default function CustomerDetail() {
 
   return (
     <div className="space-y-4">
-      {/* Header -- client screenshot 2026-10-18 (phone): the action buttons ran off the right edge
-          of the screen; they now wrap onto their own row under the name on narrow screens. */}
+      {/* Header -- client screenshot 2026-10-18 (phone): the action buttons ran off the right edge of the screen; they now wrap */}
       <div className="flex flex-wrap items-center gap-3">
         <button onClick={() => navigate("/customers")} className="p-2 rounded-lg hover:bg-[#F8FAFC] text-[#64748B]">
           <ArrowLeft className="w-5 h-5" />
@@ -433,9 +414,7 @@ export default function CustomerDetail() {
               <span className="hidden sm:inline">{t("Edit")}</span>
             </Button>
           )}
-          {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension detects
-              real `tel:` links in the page, not JS button handlers -- a plain onClick with
-              `window.location.href` was invisible to it even once their domain is whitelisted. */}
+          {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension detects real `tel:` links in the page, not JS button handlers */}
           {customer.phone ? (
             <Button asChild size="sm" className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-1.5 h-9">
               <a href={`tel:${customer.phone}`}>
@@ -509,9 +488,7 @@ export default function CustomerDetail() {
                   <Mail className="w-4 h-4 shrink-0 text-[#0891B2]" />
                   <span className="truncate">{customer.email}</span>
                 </div>
-                {/* Client video 2026-10-18 (phone): "when I try to click the little icon to the left
-                    of the address, it doesn't take me there either" -- the pin + address now open
-                    the same Google Maps directions as the map below. */}
+                {/* Client video 2026-10-18 (phone): "when I try to click the little icon to the left of the address, it doesn't..." */}
                 {mapsHref ? (
                   <a href={mapsHref} target="_blank" rel="noreferrer" className="flex items-start gap-2 text-[#64748B] hover:text-[#0891B2]">
                     <MapPin className="w-4 h-4 shrink-0 text-[#0891B2] mt-0.5" />
@@ -553,8 +530,7 @@ export default function CustomerDetail() {
             </CardContent>
           </Card>
 
-          {/* Other Contacts at the same address (client 2026-09-02: renamed from "Also at This
-              Address", positioned above Service Reminder, and now supports adding a contact). */}
+          {/* Other Contacts at the same address (client 2026-09-02: renamed from "Also at This Address", positioned above Service Reminder, and now */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Other Contacts")}</CardTitle>
@@ -624,9 +600,7 @@ export default function CustomerDetail() {
             </CardContent>
           </Card>
 
-          {/* Client request 2026-09-03: "Add plus icon to add more service reminders" — several
-              named reminder types per customer (Filter Cleaning every 4mo, Salt Cell every 6mo,
-              etc.), distinct from the single reminder above. */}
+          {/* Client request 2026-09-03: "Add plus icon to add more service reminders" — several named reminder types per customer (Filter Cleaning */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
               <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
@@ -666,8 +640,7 @@ export default function CustomerDetail() {
             </CardContent>
           </Card>
 
-          {/* Client PDF 2026-09-06: "add a button to view all forms from previous jobs or
-              maintenance jobs (water testing and check list for maintenance with notes)". */}
+          {/* Client PDF 2026-09-06: "add a button to view all forms from previous jobs or maintenance jobs (water testing and check..." */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold text-[#0F172A] flex items-center gap-2">
@@ -707,10 +680,7 @@ export default function CustomerDetail() {
             </DialogContent>
           </Dialog>
 
-          {/* Equipment on File (client bug report 2026-09-02: editable via the header Edit button;
-              client video 2026-10-16: "these are not clickable to edit in this screen...I'm not
-              sure...or you go to the edit screen somewhere here" -- that button wasn't discoverable
-              from this card at all, so a direct Edit button now lives right on it too). */}
+          {/* Equipment on File (client bug report 2026-09-02: editable via the header Edit button; client video 2026-10-16: "these are not clickable..." */}
           <Card className="border-[#E2E8F0] shadow-sm">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-semibold text-[#0F172A]">{t("Equipment on File")}</CardTitle>
@@ -802,9 +772,7 @@ export default function CustomerDetail() {
               <Card className="border-[#E2E8F0] shadow-sm">
                 <CardContent className="p-0">
                   <div className="divide-y divide-[#F1F5F9]">
-                    {/* Client SMS 2026-10-15: "job history links not active" -- these rows had no
-                        onClick/Link at all, purely decorative. job_service_history.job_id (nullable,
-                        older/historic rows may not have one) links straight to the real job. */}
+                    {/* Client SMS 2026-10-15: "job history links not active" -- these rows had no onClick/Link at all, purely decorative. */}
                     {history.map((h) => (
                       <div
                         key={h.id}

@@ -1,8 +1,4 @@
-// Real card payment collection via Authorize.net (client's confirmed real processor,
-// 2026-08-27). Sandbox developer account created 2026-09-03 for testing before the client
-// connects their own production merchant account. Card data itself is tokenized client-side by
-// Accept.js (src/lib/authorizenet.ts on the frontend) — this server only ever sees the opaque
-// payment nonce (dataDescriptor/dataValue), never a raw card number.
+// Real card payment collection via Authorize.net (client's confirmed real processor, 2026-08-27).
 const API_LOGIN_ID = process.env.AUTHORIZENET_API_LOGIN_ID!;
 const TRANSACTION_KEY = process.env.AUTHORIZENET_TRANSACTION_KEY!;
 const ENVIRONMENT = process.env.AUTHORIZENET_ENVIRONMENT ?? "sandbox";
@@ -10,8 +6,7 @@ const API_URL = ENVIRONMENT === "production"
   ? "https://api.authorize.net/xml/v1/request.api"
   : "https://apitest.authorize.net/xml/v1/request.api";
 
-// cardBrand/cardLast4: Authorize.net's accountType ("Visa", "MasterCard", ...) and the last 4 of
-// accountNumber ("XXXX1111") -- shown in the Sales Analysis report's Payment Mode column.
+// cardBrand/cardLast4: Authorize.net's accountType ("Visa", "MasterCard", ...) and the last 4 of accountNumber ("XXXX1111") -- shown in the Sales Analysis report's
 export type ChargeResult = { success: true; transactionId: string; cardBrand: string | null; cardLast4: string | null } | { success: false; error: string };
 
 type AuthorizeNetResponse = {

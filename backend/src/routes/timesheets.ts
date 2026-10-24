@@ -63,9 +63,7 @@ export default async function timesheetsRoutes(app: FastifyInstance) {
     });
   });
 
-  // ---- Client SMS 2026-09-25: real clock in / out, editable time entries with notes, and requests ----
-  // Office roles (owner / manager / office_manager) see and edit everyone; technicians / contractors only
-  // their own entries and requests, and can't approve anything.
+  // ---- Client SMS 2026-09-25: real clock in / out, editable time entries with notes, and requests ---- Office roles (owner
   type Tx = Parameters<Parameters<typeof withTenantContext>[1]>[0];
   const isOffice = async (tx: Tx, userId: string) => {
     const [me] = (await tx`select role from profiles where id = ${userId} limit 1`) as unknown as { role: string }[];

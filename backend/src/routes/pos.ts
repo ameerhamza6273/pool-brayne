@@ -25,9 +25,6 @@ export default async function posRoutes(app: FastifyInstance) {
   });
 
   // limit: 8 by default (the old "Recent Transactions" list); "Show more" asks for up to 200.
-  // POS header cards. They used to be summed from the Recent Transactions list (only the last 8 sales), so
-  // "Week Sales" was really "last 8 sales" and changed when "Show more" was clicked. "Today" / "this week"
-  // are counted in the browser's time zone (UTC would roll "today" over at ~8 pm in Atlanta).
   app.get<{ Querystring: { tz?: string } }>("/stats", async (req) => {
     const tz = /^[A-Za-z_]+(\/[A-Za-z_+-]+){0,2}$/.test(req.query.tz ?? "") ? req.query.tz! : "America/New_York";
     return withTenantContext(req.userId, async (tx) => {
@@ -70,8 +67,7 @@ export default async function posRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client SMS 2026-09-25: open a past sale as a receipt (POS Recent Transactions / Customer > Previous Sales),
-  // add notes to it, print / re-print.
+  // Client SMS 2026-09-25: open a past sale as a receipt (POS Recent Transactions / Customer > Previous Sales), add notes
   app.get<{ Params: { id: string } }>("/orders/:id", async (req, reply) => {
     return withTenantContext(req.userId, async (tx) => {
       const [order] = await tx`
@@ -97,10 +93,7 @@ export default async function posRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client SMS 2026-09-30: "allow us to input serial number after taking payment" -- the cart's
-  // own serial field (PointOfSale.tsx) only works before the sale is completed; sometimes the
-  // real serial (e.g. off the box, or off the installed unit) isn't known until after checkout.
-  // Same edit-after-the-fact pattern as the order note above, but per line item.
+  // Client SMS 2026-09-30: "allow us to input serial number after taking payment" -- the cart's own serial field (PointOfSale.tsx) only
   app.patch<{ Params: { itemId: string }; Body: { serialNumber: string | null } }>("/order-items/:itemId/serial", async (req, reply) => {
     const serial = (req.body?.serialNumber ?? "").trim() || null;
     return withTenantContext(req.userId, async (tx) => {
@@ -110,9 +103,7 @@ export default async function posRoutes(app: FastifyInstance) {
     });
   });
 
-  // Sales reports (client request 2026-08-27): quantity sold per product and sales-tax
-  // collected within a date range, derived from real pos_orders/pos_order_items (POS is the
-  // only itemized sales source -- job invoices don't track tax as a separate line).
+  // Sales reports (client request 2026-08-27): quantity sold per product and sales-tax collected within a date range, derived from real pos_orders/pos_order_items
   app.get<{ Querystring: { start: string; end: string } }>("/reports", async (req) => {
     const { start, end } = req.query;
     return withTenantContext(req.userId, async (tx) => {
@@ -137,9 +128,7 @@ export default async function posRoutes(app: FastifyInstance) {
         taxableSales: orders.reduce((s, o) => s + Number(o.subtotal), 0),
         taxCollected: orders.reduce((s, o) => s + Number(o.tax), 0),
       };
-      // Client SMS 2026-10-15: "need a way to drill down to see orders and amounts included on
-      // the sales tax report" -- the summary card already added these orders up, just never
-      // returned the list itself.
+      // Client SMS 2026-10-15: "need a way to drill down to see orders and amounts included on the sales tax report"
       return { qtyByProduct: items, taxSummary, orders };
     });
   });
@@ -168,10 +157,7 @@ export default async function posRoutes(app: FastifyInstance) {
       return;
     }
 
-    // Client SMS 2026-09-25: one sale was being saved 2-3 times (Complete Sale clicked again while the first
-    // request was still running). An identical order from the same cashier that is still being saved, or was
-    // saved in the last 10 seconds, is treated as that same sale -- checked BEFORE any card is charged.
-    // The in-process map covers near-simultaneous requests (the DB check can't see an uncommitted insert).
+    // Client SMS 2026-09-25: one sale was being saved 2-3 times (Complete Sale clicked again while the first request was still
     const dupKey = JSON.stringify([req.userId, total, items.map((i) => [i.id, i.name, i.qty, i.price])]);
     const pending = inFlightCheckouts.get(dupKey);
     if (pending) {
@@ -190,11 +176,7 @@ export default async function posRoutes(app: FastifyInstance) {
       `) as unknown as { id: string }[];
       if (recent.length > 0) return { id: recent[0].id, duplicate: true };
 
-      // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js —
-      // every Card tender line is charged BEFORE the order/stock changes are committed, so a
-      // decline on any card leaves nothing behind. Cash/ACH/Check stay simulated (no real bank
-      // processor wired up for those). Client request 2026-09-03: "use more than one payment type
-      // or multiple credit cards" -- each tender line gets its own charge/transaction id.
+      // Real card charges go through Authorize.net (client's confirmed processor) via Accept.js — every Card tender line is charged BEFORE the
       const chargedPayments: { method: string; amount: number; providerTransactionId: string | null; checkNumber: string | null; cardBrand: string | null; cardLast4: string | null }[] = [];
       for (const p of payments) {
         if (p.method === "Card") {
@@ -218,19 +200,13 @@ export default async function posRoutes(app: FastifyInstance) {
 
       return await withTenantContext(req.userId, async (tx) => {
         const [tenant] = await tx`select current_tenant_id() as id`;
-        // Client SMS 2026-09-30: "Walk in customer is still not showing history under previous
-        // sales" -- picking "Walk-in" in the cart always saved customer_id as null, so it could
-        // never show up on any customer's Previous Sales, even a "Walk in" customer record made
-        // specifically to catch these. If the tenant has one (matched by name), attach it there
-        // instead of leaving it orphaned; tenants without one keep the old null behavior.
+        // Client SMS 2026-09-30: "Walk in customer is still not showing history under previous sales" -- picking "Walk-in" in the cart
         let resolvedCustomerId = customerId;
         if (!resolvedCustomerId) {
           const [walkin] = await tx`select id from customers where name ~* '^walk[[:space:]-]?in$' limit 1` as unknown as { id: string }[];
           if (walkin) resolvedCustomerId = walkin.id;
         }
-        // Client SMS 2026-10-16: "numbers only" numbering -- POS "receipt number" used to be
-        // derived from the order's uuid (lib/api/pos.ts receiptNumber()), never a real stored
-        // sequential number.
+        // Client SMS 2026-10-16: "numbers only" numbering -- POS "receipt number" used to be derived from the order's uuid (lib/api/pos.ts receiptNumber())
         const number = await nextDocNumber(tx, tenant.id, "POS");
         const [order] = await tx`
           insert into pos_orders (tenant_id, customer_id, cashier_id, subtotal, tax, total, payment_method, provider_transaction_id, note, number)
@@ -250,9 +226,7 @@ export default async function posRoutes(app: FastifyInstance) {
             insert into pos_order_items (tenant_id, order_id, item_id, description, quantity, unit_price, amount, serial_number, taxable)
             values (${tenant.id}, ${order.id}, ${item.id}, ${item.name}, ${item.qty}, ${item.price}, ${item.price * item.qty}, ${item.serialNumber ?? null}, ${item.taxable})
           `;
-          // Non-stock/custom items (id null) and services never touch inventory. Client request
-          // 2026-09-02: stock is allowed to go negative (out-of-stock sales, returns as negative
-          // qty) rather than clamping at 0 like the old behavior.
+          // Non-stock/custom items (id null) and services never touch inventory.
           if (item.isService || !item.id) continue;
           const itemId = item.id;
           const [store] = await tx`select id from inventory_locations where type = 'store' limit 1`;

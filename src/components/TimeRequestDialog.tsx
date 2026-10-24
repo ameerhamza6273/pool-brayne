@@ -8,8 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { timesheetsApi } from "@/lib/api/timesheets";
 import { useLanguage } from "@/lib/language-context";
 
-// Client SMS 2026-09-25: employees make requests (time off, a missed punch / time correction, ...) that the
-// office approves or denies on the Timesheets page.
+// Client SMS 2026-09-25: employees make requests (time off, a missed punch / time correction, ...) that the office approves or
 export const REQUEST_TYPES = ["Time Off", "Sick Day", "Time Correction", "Other"];
 
 const todayKey = () => {

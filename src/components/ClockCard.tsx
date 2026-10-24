@@ -7,10 +7,7 @@ import { timesheetsApi, type TimeEntry } from "@/lib/api/timesheets";
 import { useLanguage } from "@/lib/language-context";
 import TimeRequestDialog from "@/components/TimeRequestDialog";
 
-// Client SMS 2026-09-25: "enable clock-in / clock-out, make notes ... make requests". The old Clock In was a
-// timer in the browser tab (gone on refresh, never saved until Clock Out). Now the punch is saved the moment
-// you press it, survives refresh / switching phones, and shows on the Timesheets page right away.
-// Used on Timesheets (office) and on the technician Field view (techs can only open /field).
+// Client SMS 2026-09-25: "enable clock-in / clock-out, make notes ...
 
 const two = (n: number) => String(n).padStart(2, "0");
 const fmtElapsed = (sec: number) => `${two(Math.floor(sec / 3600))}:${two(Math.floor((sec % 3600) / 60))}:${two(sec % 60)}`;

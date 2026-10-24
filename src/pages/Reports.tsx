@@ -22,11 +22,7 @@ import { matchesQuery } from "@/lib/search";
 import { toCsv, downloadCsv } from "@/lib/csv";
 import { useSort, SortTh } from "@/components/SortableTh";
 
-// Client request 2026-09-02 ("Need a reports section") started this page with item movement,
-// deposits, accounts outstanding, reminders, inventory valuation and sales tax; client video
-// 2026-10-19 (approved 2026-10-20) turned it into a ServiceWorks-style catalog -- see
-// src/lib/report-catalog.ts. The home page lists every report in category columns; ?report=<id>
-// opens one (?tab=<id> still works for older links, e.g. the sidebar's Reminders).
+// Client request 2026-09-02 ("Need a reports section") started this page with item movement, deposits, accounts outstanding, reminders, inventory valuation and
 const reportIds = allReports.map((r) => r.id);
 // Same key as the 2026-10-19 favorite tabs, so reports starred before keep their star.
 const FAVORITE_TABS_KEY = "reports_favorite_tabs";
@@ -35,15 +31,12 @@ export default function Reports() {
   const { t } = useLanguage();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  // Client doc 2026-10-05: "Need a SEARCH bar function -- search for item number, sku number,
-  // description, etc..." on Item Movement.
+  // Client doc 2026-10-05: "Need a SEARCH bar function -- search for item number, sku number, description, etc..." on Item Movement.
   const [movementQuery, setMovementQuery] = useState("");
-  // Client video 2026-10-18: totals per item (Qty Sold first) is the default view; the old
-  // one-row-per-transaction list stays one click away.
+  // Client video 2026-10-18: totals per item (Qty Sold first) is the default view; the old one-row-per-transaction list stays one click
   const [movementView, setMovementView] = useState<"summary" | "detail">("summary");
   const [movementOrderId, setMovementOrderId] = useState<string | null>(null);
-  // Client video 2026-10-19: star the reports you use most -- starred tabs move to the front under
-  // "Favorites" and the first one opens by default (per browser, like POS favorites).
+  // Client video 2026-10-19: star the reports you use most -- starred tabs move to the front under "Favorites" and the
   const [favoriteTabs, setFavoriteTabs] = useState<string[]>(() => {
     try {
       const saved = JSON.parse(localStorage.getItem(FAVORITE_TABS_KEY) ?? "[]");
@@ -64,9 +57,7 @@ export default function Reports() {
   const [openFolders, setOpenFolders] = useState<string[]>([]);
   const toggleFolder = (key: string) => setOpenFolders((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
-  // Local (not UTC) YYYY-MM-DD -- toISOString() re-serializes in UTC, which silently rolls the
-  // date back a day in any timezone ahead of UTC (same class of bug fixed 2026-09-25 for
-  // Timesheets/POS "today", and 2026-09-29 for the Jobs Map day-nav).
+  // Local (not UTC) YYYY-MM-DD -- toISOString() re-serializes in UTC, which silently rolls the date back a day in any timezone
   const localKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const [start, setStart] = useState(() => {
     const d = new Date();
@@ -74,10 +65,7 @@ export default function Reports() {
     return localKey(d);
   });
   const [end, setEnd] = useState(() => localKey(new Date()));
-  // Client SMS 2026-09-30: "allow us to change the inventory valuation as of date." Valuation
-  // doesn't use the shared start/end range (a single as-of date, like QBO's own Inventory
-  // Valuation Summary) -- kept as its own state/effect so changing it doesn't refetch every
-  // other tab.
+  // Client SMS 2026-09-30: "allow us to change the inventory valuation as of date." Valuation doesn't use the shared start/end range
   const [valuationAsOf, setValuationAsOf] = useState(() => localKey(new Date()));
 
   const [movement, setMovement] = useState<ItemMovementRow[]>([]);
@@ -272,9 +260,7 @@ export default function Reports() {
           <h1 className="text-xl sm:text-2xl font-bold text-[#0F172A] truncate">{t(activeReport.label)}</h1>
           {starButton(activeReport.id)}
         </div>
-        {/* Client SMS 2026-09-30: "Inventory valuation report - need an 'as of' date, not a date
-            range for QBO." Valuation uses a single, editable as-of date; reports that are always
-            "as of now" (Accounts Outstanding, Reminders...) show no date control at all. */}
+        {/* Client SMS 2026-09-30: "Inventory valuation report - need an 'as of' date, not a date range for QBO." Valuation uses */}
         {activeReport.range === "asof" && (
           <div className="flex items-center gap-2">
             <Label htmlFor="valuation-as-of" className="text-sm text-[#64748B]">{t("As of")}</Label>
@@ -431,9 +417,7 @@ export default function Reports() {
                   {invoicesDueSort.sorted.map((r) => (
                     <tr key={r.customer_id} className="border-b border-[#F1F5F9] last:border-0 hover:bg-[#F8FAFC]">
                       <td className="py-3 px-4 font-medium">
-                        {/* Client SMS 2026-10-15: "need to link to customer invoices from the
-                            accounts outstanding report" -- was linking to the customer's generic
-                            page (Service History tab); now opens straight to their Invoices. */}
+                        {/* Client SMS 2026-10-15: "need to link to customer invoices from the accounts outstanding report" -- was linking to the customer's */}
                         <button className="text-[#0891B2] hover:underline" onClick={() => navigate(`/customers/${r.customer_id}?tab=invoices`)}>{r.customer_name}</button>
                       </td>
                       <td className="py-3 px-4 text-[#64748B]">{r.account_number ?? "—"}</td>

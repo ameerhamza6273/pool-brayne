@@ -1,6 +1,4 @@
-// Client request 2026-09-21: "a route line between jobs ... like the other software". Real road
-// geometry from the public OSRM demo server (free, no key). It's best-effort: callers draw a straight
-// line first and swap in the road route only if this resolves, so an outage just leaves straight lines.
+// Client request 2026-09-21: "a route line between jobs ...
 const cache = new Map<string, [number, number][] | null>();
 let queue: Promise<unknown> = Promise.resolve();
 

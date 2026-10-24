@@ -12,8 +12,6 @@ type LangCtx = {
 };
 
 // Hand-written translations for the highest-traffic labels (instant, no network round trip).
-// Anything not listed here still gets translated automatically -- see the auto-translate cache
-// below -- this dict just avoids a flash-of-English + network call for common words.
 const dict: Record<string, string> = {
   // Hand-checked Spanish for the whole app (see es-dictionary.ts); the entries below override it.
   ...esDictionary,
@@ -50,26 +48,15 @@ const dict: Record<string, string> = {
   "Reports": "Reportes", "Form Builder": "Creador de Formularios", "Recurring": "Recurrente",
   "Tasks": "Tareas", "Dispatch": "Despacho", "Estimates / Quotes": "Presupuestos",
   "Customer Invoices": "Facturas de Clientes",
-  // Auto-translate mistranslates these ambiguous-in-English words on its own (e.g. "Tech" as in
-  // technician read as "technology") -- hand-pinned so the common Settings > Team labels are
-  // reliably correct rather than depending on Google Translate's guess.
+  // Auto-translate mistranslates these ambiguous-in-English words on its own (e.g.
   "Add Tech": "Agregar Técnico", "Edit Tech": "Editar Técnico", "Role": "Rol",
-  // Client QA sweep 2026-09-22: POS payment dialog auto-translated "Check" (the payment method,
-  // as in a paper cheque) to "Controlar" (verb "to control/verify") and "Full" (full payment) to
-  // "Lleno" (a container being full) -- same class of ambiguous-word mistranslation as above.
+  // Client QA sweep 2026-09-22: POS payment dialog auto-translated "Check" (the payment method, as in a paper cheque) to "Controlar" (verb
   "Check": "Cheque", "Full": "Completo",
-  // Customers page tag filters: "VIP" (an acronym, should stay as-is) auto-translated to
-  // "personaje" (unrelated -- "character/celebrity"); "Lapsed" translated literally to
-  // "Transcurrido" ("elapsed [time]") instead of the CRM sense (customer gone inactive).
+  // Customers page tag filters: "VIP" (an acronym, should stay as-is) auto-translated to "personaje" (unrelated -- "character/celebrity"); "Lapsed" translated literally to
   "VIP": "VIP", "Lapsed": "Inactivo",
-  // Campaigns tab: "Performance" (marketing sense, as in Reports) auto-translated to "Actuación"
-  // (theatrical "acting/performance") instead of the business sense.
+  // Campaigns tab: "Performance" (marketing sense, as in Reports) auto-translated to "Actuación" (theatrical "acting/performance") instead of the business sense.
   "Performance": "Rendimiento",
-  // Live QA 2026-09-25: more ambiguous short words Google got wrong -- weekday abbreviations were read
-  // as verbs ("Wed" -> "Casarse" = to marry, "Sat" -> "Se sentó" = sat down), "OT" (overtime) as "Antiguo
-  // Testamento", "Clock In" as "Regístrese" (sign up), "Clear" as "Claro" (light), "Lead" as "Dirigir"
-  // (to lead), "Amount" as "Cantidad" (same word as Qty), "jobs" as "empleos" (employment), "TECH" as
-  // "Tecnología", "Estimate" as the verb "Estimar".
+  // Live QA 2026-09-25: more ambiguous short words Google got wrong -- weekday abbreviations were read as verbs ("Wed" -> "Casarse"
   "Sun": "Dom", "Mon": "Lun", "Tue": "Mar", "Wed": "Mié", "Thu": "Jue", "Fri": "Vie", "Sat": "Sáb",
   "OT": "H. extra", "Total OT": "Total h. extra",
   "Clock In": "Marcar entrada", "Clock Out": "Marcar salida", "Approve Week": "Aprobar semana",
@@ -112,9 +99,7 @@ async function requestTranslation(text: string): Promise<string | null> {
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=es&dt=t&q=${encodeURIComponent(text)}`;
     const res = await fetch(url);
     if (!res.ok) return null;
-    // The endpoint can return a 200 OK "Sorry, automated queries" HTML page instead of JSON when
-    // rate-limited -- .json() throws on that, caught below, so a burst of requests degrades to
-    // "stays English" rather than crashing.
+    // The endpoint can return a 200 OK "Sorry, automated queries" HTML page instead of JSON when rate-limited -- .json() throws
     const data = await res.json();
     const translated = Array.isArray(data?.[0]) ? data[0].map((seg: unknown[]) => seg[0]).join("") : null;
     return translated || null;
@@ -125,12 +110,7 @@ async function requestTranslation(text: string): Promise<string | null> {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// This is an unauthenticated, unofficial endpoint -- a page that first renders in Spanish can
-// trigger 30-50 unique-string lookups at once, and firing them all simultaneously is exactly the
-// burst pattern that gets an IP soft-rate-limited (observed directly during development: heavy
-// concurrent testing tripped "Sorry... automated queries" on this network). A small serialized
-// queue with spacing between requests, plus one retry, makes real usage far less likely to hit
-// that wall -- each string is still fetched only once ever, since results are cached permanently.
+// This is an unauthenticated, unofficial endpoint -- a page that first renders in Spanish can trigger 30-50 unique-string lookups at
 let queueTail: Promise<unknown> = Promise.resolve();
 function fetchTranslation(text: string): Promise<string | null> {
   const job = queueTail.then(async () => {
@@ -148,19 +128,11 @@ function fetchTranslation(text: string): Promise<string | null> {
 
 const Ctx = createContext<LangCtx | null>(null);
 
-// Client feedback 2026-09-11: "English/Spanish translation is only working in tech notes. Needs
-// to work across software." The static `dict` above only ever covered JobDetail's own labels, so
-// every other page's `t("...")` call (or lack of one) just rendered English regardless of `lang`.
-// Rather than hand-writing a dictionary entry for every string in every page, `t()` now falls
-// back to the same free Google Translate endpoint `useTranslator` already used for the tech notes
-// live-translate, caches results in localStorage (so it's instant after the first visit and
-// doesn't hammer the endpoint), and re-renders once each string resolves.
+// Client feedback 2026-09-11: "English/Spanish translation is only working in tech notes.
 const LANG_KEY = "poolbrayne_lang";
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  // Persist the chosen language too (not just the translation cache) -- previously this reset to
-  // English on every page refresh, which undercut the client's "needs to work across software"
-  // ask just as much as missing t() calls did.
+  // Persist the chosen language too (not just the translation cache) -- previously this reset to English on every page refresh
   const [lang, setLangState] = useState<Lang>(() => {
     try {
       return localStorage.getItem(LANG_KEY) === "es" ? "es" : "en";

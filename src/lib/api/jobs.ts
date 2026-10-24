@@ -64,9 +64,7 @@ export const jobsApi = {
 
   deleteDocument: (jobId: string, attId: string) => api.del<void>(`/api/jobs/${jobId}/attachments/${attId}`),
 
-  // Client video feedback 2026-10-15 (Technician Field): delete a wrongly-uploaded photo. Same
-  // route as deleteDocument (backend now accepts 'document' or 'photo'), named separately so each
-  // call site reads clearly.
+  // Client video feedback 2026-10-15 (Technician Field): delete a wrongly-uploaded photo.
   deleteAttachment: (jobId: string, attId: string) => api.del<void>(`/api/jobs/${jobId}/attachments/${attId}`),
 
   getLineItems: (jobId: string) => api.get<JobLineItem[]>(`/api/jobs/${jobId}/line-items`),
@@ -81,8 +79,7 @@ export const jobsApi = {
   addCrewMember: (jobId: string, profileId: string) => api.post<JobCrewMember>(`/api/jobs/${jobId}/crew`, { profileId }),
   removeCrewMember: (jobId: string, profileId: string) => api.del(`/api/jobs/${jobId}/crew/${profileId}`),
 
-  // Client PDF 2026-09-06: persists WaterTestingForm/MaintenanceChecklist/OneOffJobChecklist,
-  // which previously had no save at all.
+  // Client PDF 2026-09-06: persists WaterTestingForm/MaintenanceChecklist/OneOffJobChecklist, which previously had no save at all.
   getForms: (jobId: string) => api.get<JobForm[]>(`/api/jobs/${jobId}/forms`),
   saveForm: (jobId: string, type: string, data: Record<string, unknown>, notes?: string | null, templateId?: string | null) =>
     api.post<JobForm>(`/api/jobs/${jobId}/forms`, { type, data, notes, templateId }),
@@ -91,8 +88,7 @@ export const jobsApi = {
   getAllForms: () => api.get<(JobForm & { job_type: string | null; customer_name: string | null })[]>("/api/jobs/forms/all"),
 };
 
-// Client PDF 2026-09-05 (check list forms.pdf / inspection form.pdf): "make sure customers can
-// see form" — no-login public form viewer, same pattern as the estimate approval link.
+// Client PDF 2026-09-05 (check list forms.pdf / inspection form.pdf): "make sure customers can see form" — no-login public form viewer
 export type PublicForm = {
   id: string;
   data: Record<string, unknown>;

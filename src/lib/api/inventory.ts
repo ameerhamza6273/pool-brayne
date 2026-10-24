@@ -1,3 +1,4 @@
+import type { SendDocumentEmail } from "./invoicing";
 import { api } from "@/lib/apiClient";
 import type { Database } from "@/lib/database.types";
 
@@ -45,9 +46,7 @@ export const inventoryApi = {
   addSupplierLocation: (supplierId: string, data: { label: string; address: string | null; contactName: string | null; phone: string | null; email: string | null; isDefault?: boolean }) =>
     api.post<SupplierLocation>(`/api/inventory/suppliers/${supplierId}/locations`, data),
 
-  // Client video 2026-10-15: "we need to have a set of emails on here as a group... primarily we
-  // do pool builder supply as a default... if we need a change, the ability to change the email
-  // from our selected list" -- toggling which location/contact is the default (only one at a time).
+  // Client video 2026-10-15: "we need to have a set of emails on here as a group...
   setDefaultSupplierLocation: (locationId: string) =>
     api.patch<SupplierLocation>(`/api/inventory/supplier-locations/${locationId}`, { isDefault: true }),
 
@@ -59,6 +58,8 @@ export const inventoryApi = {
     id: string,
     data: { number: string; supplierId: string; status: string; receivedDate: string | null; locationId?: string | null; paymentTerms?: string },
   ) => api.patch<PurchaseOrder>(`/api/inventory/purchase-orders/${id}`, data),
+
+  sendPurchaseOrderEmail: (id: string, data: SendDocumentEmail) => api.post<{ sent: true; to: string[] }>(`/api/inventory/purchase-orders/${id}/send-email`, data),
 
   getPurchaseOrderLineItems: (id: string) => api.get<PoLineItem[]>(`/api/inventory/purchase-orders/${id}/line-items`),
 
@@ -121,8 +122,7 @@ export const inventoryApi = {
   createPurchaseOrder: (data: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string; number?: string }) =>
     api.post<PurchaseOrder>("/api/inventory/purchase-orders", data),
 
-  // Peek-only suggestion shown in the New PO dialog's editable number field (client SMS
-  // 2026-10-16); doesn't reserve the number.
+  // Peek-only suggestion shown in the New PO dialog's editable number field (client SMS 2026-10-16); doesn't reserve the number.
   nextPoNumber: () => api.get<{ number: string }>("/api/inventory/purchase-orders/next-number"),
 
   getQboAccounts: () => api.get<QboAccount[]>("/api/inventory/qbo-accounts"),

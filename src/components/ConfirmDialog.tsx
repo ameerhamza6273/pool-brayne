@@ -4,10 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/language-context";
 
-// Client videos (2026-09-23 SKU delete, 2026-10-18 dev note): every delete asks first, in the same
-// popup style as Inventory's "Delete SKU permanently?" -- many trash icons used to delete on the
-// first click. Buttons read "No" / "Yes" (client video 2026-10-18: "delete photo and then put yes or
-// no there" instead of Cancel/Delete). Usage: `const confirm = useConfirm(); if (!(await confirm({ title, name }))) return;`
+// Client videos (2026-09-23 SKU delete, 2026-10-18 dev note): every delete asks first, in the same popup style as Inventory's "Delete..."
 type ConfirmOptions = { title: string; name?: string | null; message?: string; confirmLabel?: string; tone?: "danger" | "default" };
 const ConfirmContext = createContext<(o: ConfirmOptions) => Promise<boolean>>(async () => true);
 

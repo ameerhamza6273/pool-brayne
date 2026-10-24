@@ -8,9 +8,7 @@ import { jobsApi, type JobForm } from "@/lib/api/jobs";
 import { useLanguage } from "@/lib/language-context";
 import { useSort, sortHeader } from "@/components/SortableTh";
 
-// Sidebar restructure (client PDF 2026-09-06, "Employee section > Forms") — every submitted
-// form (built-in or custom, via the Form Builder) across the whole tenant. Job-scoped and
-// customer-scoped views of the same data live on JobDetail and CustomerDetail respectively.
+// Sidebar restructure (client PDF 2026-09-06, "Employee section > Forms") — every submitted form (built-in or custom, via the Form Builder)
 export default function Forms() {
   const { t } = useLanguage();
   const [forms, setForms] = useState<(JobForm & { job_type: string | null; customer_name: string | null })[]>([]);

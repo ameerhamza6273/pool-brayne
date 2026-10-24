@@ -9,9 +9,7 @@ export type FormField = {
   helpText?: string;
 };
 
-// Client SMS 2026-09-06: "something he can create his own forms... need to be able to edit,
-// create, and tag to a job" — a tenant-editable form builder replacing the 3 previously-hardcoded
-// checklist components (now seeded as real, editable form_templates rows instead).
+// Client SMS 2026-09-06: "something he can create his own forms...
 export default async function formTemplatesRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`select * from form_templates order by name`);

@@ -26,10 +26,7 @@ const fieldTypeLabels: Record<FormFieldType, string> = {
 
 const emptyField = (): FormField => ({ id: `field_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, label: "", type: "text" });
 
-// Client SMS 2026-09-06: "something he can create his own forms... nothing crazy... need to be
-// able to edit, create, and tag to a job". This is where templates get created/edited; tagging
-// to a job happens on JobDetail (any template can be added to any job, plus each template can
-// optionally suggest itself for a job type via `appliesTo`).
+// Client SMS 2026-09-06: "something he can create his own forms...
 export default function FormBuilder() {
   const { t: translate } = useLanguage();
   const confirm = useConfirm();
@@ -135,9 +132,7 @@ export default function FormBuilder() {
                 </div>
               </div>
 
-              {/* Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted
-                  into the job" -- a required form must be submitted before that job can be
-                  marked Completed (enforced in Field.tsx / JobDetail.tsx). */}
+              {/* Client feedback 2026-09-11: "Allow us to make forms a mandatory once inputted into the job" -- a required form must */}
               <div className="flex items-center gap-2">
                 <Switch id="required" checked={draft.required} onCheckedChange={(v) => setDraft((p) => ({ ...p, required: v }))} />
                 <Label htmlFor="required" className="cursor-pointer">{translate("Required — job can't be marked Completed until this form is submitted")}</Label>

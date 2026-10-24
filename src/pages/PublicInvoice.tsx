@@ -5,10 +5,7 @@ import { laborFirst } from "@/lib/labor";
 import { invoicingApi, type PublicInvoice as PublicInvoiceBundle } from "@/lib/api/invoicing";
 import CardPaymentForm from "@/components/CardPaymentForm";
 
-// Client video 2026-10-06: "text them a hyperlink on an estimate and an invoice so they can pay
-// on their phone" — this is that page for an invoice, reachable with no login via the invoice's
-// unguessable payment_token. Modeled on PublicEstimate.tsx; see backend/src/routes/public.ts for
-// the (unauthenticated) API it calls.
+// Client video 2026-10-06: "text them a hyperlink on an estimate and an invoice so they can pay on their phone"
 export default function PublicInvoice() {
   const { token } = useParams<{ token: string }>();
   const [bundle, setBundle] = useState<PublicInvoiceBundle | null>(null);
@@ -51,8 +48,7 @@ export default function PublicInvoice() {
   const { invoice, lineItems, business, total } = bundle;
   const materialsSubtotal = lineItems.filter((li) => li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
   const laborSubtotal = lineItems.filter((li) => li.item_type === "labor").reduce((s, li) => s + li.amount, 0);
-  // Client video 2026-10-06: display-only breakdown now follows each line's real `taxable`
-  // override too, matching the backend-computed `total` above (the one actually charged).
+  // Client video 2026-10-06: display-only breakdown now follows each line's real `taxable` override too, matching the backend-computed `total` above (the one
   const taxableSubtotal = lineItems.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
   const tax = taxableSubtotal * (business?.tax_rate ?? 0.0775);
   const remainingBalance = total - (invoice.down_payment ?? 0);

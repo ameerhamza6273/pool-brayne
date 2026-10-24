@@ -10,12 +10,7 @@ type Notification = {
   link: string;
 };
 
-// Client bug report 2026-09-04: the header bell was entirely fake (`NotificationsPanel.tsx`'s
-// hardcoded `initialNotifications`, one of them even linking to a stale mock id "/jobs/j3" that
-// 404s against real data) -- computed live from real recent activity instead of a stored
-// notifications table (no push/SMS/email channel is wired up to *create* notifications, so
-// there's nothing to persist beyond what's already in these source tables). "Read" state is
-// tracked client-side only (localStorage), same pattern as the Dashboard restock-list checkmarks.
+// Client bug report 2026-09-04: the header bell was entirely fake (`NotificationsPanel.tsx`'s hardcoded `initialNotifications`, one of them even linking to a
 export default async function notificationsRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
@@ -54,8 +49,7 @@ export default async function notificationsRoutes(app: FastifyInstance) {
           where ga.occurred_at >= ${since}
           order by ga.occurred_at desc limit 8
         `,
-        // No email round-trip is wired (public.ts) -- this is how staff actually finds out a
-        // customer approved an estimate via the "Approve Estimation" link.
+        // No email round-trip is wired (public.ts) -- this is how staff actually finds out a customer approved an estimate via
         tx`
           select e.id, e.number, e.approved_at, c.name as customer_name
           from estimates e left join customers c on c.id = e.customer_id

@@ -27,14 +27,7 @@ import {
 type NavLink = { path: string; label: string; icon: typeof LayoutDashboard };
 type NavGroup = { label: string; icon: typeof LayoutDashboard; items: NavLink[] };
 
-// Sidebar restructure requested by client (PDF "crm 9-6-2026 updates.pdf", 2026-09-06):
-// collapsible category groups on the left instead of one long flat list. Every entry still
-// deep-links to an existing page/tab rather than duplicating that page's data-fetching in a new
-// route (same pattern as the earlier "Purchase Order"/"Schedule"/"Estimation" shortcuts,
-// 2026-08-28). Two of the client's literal sub-items don't map to a distinct destination and were
-// deliberately folded into their neighbor rather than duplicated: "Receive PO's" opens the same
-// Purchase Orders tab as "New PO's" (its own edit dialog is how a PO gets marked Received), and
-// "Send invoices" is an action inside Customer Invoices, not a separate page.
+// Sidebar restructure requested by client (PDF "crm 9-6-2026 updates.pdf", 2026-09-06): collapsible category groups on the left instead of one long
 const navSections: (NavLink | NavGroup)[] = [
   { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/pos", label: "Point of Sale", icon: ScanLine },
@@ -115,9 +108,7 @@ export default function AppShell() {
   const navigate = useNavigate();
   const { user, signOut, role, permissions } = useAuth();
   const { t } = useLanguage();
-  // Client 2026-10-23: the tenant's logos (Settings > Company). Expanded sidebar / mobile menu /
-  // phone header show the full logo alone (no "Clear Pool CRM" text); the collapsed rail shows the
-  // short logo. Settings fires "tenant-logo-*" events so a new upload shows without a reload.
+  // Client 2026-10-23: the tenant's logos (Settings > Company).
   const [logoShort, setLogoShort] = useState<string | null>(user?.logoShortUrl ?? null);
   const [logoFull, setLogoFull] = useState<string | null>(user?.logoUrl ?? null);
   useEffect(() => setLogoShort(user?.logoShortUrl ?? null), [user?.logoShortUrl]);
@@ -134,28 +125,22 @@ export default function AppShell() {
       window.removeEventListener("tenant-logo-full", onFull);
     };
   }, []);
-  // Client feedback 2026-09-11: technician/contractor accounts should only see the Field page --
-  // ProtectedRoute (App.tsx) already bounces any other URL to /field, this just keeps the nav
-  // honest about it instead of showing links that would immediately redirect away.
+  // Client feedback 2026-09-11: technician/contractor accounts should only see the Field page -- ProtectedRoute (App.tsx) already bounces any other URL to
   const fieldOnly = isFieldOnlyRole(role);
   // Client video 2026-10-15: plus whatever extra pages an admin granted this person (Settings > Team).
   const fieldLinks: NavLink[] = [
     { path: "/field", label: "Technician Field", icon: Phone },
     ...(permissions.includes("customers") ? [{ path: "/customers", label: "Customer Lookup", icon: Users }] : []),
     ...(permissions.includes("library") ? [{ path: "/library", label: "Library", icon: BookOpen }] : []),
-    // Dev feedback 2026-10-16: Directory is now a per-tech permission toggle too (Settings > Team),
-    // not always-on -- same pattern as Customer Lookup/Library above.
+    // Dev feedback 2026-10-16: Directory is now a per-tech permission toggle too (Settings > Team), not always-on -- same pattern as
     ...(permissions.includes("directory") ? [{ path: "/directory", label: "Directory", icon: BookUser }] : []),
   ];
   const visibleNavSections: (NavLink | NavGroup)[] = fieldOnly ? fieldLinks : navSections;
   const visibleFlatNavLinks: NavLink[] = fieldOnly ? fieldLinks : flatNavLinks;
-  // Keep a "More" tab even field-only so Log Out stays reachable on mobile (its nav grid will
-  // just be empty since visibleFlatNavLinks is already field-only).
+  // Keep a "More" tab even field-only so Log Out stays reachable on mobile (its nav grid will just be empty
   const visibleMobileTabs = fieldOnly ? [{ path: "/field", label: "Field", icon: Phone }, { path: "more", label: "More", icon: MoreHorizontal }] : mobileTabs;
   const [searchOpen, setSearchOpen] = useState(false);
-  // Client video 2026-10-06: "the top search field is not working... doesn't matter which
-  // section I'm in" -- was pure decoration (no value/onChange at all). Real now: debounced,
-  // searches customers/jobs/invoices/estimates, click a result to go straight there.
+  // Client video 2026-10-06: "the top search field is not working...
   const [globalQuery, setGlobalQuery] = useState("");
   const [globalResults, setGlobalResults] = useState<GlobalSearchResult | null>(null);
   const [globalDropdownOpen, setGlobalDropdownOpen] = useState(false);
@@ -183,9 +168,7 @@ export default function AppShell() {
     setGlobalResults(null);
     navigate(path);
   };
-  // Client feedback 2026-10-15: "keep them both" -- top header nav added alongside the left
-  // sidebar (not replacing it), with the sidebar logo doubling as a collapse toggle. Persisted so
-  // it survives a reload.
+  // Client feedback 2026-10-15: "keep them both" -- top header nav added alongside the left sidebar (not replacing it), with the
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem("sidebar-collapsed") === "1"; } catch { return false; }
   });
@@ -197,8 +180,7 @@ export default function AppShell() {
     });
   };
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
-  // Groups default open ("(collapsible fields)" per the client's spec — collapsible, not
-  // collapsed-by-default).
+  // Groups default open ("(collapsible fields)" per the client's spec — collapsible, not collapsed-by-default).
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
   const toggleGroup = (label: string) => {
     setClosedGroups((prev) => {
@@ -211,10 +193,7 @@ export default function AppShell() {
 
   const isActive = (path: string) => {
     const [p, query] = path.split("?");
-    // QA sweep 2026-09-30: opening an Estimate (/invoicing/estimates/:id) highlighted "Customer
-    // Invoices" in the nav instead of "Estimates / Quotes" -- "/invoicing" is a path-prefix match
-    // for both, and the query-based "Estimates / Quotes" entry only ever matched the list page's
-    // own "?tab=estimates" URL, never its detail route.
+    // QA sweep 2026-09-30: opening an Estimate (/invoicing/estimates/:id) highlighted "Customer Invoices" in the nav instead of "Estimates / Quotes" -- "/invoicing"
     if (query === "tab=estimates" && pathname.startsWith("/invoicing/estimates/")) return true;
     if (query) return pathname === p && search === `?${query}`;
     if (p === "/invoicing" && pathname.startsWith("/invoicing/estimates/")) return false;
@@ -376,28 +355,11 @@ export default function AppShell() {
       </aside>
 
       {/* Main Content Area */}
-      {/* Client bug report 2026-09-04: a wide table (e.g. Inventory's Catalog) could stretch this
-          flex item past the viewport, dragging the whole page (sidebar included) into a
-          horizontal scroll -- min-w-0 lets it shrink so page-internal tables scroll within their
-          own overflow-x-auto instead of blowing out the layout. */}
+      {/* Client bug report 2026-09-04: a wide table (e.g. */}
       <div className={cn("flex-1 print:ml-0 flex flex-col min-h-screen min-w-0 transition-[margin] duration-150", sidebarCollapsed ? "lg:ml-16" : "lg:ml-64")}>
-        {/* Desktop Top Header Nav — client feedback 2026-10-15: "keep them both... add the top
-            header" (sidebar stays as-is, this is additive). Its own full-width row (not merged
-            into the search bar's row below): at this app's laptop-width breakpoint (lg: 1024px+)
-            10 nav items + search + notifications + avatar genuinely don't fit on one line without
-            squeezing something unreadable, and giving nav its own row also matches the client's
-            own ServiceWorks reference screenshot (a dedicated horizontal bar, not sharing a row
-            with search). Mirrors the same navSections the sidebar uses (single source of truth)
-            via a hover-opening dropdown per group. */}
+        {/* Desktop Top Header Nav — client feedback 2026-10-15: "keep them both... */}
         <nav className="hidden lg:flex items-center px-6 h-11 bg-[#0C2A3A] border-b border-white/10 sticky top-0 z-30 print:hidden">
-          {/* Fix 2026-10-15: Root's bounding box spans the ENTIRE list (it wraps all 10 items), so
-              Radix's shared Viewport -- which positions the open dropdown relative to Root, not to
-              the hovered trigger -- always rendered the panel flush under the leftmost item no
-              matter which trigger was actually hovered. Invisible on a short 2-3 item demo nav
-              (Root is narrow enough that "under Root" looks like "under any item"), broken on a
-              wide one like ours. `viewport={false}` (added to ui/navigation-menu.tsx) opts out of
-              the shared panel so each Content positions itself relative to its own Item instead --
-              i.e. directly under the trigger that opened it. */}
+          {/* Fix 2026-10-15: Root's bounding box spans the ENTIRE list (it wraps all 10 items), so Radix's shared Viewport -- which */}
           <NavigationMenu viewport={false} className="flex-none">
             <NavigationMenuList>
               {visibleNavSections.map((entry) => {
@@ -460,9 +422,7 @@ export default function AppShell() {
           </NavigationMenu>
         </nav>
 
-        {/* Desktop Top Bar — z-20 (below the nav row's z-30 and its dropdown's z-40) so an open
-            top-header dropdown always renders above this search bar instead of fighting it for
-            stacking order. */}
+        {/* Desktop Top Bar — z-20 (below the nav row's z-30 and its dropdown's z-40) so an open top-header dropdown always */}
         <header className="hidden lg:flex items-center gap-4 px-6 py-3 bg-white border-b border-[#E2E8F0] sticky top-11 z-20 print:hidden">
           <div className="flex-1 max-w-md relative" ref={globalSearchRef}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#64748B]" />
@@ -613,9 +573,7 @@ export default function AppShell() {
           <div className="flex items-center gap-2">
             <LanguageToggle />
             <NotificationsPanel />
-            {/* Client video 2026-10-16: "does not allow anybody to log out... the drop down here is
-                not available in the phone view" -- this Avatar had no DropdownMenu at all (the
-                desktop header's matching avatar does), so tapping it on a phone did nothing. */}
+            {/* Client video 2026-10-16: "does not allow anybody to log out... */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="rounded-full">

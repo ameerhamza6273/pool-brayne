@@ -12,9 +12,7 @@ export function newPoLineItem() {
   return emptyLine();
 }
 
-// Client feedback 2026-09-11: "I cannot add any products" to a PO -- a product picker + editable
-// line items, mirroring LineItemsEditor's pattern but purchasing-side (one unit cost, no
-// separate customer price).
+// Client feedback 2026-09-11: "I cannot add any products" to a PO -- a product picker + editable line items, mirroring
 export default function PoLineItemsEditor({
   items,
   onChange,

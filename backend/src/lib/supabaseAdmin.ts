@@ -1,9 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Service-role client for admin-only auth operations (creating/deleting a team member's login).
-// Never used for regular data access -- everything else goes through withTenantContext (db.ts)
-// so RLS stays the source of truth for tenant isolation. Lazily constructed so a missing key
-// only breaks the specific route that needs it, not the whole server at boot.
 let client: SupabaseClient | null = null;
 
 export function getSupabaseAdmin(): SupabaseClient {

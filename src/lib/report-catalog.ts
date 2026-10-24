@@ -1,8 +1,4 @@
-// Client video 2026-10-19 (approved 2026-10-20): the Reports home is laid out like their old
-// ServiceWorks "Insights" page -- a Favorites column plus Financial / Jobs / Employee & Payroll /
-// POS columns, some reports grouped in folders. `builtin` reports have their own UI in
-// Reports.tsx; the rest are generic tables from GET /api/reports/catalog/:id (CatalogReport).
-// `range`: which date control the report uses -- a from/to range, a single as-of date, or none.
+// Client video 2026-10-19 (approved 2026-10-20): the Reports home is laid out like their old ServiceWorks "Insights" page -- a Favorites
 export type ReportRange = "range" | "asof" | "none";
 export type ReportDef = { id: string; label: string; description: string; range: ReportRange; builtin?: boolean };
 export type ReportFolder = { folder: string; items: ReportDef[] };

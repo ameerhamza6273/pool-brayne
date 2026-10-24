@@ -31,9 +31,7 @@ const seasonalLabels: Record<string, string> = {
   Sep: "Wind-down", Oct: "Closing season", Nov: "Off-season", Dec: "Off-season",
 };
 
-// QA sweep 2026-09-30 follow-up: invoice `total` (materials * (1 + tax rate) + labor) is a floating-point
-// result -- plain toLocaleString() can show up to 3 fraction digits (e.g. "$4,216.315" instead of
-// "$4,216.32"). Use this wherever an invoice total (not a plain job/POS revenue figure) is shown.
+// QA sweep 2026-09-30 follow-up: invoice `total` (materials * (1 + tax rate) + labor) is a floating-point result -- plain
 const money = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const monthKey = (d: Date) => d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
 const monthOf = (dateStr: string) => dateStr.slice(0, 7);
@@ -134,9 +132,7 @@ export default function Dashboard() {
   const jobsLastPeriod = jobs.filter((j) => j.status === "Completed" && inRange(j.scheduled_date, prevStart, prevEnd)).length;
 
   const outstandingInvoices = invoices.filter((i) => i.status !== "Paid");
-  // QA sweep 2026-09-30: `amount` is the stored pre-tax figure, never matching what's really owed
-  // (materials-only tax, see backend invoicing.ts `taxedTotal`) -- `total` does. Revenue figures
-  // below intentionally keep using pre-tax `amount` (sales tax collected isn't revenue).
+  // QA sweep 2026-09-30: `amount` is the stored pre-tax figure, never matching what's really owed (materials-only tax, see backend invoicing.ts `taxedTotal`)
   const outstandingTotal = outstandingInvoices.reduce((s, i) => s + (i.total ?? i.amount), 0);
 
   const newCustomersThisPeriod = customers.filter((c) => inRange(c.customer_since, curStart, curEnd)).length;

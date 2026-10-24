@@ -5,10 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useConfigLists } from "@/hooks/use-config-lists";
 import { useLanguage } from "@/lib/language-context";
 
-// Client SMS 2026-09-21: the reminder "Label" was a free-text box; they want a dropdown of labels
-// (Filter cleaning, Salt cell cleaning, Sand change, Anode replacement, ...) that they can add to.
-// The list is the tenant's `reminder_types` config list (also editable in Settings > Job Settings);
-// "Add new label..." at the bottom adds to it right here without leaving the dialog.
+// Client SMS 2026-09-21: the reminder "Label" was a free-text box; they want a dropdown of labels (Filter cleaning, Salt cell
 const ADD_NEW = "__add_new__";
 
 export default function ReminderLabelSelect({ value, onChange }: { value: string; onChange: (label: string) => void }) {

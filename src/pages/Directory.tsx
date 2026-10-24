@@ -12,9 +12,7 @@ import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { useSort, sortHeader } from "@/components/SortableTh";
 import { useConfirm } from "@/components/ConfirmDialog";
 
-// Client request 2026-09-02: a field Directory of sales-rep names/phone numbers for techs to
-// look up on the road. Client SMS 2026-10-16: added Description + Email, and edit (previously
-// add/delete only), and made the page itself reachable from a field-only login.
+// Client request 2026-09-02: a field Directory of sales-rep names/phone numbers for techs to look up on the road.
 const emptyContact = { name: "", role: "", phone: "", description: "", email: "" };
 
 export default function Directory() {

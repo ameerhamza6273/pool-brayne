@@ -53,8 +53,7 @@ const iconMap: Record<string, React.ElementType> = {
 
 const staffRoles = ["owner", "manager", "technician", "contractor", "office_manager"];
 
-// Inline add affordance for the Job Settings config lists -- avoids window.prompt() (blocks the
-// whole page) and avoids a Dialog per list (7 near-identical ones).
+// Inline add affordance for the Job Settings config lists -- avoids window.prompt() (blocks the whole page) and avoids a Dialog
 function AddListItemRow({ onAdd, placeholder, showColor, big }: {
   onAdd: (label: string, color?: string) => void; placeholder: string; showColor?: boolean; big?: boolean;
 }) {
@@ -102,24 +101,19 @@ export default function Settings() {
   const { t } = useLanguage();
   const confirm = useConfirm();
   const [isLoading, setIsLoading] = useState(true);
-  // Client SMS 2026-09-09: "able to add, edit, delete techs" -- there's no email service wired
-  // (no SendGrid) for a real invite link, so an admin sets the new tech's password directly and
-  // hands it to them, the same way the original demo staff seed script created logins.
+  // Client SMS 2026-09-09: "able to add, edit, delete techs" -- there's no email service wired (no SendGrid) for a real
   const [newTechOpen, setNewTechOpen] = useState(false);
   const [newTech, setNewTech] = useState({ name: "", email: "", password: "", role: "technician" });
   const [techError, setTechError] = useState("");
   const [editTech, setEditTech] = useState<Profile | null>(null);
-  // Client video 2026-10-23: edit everything Add Tech asks for (+ phone, hourly rate, type), and
-  // change a password behind an "are you sure".
+  // Client video 2026-10-23: edit everything Add Tech asks for (+ phone, hourly rate, type), and change a password behind an
   const [editTechDraft, setEditTechDraft] = useState({ name: "", email: "", phone: "", hourlyRate: "", employmentType: "Employee" as "Employee" | "Contractor", role: "technician", permissions: [] as string[] });
   const [editTechError, setEditTechError] = useState<string | null>(null);
   const [editTechSaving, setEditTechSaving] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [passwordResult, setPasswordResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [passwordSaving, setPasswordSaving] = useState(false);
-  // Client video 2026-10-23: saving a team member "bounces back to company profile" -- the tab was
-  // uncontrolled and the whole Tabs block unmounted while settings reloaded. Now controlled, and
-  // only the first load shows the spinner.
+  // Client video 2026-10-23: saving a team member "bounces back to company profile" -- the tab was uncontrolled and the whole
   const [settingsTab, setSettingsTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("qbo") ? "integrations" : params.get("tab") || "company";
@@ -137,23 +131,15 @@ export default function Settings() {
   const [zip, setZip] = useState("");
   const [invoiceBusinessName, setInvoiceBusinessName] = useState("");
   const [payrollWeekStartDay, setPayrollWeekStartDay] = useState(1);
-  // Client text 2026-10-06: "under profile the Save Changes is not functional. The upload logo
-  // is not Functional" -- Save Changes actually did save, it just gave zero feedback either way;
-  // Upload Logo had no handler and tenants had no column for it at all (tracked gap since
-  // 2026-09-30). Both real now.
+  // Client text 2026-10-06: "under profile the Save Changes is not functional.
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
-  // Client 2026-10-23 ("sent 2 logos, a full and a short ... could not make it work"): uploads
-  // were silently rejected -- the path started with "logos/" but storage RLS requires the tenant
-  // id as the first folder. Full logo = documents/emails, short logo = app sidebar/header.
+  // Client 2026-10-23 ("sent 2 logos, a full and a short ...
   const [logoShortUrl, setLogoShortUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState<"full" | "short" | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
   const [savingCompany, setSavingCompany] = useState(false);
   const [companySaveResult, setCompanySaveResult] = useState<"saved" | "error" | null>(null);
-  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- real tenant
-  // sales tax rate, editable here (was a hardcoded 8.25% literal everywhere in the app). Edited as
-  // a percentage string ("7.75") for a natural typing experience, converted to/from the stored
-  // fraction (0.0775) at the API boundary.
+  // Client text 2026-10-15: "Yes -- currently 7.75%, set up the default for now" -- real tenant sales tax rate, editable
   const [taxRatePercent, setTaxRatePercent] = useState("7.75");
   const [savingTaxRate, setSavingTaxRate] = useState(false);
   const [taxRateSaveResult, setTaxRateSaveResult] = useState<"saved" | "error" | null>(null);
@@ -161,9 +147,7 @@ export default function Settings() {
   // Client SMS 2026-09-30: "settings screen: set sku# or Item # as a default on receipt."
   const [receiptLineId, setReceiptLineId] = useState<"sku" | "item_number">("sku");
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
-  // Client PDF 2026-09-18: Job Types/Statuses, Estimate Statuses, Call Types/Sources,
-  // Reschedule Types, Cancellation Reasons -- previously hardcoded arrays with non-functional
-  // Add/Delete buttons, now DB-backed and editable.
+  // Client PDF 2026-09-18: Job Types/Statuses, Estimate Statuses, Call Types/Sources, Reschedule Types, Cancellation Reasons -- previously hardcoded arrays with non-functional Add/Delete
   const { lists: configLists, addItem: addConfigItem, updateItem: updateConfigItem, removeItem: removeConfigItemNow } = useConfigLists();
   const removeConfigItem = async (key: Parameters<typeof removeConfigItemNow>[0], id: string) => {
     if (!(await confirm({ title: "Delete this item?", name: configLists[key]?.find((i) => i.id === id)?.label }))) return;
@@ -679,8 +663,7 @@ export default function Settings() {
                     </SelectContent>
                   </Select>
                 </div>
-                {/* Client video 2026-10-15: "a few more options here under permissions rather than
-                    just one field. Customer lookup, a few others so you can look at history." */}
+                {/* Client video 2026-10-15: "a few more options here under permissions rather than just one field. */}
                 {(editTechDraft.role === "technician" || editTechDraft.role === "contractor") && (
                   <div className="rounded-lg border border-[#E2E8F0] p-3 space-y-2">
                     <p className="text-sm font-medium text-[#0F172A]">{t("Permissions")}</p>
@@ -777,9 +760,7 @@ export default function Settings() {
               const Icon = iconMap[int.icon ?? ""] || Shield;
               const isQuickbooks = int.provider === "quickbooks";
               const isConnected = int.status === "Connected";
-              // The stored description for QuickBooks is a leftover from the original demo seed
-              // ("Two-way sync active...") and goes stale once disconnected -- show a description
-              // that always matches the real isConnected state instead of trusting that column.
+              // The stored description for QuickBooks is a leftover from the original demo seed ("Two-way sync active...") and goes stale once
               const description = isQuickbooks
                 ? (isConnected ? t("Two-way sync active.") : t("Push customers and invoices to QuickBooks — each business connects its own account."))
                 : t(int.description ?? "");

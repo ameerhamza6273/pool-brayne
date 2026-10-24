@@ -2,14 +2,7 @@ import { Navigation, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLanguage } from "@/lib/language-context";
 
-// QA sweep 2026-09-30: this page used to render a fully simulated tracking map (hardcoded "Austin,
-// TX" + "Live tracking active" SVG text, fake moving vehicle pins, fake speed/mileage), a fake Trip
-// History table and fake Geofence Alerts, plus a "Smart Dispatch" card claiming to route by live
-// vehicle position -- all from `vehicles`/`trip_history`/`geofence_alerts` tables that have no real
-// write path anywhere in the app (fleetApi is read-only; nothing ever created a real row in them,
-// only the old demo seed script). CLAUDE.md's own Integrations notes already say what this page is
-// actually supposed to do: "GPS7000 has no public API ... Fleet page just links out to
-// platform.gps7000.com; no live position data flows into the app." This now matches that.
+// QA sweep 2026-09-30: this page used to render a fully simulated tracking map (hardcoded "Austin, TX" + "Live tracking active"
 export default function Fleet() {
   const { t } = useLanguage();
 

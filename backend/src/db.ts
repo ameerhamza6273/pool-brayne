@@ -1,11 +1,8 @@
 import postgres from "postgres";
 
-// Match Supabase/PostgREST's JSON shape so frontend code (written against PostgREST responses)
-// doesn't need to change: `date` columns as plain "YYYY-MM-DD" strings (not JS Date -> full ISO
-// timestamp), `numeric` columns as JS numbers (not strings).
+// Match Supabase/PostgREST's JSON shape so frontend code (written against PostgREST responses) doesn't need to change: `date` columns as plain "YYYY-MM-DD"
 const sql = postgres(process.env.DATABASE_URL!, {
-  // Default 10 (unchanged for production). A second backend on the same Supabase session-mode pooler
-  // (e.g. a local dev server next to Railway) can exceed its client limit -- set DB_POOL_MAX lower there.
+  // Default 10 (unchanged for production).
   max: Number(process.env.DB_POOL_MAX) || 10,
   prepare: false,
   types: {
@@ -24,12 +21,7 @@ const sql = postgres(process.env.DATABASE_URL!, {
   },
 });
 
-/**
- * Runs `fn` inside a transaction where Postgres RLS sees the same session context that
- * Supabase's own PostgREST sets for a logged-in user — this is what makes the existing
- * `tenant_isolation` RLS policies (supabase/migrations/20260728061500_rls_policies.sql)
- * apply automatically, without re-implementing tenant scoping by hand in every route.
- */
+/** Runs `fn` inside a transaction where Postgres RLS sees the same session context that Supabase's own PostgREST sets for a */
 export async function withTenantContext<T>(userId: string, fn: (tx: postgres.TransactionSql) => Promise<T>): Promise<T> {
   const result = await sql.begin(async (tx) => {
     await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: userId, role: "authenticated" })}, true)`;

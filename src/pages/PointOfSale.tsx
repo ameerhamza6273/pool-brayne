@@ -63,13 +63,9 @@ export default function PointOfSale() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [manufacturer, setManufacturer] = useState("All");
-  // Client PDF 2026-09-18: "make the spreadsheet look the default option in all fields" — list
-  // (spreadsheet-like) is now the default everywhere this grid/list toggle exists; grid stays an
-  // option for staff who prefer it.
+  // Client PDF 2026-09-18: "make the spreadsheet look the default option in all fields" — list (spreadsheet-like) is now the default
   const [productView, setProductView] = useState<"grid" | "list">("list");
-  // Client PDF 2026-09-18: star categories/manufacturers as favorites for quick one-click access
-  // instead of scrolling the full dropdown every time. Persisted per-browser (localStorage) since
-  // it's a personal UI convenience, not shared business data.
+  // Client PDF 2026-09-18: star categories/manufacturers as favorites for quick one-click access instead of scrolling the full dropdown every time.
   const [favoriteCategories, setFavoriteCategories] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("pos_favorite_categories") ?? "[]"); } catch { return []; }
   });
@@ -90,8 +86,7 @@ export default function PointOfSale() {
       return next;
     });
   };
-  // Client request 2026-09-04: the product grid rendered every catalog item at once (2,500+
-  // after the real inventory import) -- same pagination fix applied to Inventory/Customers.
+  // Client request 2026-09-04: the product grid rendered every catalog item at once (2,500+ after the real inventory import) -- same
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 60;
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -101,9 +96,7 @@ export default function PointOfSale() {
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
-  // Client request 2026-09-03: "Allow us to use more than one payment type or multiple credit
-  // card" — a sale can be tendered across several lines (e.g. part cash, part card) instead of
-  // one single method.
+  // Client request 2026-09-03: "Allow us to use more than one payment type or multiple credit card" — a sale can
   const [tenderLines, setTenderLines] = useState<{ method: "Cash" | "Card" | "ACH" | "Check"; amount: number; opaqueData?: { dataDescriptor: string; dataValue: string }; checkNumber?: string | null }[]>([]);
   const [tenderMethod, setTenderMethod] = useState<"Cash" | "Card" | "ACH" | "Check">("Cash");
   const [tenderAmount, setTenderAmount] = useState("");
@@ -116,16 +109,11 @@ export default function PointOfSale() {
   // Client SMS 2026-09-25: click a transaction -> receipt (notes, print / re-print); list can show more than 8.
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [txLimit, setTxLimit] = useState(8);
-  // Client video 2026-09-25: edit a cart line's price (special order / material items). Only this sale's
-  // line changes -- the catalog price stays as it is.
+  // Client video 2026-09-25: edit a cart line's price (special order / material items).
   const [priceEdit, setPriceEdit] = useState<{ index: number; value: string } | null>(null);
-  // Client video 2026-10-15: "need to be able to type in a number here" instead of only +/- for a
-  // large quantity. Click the quantity to edit it directly, same pattern as price edit above.
+  // Client video 2026-10-15: "need to be able to type in a number here" instead of only +/- for a large
   const [qtyEdit, setQtyEdit] = useState<{ index: number; value: string } | null>(null);
-  // Client video 2026-10-15: "at a glance we would like to see the cost... maybe just have a
-  // button here to put cost that we can click and turn on and off" -- the existing right-click
-  // (below) is per-item and not discoverable; this is a persistent on/off switch that shows cost
-  // everywhere (product grid/list and cart) without needing to right-click each line.
+  // Client video 2026-10-15: "at a glance we would like to see the cost...
   const [showCost, setShowCost] = useState(() => {
     try { return localStorage.getItem("pos-show-cost") === "1"; } catch { return false; }
   });
@@ -134,8 +122,7 @@ export default function PointOfSale() {
     try { localStorage.setItem("pos-show-cost", next ? "1" : "0"); } catch { /* ignore */ }
     return next;
   });
-  // Client SMS 2026-09-25: "see the cost of an item if we right click on the price" (inventory list or
-  // current sale). Right-click toggles the cost in place; any left click elsewhere hides it again.
+  // Client SMS 2026-09-25: "see the cost of an item if we right click on the price" (inventory list or current
   const [costShown, setCostShown] = useState<string | null>(null);
   useEffect(() => {
     if (!costShown) return;
@@ -158,9 +145,7 @@ export default function PointOfSale() {
     if (Number.isFinite(price) && price >= 0) setCart((prev) => prev.map((c, i) => (i === priceEdit.index ? { ...c, price } : c)));
     setPriceEdit(null);
   };
-  // Client video 2026-10-15: type a quantity directly (e.g. selling a large quantity of one item)
-  // instead of only stepping with +/-. Negative values stay allowed (a typed return quantity), and
-  // a typed 0 removes the line, matching updateQty's existing behavior.
+  // Client video 2026-10-15: type a quantity directly (e.g.
   const commitQtyEdit = () => {
     if (!qtyEdit) return;
     const qty = Math.trunc(parseFloat(qtyEdit.value));
@@ -171,9 +156,7 @@ export default function PointOfSale() {
     }
     setQtyEdit(null);
   };
-  // Client request 2026-09-02: sell items not in stock (inventory can go negative), sell a
-  // negative quantity as a return, and ring up non-stock/material items that aren't in the
-  // catalog at all.
+  // Client request 2026-09-02: sell items not in stock (inventory can go negative), sell a negative quantity as a return, and
   const [returnMode, setReturnMode] = useState(false);
   const [customItemOpen, setCustomItemOpen] = useState(false);
   const [customItem, setCustomItem] = useState({ description: "", price: "", qty: "1" });
@@ -209,14 +192,11 @@ export default function PointOfSale() {
   const [report, setReport] = useState<SalesReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
 
-  // Client PDF 2026-09-18: "set category on the pos section to match our inventory list" — this
-  // used to be a hardcoded 6-value list; now derived from the real catalog, same pattern as
-  // Inventory's dynamicCategories.
+  // Client PDF 2026-09-18: "set category on the pos section to match our inventory list" — this used to be a
   const categories = ["All", ...Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort()];
   const manufacturers = ["All", ...Array.from(new Set(products.map((p) => p.manufacturer).filter((m): m is string => Boolean(m)))).sort()];
 
-  // Catalog + customers load once; the sales list and header cards refresh on their own (after a sale,
-  // "Show more", or a receipt note) instead of reloading the whole register each time.
+  // Catalog + customers load once; the sales list and header cards refresh on their own (after a sale, "Show more"
   const loadPos = useCallback(async () => {
     const [productsData, customersData] = await Promise.all([posApi.catalog(), customersApi.list()]);
     setProducts(productsData);
@@ -262,9 +242,7 @@ export default function PointOfSale() {
     setPage(1);
   }, [search, category, manufacturer]);
 
-  // Client request 2026-09-04: the Attach Customer dialog rendered all 3,600+ customer names as
-  // buttons the moment it opened (before any search text was typed) -- capped to a manageable
-  // result count, same issue class as the Catalog/Customers/Valuation pagination fixes above.
+  // Client request 2026-09-04: the Attach Customer dialog rendered all 3,600+ customer names as buttons the moment it opened (before any
   const filteredCustomers = customerSearch.trim()
     ? ["Walk-in", ...customers.map((c) => c.name)].filter((n) => n.toLowerCase().includes(customerSearch.toLowerCase())).slice(0, 25)
     : ["Walk-in"];
@@ -278,20 +256,15 @@ export default function PointOfSale() {
     cart.filter((i) => i.taxable).reduce((s, i) => s + i.price * i.qty, 0) - (discountAmount * cart.filter((i) => i.taxable).length / Math.max(cart.length, 1)),
     [cart, discountAmount],
   );
-  // Client SMS 2026-09-30: "allow us the ability to turn on or off the sales tax via a check
-  // mark" when ringing up a sale (e.g. a tax-exempt reseller) -- per-transaction, not a tenant
-  // setting; defaults on like normal.
+  // Client SMS 2026-09-30: "allow us the ability to turn on or off the sales tax via a check mark" when
   const [taxEnabled, setTaxEnabled] = useState(true);
-  // Client video 2026-10-16: "doing a return...sales tax goes to zero...does not return the sales
-  // tax" -- the `Math.max(0, ...)` floor meant a return (negative taxableAmount) always clamped to
-  // $0 tax instead of refunding it. A return's tax should go negative just like its subtotal does.
+  // Client video 2026-10-16: "doing a return...sales tax goes to zero...does not return the sales tax" -- the `Math.max(0, ...)` floor
   const tax = useMemo(() => (taxEnabled ? taxableAmount * TAX_RATE : 0), [taxableAmount, taxEnabled, TAX_RATE]);
   const total = useMemo(() => subtotal - discountAmount + tax, [subtotal, discountAmount, tax]);
 
   const addToCart = (p: Product) => {
     const direction = returnMode ? -1 : 1;
-    // Client video 2026-10-19: adding the same product again must be its own line (two pumps =
-    // two lines, each with its own serial #), not +1 on the existing line. Qty is still editable.
+    // Client video 2026-10-19: adding the same product again must be its own line (two pumps = two lines, each with
     setCart((prev) => [...prev, { id: p.id, name: p.name, sku: p.sku, itemNumber: p.item_number, price: p.price ?? 0, qty: direction, taxable: p.taxable, unit: p.unit ?? "ea" }]);
   };
 
@@ -325,14 +298,11 @@ export default function PointOfSale() {
   };
 
   const remainingTender = total - tenderLines.reduce((s, t) => s + t.amount, 0);
-  // Client SMS 2026-09-21: returns/exchanges (negative total) couldn't be closed out -- the
-  // payment section was hidden and every amount check assumed a positive balance.
+  // Client SMS 2026-09-21: returns/exchanges (negative total) couldn't be closed out -- the payment section was hidden and every amount check
   const isRefund = total < -0.01;
   const round2 = (n: number) => Math.round(n * 100) / 100;
   const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
-  // Full payment is the default: with nothing "Add"ed yet, Complete Sale takes the whole total
-  // with the selected method (Card still goes through its own form). Once a partial has been
-  // added, the remainder must be covered explicitly, same as before.
+  // Full payment is the default: with nothing "Add"ed yet, Complete Sale takes the whole total with the selected method (Card
   const canComplete = Math.abs(remainingTender) <= 0.01
     ? true
     : tenderLines.length === 0 && tenderMethod !== "Card";
@@ -340,8 +310,7 @@ export default function PointOfSale() {
   const addCashTender = () => {
     const amt = parseFloat(tenderAmount);
     if (!amt) return;
-    // Capped at what's still due (sign follows the sale) so an over-typed amount can't strand
-    // the sale with a negative "remaining" that never reaches zero.
+    // Capped at what's still due (sign follows the sale) so an over-typed amount can't strand the sale with a negative
     const capped = round2(Math.min(Math.abs(amt), Math.abs(remainingTender)));
     if (capped <= 0) return;
     setTenderLines((prev) => [...prev, { method: tenderMethod, amount: remainingTender < 0 ? -capped : capped, checkNumber: tenderMethod === "Check" ? checkNumberInput.trim() || null : null }]);
@@ -356,9 +325,7 @@ export default function PointOfSale() {
 
   const removeTender = (index: number) => setTenderLines((prev) => prev.filter((_, i) => i !== index));
 
-  // Client SMS 2026-09-25: "when closing out a sale it shows up as three closed transactions" -- each extra
-  // click on Complete Sale while the first request was still running created another order (and deducted
-  // stock again). The ref blocks re-entry synchronously; the backend also refuses an identical repeat.
+  // Client SMS 2026-09-25: "when closing out a sale it shows up as three closed transactions" -- each extra click on
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [saleError, setSaleError] = useState<string | null>(null);
@@ -614,8 +581,7 @@ export default function PointOfSale() {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {paginatedProducts.map((p) => {
                   const isService = p.category === "Services";
-                  // Client request 2026-09-02: out-of-stock items are still sellable (inventory is
-                  // allowed to go negative) rather than blocked.
+                  // Client request 2026-09-02: out-of-stock items are still sellable (inventory is allowed to go negative) rather than blocked.
                   const out = !isService && p.stock <= 0;
                   return (
                     <button
@@ -777,10 +743,7 @@ export default function PointOfSale() {
                           {item.qty < 0 ? t("Undo return") : t("Return this item")}
                         </button>
                         {" · "}
-                        {/* Client video 2026-10-06: "I see you have an icon for tax yes or no for the
-                            whole transaction. I'm going to need it for individual SKUs." -- each line
-                            already carried a `taxable` flag from the catalog (drives the real tax math
-                            below), there was just no way to flip it per sale until now. */}
+                        {/* Client video 2026-10-06: "I see you have an icon for tax yes or no for the whole transaction. */}
                         <button
                           type="button"
                           className={item.taxable ? "text-[#0891B2] hover:underline" : "text-[#F59E0B] hover:underline"}
@@ -800,8 +763,7 @@ export default function PointOfSale() {
                       <button onClick={() => updateQty(item.id, index, -1)} className="w-7 h-7 rounded-md bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center hover:bg-[#E2E8F0]">
                         <Minus className="w-3.5 h-3.5 text-[#0F172A]" />
                       </button>
-                      {/* Client video 2026-10-15: "type in a number here" for a large quantity
-                          instead of only +/-. Click the quantity to edit it directly. */}
+                      {/* Client video 2026-10-15: "type in a number here" for a large quantity instead of only +/-. */}
                       {qtyEdit?.index === index ? (
                         <input
                           autoFocus
@@ -1126,8 +1088,7 @@ export default function PointOfSale() {
               <p className="text-xs text-[#64748B] mt-1">{cart.reduce((s, i) => s + i.qty, 0)} {t("items")} · {customerName} · {t("Total")} {money(total)}</p>
             </div>
 
-            {/* Client request 2026-09-03: split tender — combine cash/card/ACH/check, or several
-                cards, on one sale. Each line commits (and charges, for Card) individually. */}
+            {/* Client request 2026-09-03: split tender — combine cash/card/ACH/check, or several cards, on one sale. */}
             {tenderLines.length > 0 && (
               <div className="space-y-1.5">
                 {tenderLines.map((tenderLine, i) => (

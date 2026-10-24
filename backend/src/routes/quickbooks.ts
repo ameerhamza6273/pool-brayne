@@ -4,9 +4,7 @@ import { withTenantContext } from "../db.js";
 const AUTHORIZE_URL = "https://appcenter.intuit.com/connect/oauth2";
 const TOKEN_URL = "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer";
 
-// Short-lived state -> userId map so the unauthenticated callback (Intuit redirects the browser
-// here directly, it can't send our Authorization header) can recover which user/tenant initiated
-// the connect. Entries are consumed on first use and expire after 10 minutes.
+// Short-lived state -> userId map so the unauthenticated callback (Intuit redirects the browser here directly, it can't send our Authorization
 const pendingStates = new Map<string, { userId: string; createdAt: number }>();
 const STATE_TTL_MS = 10 * 60 * 1000;
 
@@ -33,9 +31,7 @@ export default async function quickbooksRoutes(app: FastifyInstance) {
     return { url: url.toString() };
   });
 
-  // Unauthenticated: Intuit redirects the browser here directly after the user approves the
-  // connection, so there is no Bearer token on this request (see the onRequest exemption in
-  // server.ts). Identity is recovered from the `state` param instead.
+  // Unauthenticated: Intuit redirects the browser here directly after the user approves the connection, so there is no Bearer token on
   app.get<{ Querystring: { code?: string; state?: string; realmId?: string; error?: string } }>("/callback", async (req, reply) => {
     const frontendUrl = process.env.CORS_ORIGIN ?? "http://localhost:5174";
     const { code, state, realmId, error } = req.query;

@@ -43,8 +43,7 @@ export default function Customers() {
   const confirm = useConfirm();
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Client SMS 2026-10-23: trash icon to remove duplicate customers. The backend refuses (with the
-  // reason) when the customer has invoices/jobs/estimates/payments/sales, so history is never lost.
+  // Client SMS 2026-10-23: trash icon to remove duplicate customers.
   const handleDeleteCustomer = async (c: Customer) => {
     setDeleteError(null);
     if (!(await confirm({ title: "Delete this customer?", name: c.name, message: "Their notes, photos and reminders are deleted too. This cannot be undone." }))) return;
@@ -107,8 +106,7 @@ export default function Customers() {
     return matchesSearch && matchesTag;
   });
 
-  // Client request 2026-09-04: the Table/Grid views rendered all 3,600+ customers with no
-  // pagination at all (same issue flagged and fixed in Inventory's Catalog table).
+  // Client request 2026-09-04: the Table/Grid views rendered all 3,600+ customers with no pagination at all (same issue flagged and fixed
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -118,9 +116,7 @@ export default function Customers() {
     setPage(1);
   }, [search, tagFilter, viewMode]);
 
-  // Client request 2026-08-28: periodic service reminders (repeat jobs 2-3x/year) — no real
-  // notification channel is wired up, so "auto-remind" surfaces here as a due/overdue list with
-  // a badge count, rather than an actual push/SMS/email.
+  // Client request 2026-08-28: periodic service reminders (repeat jobs 2-3x/year) — no real notification channel is wired up, so "auto-remind" surfaces
   const today = new Date().toISOString().slice(0, 10);
   const withReminders = customers
     .filter((c) => c.next_reminder_date)
@@ -328,8 +324,7 @@ export default function Customers() {
                     <td className="text-right py-3 px-4 font-semibold text-[#0F172A]">${c.lifetime_value.toLocaleString()}</td>
                     <td className="text-center py-3 px-4">
                       <div className="flex items-center justify-center gap-1">
-                        {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call
-                            extension detects real `tel:` links, not JS button handlers. */}
+                        {/* Client video 2026-10-06 (Dialpad): their Chrome CTI click-to-call extension detects real `tel:` links, not JS button handlers. */}
                         {c.phone ? (
                           <a
                             href={`tel:${c.phone}`}

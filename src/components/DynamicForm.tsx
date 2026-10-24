@@ -8,10 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useLanguage } from "@/lib/language-context";
 import type { FormTemplate, FormField } from "@/lib/api/formTemplates";
 
-// Client SMS 2026-09-06: "something he can create his own forms... need to be able to edit,
-// create, and tag to a job". Renders whatever fields a form_templates row defines -- this is
-// what replaced the 3 previously-hardcoded checklist components (now seeded as real, editable
-// templates using this same renderer).
+// Client SMS 2026-09-06: "something he can create his own forms...
 export default function DynamicForm({
   template,
   onSave,
@@ -27,9 +24,7 @@ export default function DynamicForm({
   const [saved, setSaved] = useState(false);
   const [uploadingField, setUploadingField] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<Set<string>>(new Set());
-  // Client video 2026-09-29: "Equipment inspection checklist... should be collapsed. So when
-  // looking at the notes, it does not consume the whole screen on the phone." Starts collapsed —
-  // the header still shows the completion count so a partially-filled form isn't invisible.
+  // Client video 2026-09-29: "Equipment inspection checklist...
   const [expanded, setExpanded] = useState(false);
 
   const setValue = (id: string, v: unknown) => {
@@ -158,8 +153,7 @@ export default function DynamicForm({
               {f.type === "photo" && (
                 <div className="space-y-2">
                   {onUploadPhoto ? (
-                    // Client video 2026-10-15: "no live photo" -- `capture` opens the phone camera
-                    // directly; the plain input still offers the gallery.
+                    // Client video 2026-10-15: "no live photo" -- `capture` opens the phone camera directly; the plain input still offers the gallery.
                     <div className="flex flex-wrap gap-2">
                       <label className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-[#0891B2]/40 bg-[#0891B2]/5 text-sm text-[#0891B2] cursor-pointer hover:bg-[#0891B2]/10 w-fit">
                         <Camera className="w-3.5 h-3.5" />

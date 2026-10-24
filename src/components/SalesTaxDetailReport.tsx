@@ -9,10 +9,7 @@ import { receiptNumber } from "@/lib/api/pos";
 import { useLanguage } from "@/lib/language-context";
 import { toCsv, downloadCsv } from "@/lib/csv";
 
-// Client PDF 2026-10-15 ("Sales Tax - Accrual Basis - ServiceWorks.pdf"): detail sales-tax report,
-// parameters date range + accrual/cash basis, "by order/job then item". Each order/job is a header
-// row (click it to open the invoice/receipt popup -- client SMS 2026-10-15 "drill down to see
-// orders and amounts"), its items underneath, then a subtotal; grand totals at the bottom.
+// Client PDF 2026-10-15 ("Sales Tax - Accrual Basis - ServiceWorks.pdf"): detail sales-tax report, parameters date range + accrual/cash basis, "by..."
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
 
 export default function SalesTaxDetailReport({ start, end }: { start: string; end: string }) {

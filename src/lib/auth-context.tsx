@@ -12,31 +12,24 @@ interface User {
   logoUrl: string | null;
 }
 
-/** staff_role enum (supabase/migrations/20260728061400_initial_schema.sql): owner | manager |
- * technician | contractor | office_manager. */
+/** staff_role enum (supabase/migrations/20260728061400_initial_schema.sql): owner | manager | technician | contractor | office_manager. */
 export type StaffRole = "owner" | "manager" | "technician" | "contractor" | "office_manager";
 
-/** Client feedback 2026-09-11: "Admin / Tech view / Contractor view" -- owner/manager/
- * office_manager get the full admin app; technician and contractor are field-only roles
- * restricted to the Field page (see ProtectedRoute in App.tsx). */
+/** Client feedback 2026-09-11: "Admin / Tech view / Contractor view" -- owner/manager/ office_manager get the full admin app; technician and */
 export function isFieldOnlyRole(role: StaffRole | null): boolean {
   return role === "technician" || role === "contractor";
 }
 
-/** Client video 2026-10-15: "give a few more options here under permissions rather than just one
- * field. Customer lookup, a few others so you can look at history." Extra pages an admin can turn
- * on per field-only person (profiles.permissions, Settings > Team). */
+/** Client video 2026-10-15: "give a few more options here under permissions rather than just one field. */
 export type FieldPermission = "customers" | "library" | "directory";
 export const FIELD_PERMISSIONS: { key: FieldPermission; label: string; paths: string[] }[] = [
   { key: "customers", label: "Customer Lookup (history, notes, invoices)", paths: ["/customers"] },
   { key: "library", label: "Library", paths: ["/library"] },
-  // Dev feedback 2026-10-16: Directory was made always-open the same day it was built, but the
-  // dev wants it controlled per-tech like the other two instead.
+  // Dev feedback 2026-10-16: Directory was made always-open the same day it was built, but the dev wants it controlled per-tech
   { key: "directory", label: "Directory (phone contacts)", paths: ["/directory"] },
 ];
 
-/** Can a field-only login open this path? /field always; anything else (including Directory) only
- * if granted via FIELD_PERMISSIONS. */
+/** Can a field-only login open this path? /field always; anything else (including Directory) only if granted via FIELD_PERMISSIONS. */
 export function fieldRoleCanOpen(pathname: string, permissions: string[]): boolean {
   if (pathname === "/field") return true;
   return FIELD_PERMISSIONS.some((p) => permissions.includes(p.key) && p.paths.some((base) => pathname === base || pathname.startsWith(base + "/")));

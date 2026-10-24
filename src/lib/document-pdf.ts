@@ -1,7 +1,4 @@
-// Client video 2026-10-23: the invoice/estimate email carries the whole document as a PDF ("if they
-// click the PDF ... they'll see the entire work ticket"). Renders the on-screen document element
-// to an image (html2canvas) and paginates it onto Letter pages (jsPDF) -- both loaded on demand.
-// Anything marked `print:hidden` (staff-only sections, status badges) is left out, same as printing.
+// Client video 2026-10-23: the invoice/estimate email carries the whole document as a PDF ("if they click the PDF ...
 export async function elementToPdfBase64(el: HTMLElement): Promise<string> {
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   const canvas = await html2canvas(el, {

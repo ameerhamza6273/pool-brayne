@@ -5,10 +5,7 @@ import { Button } from "@/components/ui/button";
 import { laborFirst } from "@/lib/labor";
 import { invoicingApi, type PublicEstimate as PublicEstimateBundle } from "@/lib/api/invoicing";
 
-// Client PDF 2026-09-06: "I am sending a sample email for an estimate it will have an 'Approve
-// Estimation' button" — this is that customer-facing page, reachable with no login via the
-// estimate's unguessable approval_token. See backend/src/routes/public.ts for the (unauthenticated)
-// API it calls.
+// Client PDF 2026-09-06: "I am sending a sample email for an estimate it will have an 'Approve Estimation' button"
 export default function PublicEstimate() {
   const { token } = useParams<{ token: string }>();
   const [bundle, setBundle] = useState<PublicEstimateBundle | null>(null);
@@ -52,8 +49,7 @@ export default function PublicEstimate() {
   const subtotal = lineItems.length > 0 ? lineItems.reduce((s, li) => s + li.amount, 0) : 0;
   const materialsSubtotal = lineItems.filter((li) => li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
   const laborSubtotal = lineItems.filter((li) => li.item_type === "labor").reduce((s, li) => s + li.amount, 0);
-  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
-  // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
   const taxableSubtotal = lineItems.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((s, li) => s + li.amount, 0);
   const tax = taxableSubtotal * (business?.tax_rate ?? 0.0775);
   const total = subtotal + tax;

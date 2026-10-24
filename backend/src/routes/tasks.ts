@@ -13,9 +13,7 @@ type TaskBody = {
   endDate: string | null;
 };
 
-// Client request 2026-09-02: a freeform task list ("Tasks" tab under Estimates) — assign a
-// Renovation/Repair/Go-back task to a tech at a customer/address, with photos, notes, and a
-// date range, independent of the jobs/estimates pipelines.
+// Client request 2026-09-02: a freeform task list ("Tasks" tab under Estimates) — assign a Renovation/Repair/Go-back task to a tech at
 export default async function tasksRoutes(app: FastifyInstance) {
   app.get("/", async (req) => {
     return withTenantContext(req.userId, (tx) => tx`

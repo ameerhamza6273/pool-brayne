@@ -4,12 +4,6 @@ import { searchAddressSuggestions } from "@/lib/geocode";
 import { isSmartyConfigured, smartyAutocomplete } from "@/lib/smarty";
 
 // Client request 2026-09-02: "auto populate the address when adding it for the first time".
-// Uses Smarty's real US Autocomplete Pro (client sent smarty.com/pricing) once
-// VITE_SMARTY_EMBEDDED_KEY is configured; until then, falls back to free Nominatim suggestions
-// (no Google Places billing account available), debounced so it respects Nominatim's
-// ~1 request/sec usage policy. Smarty's suggestions don't include lat/lng (that's a separate
-// Smarty product) — only the Nominatim path returns coords, which is fine since map-pin
-// geocoding elsewhere in the app runs independently off the saved address text.
 export default function AddressAutocomplete({
   value,
   onChange,
@@ -19,9 +13,7 @@ export default function AddressAutocomplete({
 }: {
   value: string;
   onChange: (value: string, coords?: { lat: number; lng: number }) => void;
-  // Client bug report 2026-09-03: reports need street/city/state/zip as separate fields —
-  // callers that show those fields can pass this to capture the structured parts of whichever
-  // suggestion the user picked (works with both Smarty and the Nominatim fallback).
+  // Client bug report 2026-09-03: reports need street/city/state/zip as separate fields — callers that show those fields can pass this to
   onSelectParts?: (parts: { streetLine: string; city: string; state: string; zip: string }) => void;
   placeholder?: string;
   className?: string;

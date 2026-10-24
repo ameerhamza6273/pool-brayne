@@ -6,11 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useLanguage } from "@/lib/language-context";
 
-// Client SMS 2026-09-21: "I would like to see standard time on all jobs ... to ensure these weekly routes
-// maintain the same order they were created. If customer X is the first stop of the day on Monday for tech X,
-// I want customer X to ALWAYS be the first stop." One tech's stops for one day: put them in order, pick a
-// start time and minutes per stop, and every stop gets its time -- and so does its recurring series, so the
-// same order repeats every week.
+// Client SMS 2026-09-21: "I would like to see standard time on all jobs ...
 
 export interface RouteRow {
   key: string;
@@ -23,8 +19,7 @@ export interface RouteRow {
   repeats: boolean;
 }
 
-// permanent = false (client SMS 2026-09-25, "ask us if this change is temporary or permanent"): only this day's
-// real jobs get the new times; repeating series keep their standard time. Omitted = permanent (old behaviour).
+// permanent = false (client SMS 2026-09-25, "ask us if this change is temporary or permanent"): only this day's real jobs
 export interface RouteOrderItem { jobId: string | null; recurringId: string | null; time: string; repeatWeekly?: boolean; permanent?: boolean; date?: string | null }
 export interface RouteOrderSummary { jobsTimed: number; seriesTimed: number; madeRecurring: number }
 
@@ -57,11 +52,8 @@ export default function RouteOrderDialog({
   const autoScrollRef = useRef<number | null>(null);
 
   // Start from the order the stops already run in (by time, then name), earliest existing time as the start.
-  // Keyed on the set of stops (not the array identity) so a parent re-render doesn't wipe the user's ordering.
   const rowsKey = rows.map((r) => r.key).join(",");
-  // QA 2026-10-18: a Temporary apply turns projected stops into real jobs, which changes the row keys
-  // -- that used to re-run this reset and wipe the "Saved" message and flip the choice back to
-  // Permanent (a second Apply would then change the series for good). Once applied, leave it alone.
+  // QA 2026-10-18: a Temporary apply turns projected stops into real jobs, which changes the row keys -- that used to
   const appliedRef = useRef(false);
   useEffect(() => { if (!open) appliedRef.current = false; }, [open]);
   useEffect(() => {
@@ -94,11 +86,7 @@ export default function RouteOrderDialog({
     [next[i], next[j]] = [next[j], next[i]];
     return next;
   });
-  // Client video 2026-10-15: "trying to move it to the top of the list, it's not accepting it" --
-  // on a long list the row you're trying to reach can be scrolled out of view mid-drag (native
-  // HTML5 drag has no built-in auto-scroll), so there's nothing to drop on. One-click "move to
-  // top/bottom" buttons give a reliable way in that case regardless of list length or scroll
-  // position; autoScroll below also scrolls the list while dragging near its top/bottom edge.
+  // Client video 2026-10-15: "trying to move it to the top of the list, it's not accepting it" -- on a
   const moveToEnd = (i: number, to: "start" | "end") => setOrder((prev) => {
     const next = [...prev];
     const [row] = next.splice(i, 1);

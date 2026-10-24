@@ -3,8 +3,7 @@ import { useParams } from "react-router-dom";
 import { Droplets } from "lucide-react";
 import { publicFormsApi, type PublicForm as PublicFormBundle } from "@/lib/api/jobs";
 
-// Client PDF 2026-09-05 (check list forms.pdf / inspection form.pdf): "make sure customers can
-// see form" — same no-login pattern as the estimate approval page (PublicEstimate.tsx).
+// Client PDF 2026-09-05 (check list forms.pdf / inspection form.pdf): "make sure customers can see form" — same no-login pattern as
 export default function PublicForm() {
   const { token } = useParams<{ token: string }>();
   const [bundle, setBundle] = useState<PublicFormBundle | null>(null);

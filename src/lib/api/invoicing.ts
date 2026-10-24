@@ -5,8 +5,7 @@ type Invoice = Database["public"]["Tables"]["invoices"]["Row"] & { customers: { 
 export type InvoiceLineItem = Database["public"]["Tables"]["invoice_line_items"]["Row"];
 type RecurringBilling = Database["public"]["Tables"]["recurring_billing"]["Row"] & { customers: { name: string } | null };
 type Payment = Database["public"]["Tables"]["payments"]["Row"] & { invoices: { number: string } | null; customers: { name: string } | null };
-// `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches
-// what EstimateDetail.tsx itself displays -- the raw `amount` column is pre-tax, see invoicing.ts.
+// `total` (materials taxed at the tenant's real tax rate, labor untaxed, added by the backend list endpoint) matches what EstimateDetail.tsx
 export type Estimate = Database["public"]["Tables"]["estimates"]["Row"] & { customers: { name: string; address?: string | null; phone?: string | null } | null; total?: number };
 export type EstimateLineItem = Database["public"]["Tables"]["estimate_line_items"]["Row"];
 export type VendorBill = Database["public"]["Tables"]["vendor_bills"]["Row"] & { suppliers: { name: string } | null; po_number: string | null };
@@ -17,15 +16,13 @@ export type EstimateAttachment ={ id: string; estimate_id: string; url: string; 
 export type LineItemInput = {
   description: string;
   sku?: string | null;
-  // Client video 2026-10-06: 3rd category "Maintenance" alongside Material/Labor, for weekly
-  // maintenance priority chemical SKUs.
+  // Client video 2026-10-06: 3rd category "Maintenance" alongside Material/Labor, for weekly maintenance priority chemical SKUs.
   itemType?: "material" | "labor" | "maintenance";
   quantity: number;
   cost?: number;
   rate: number;
   notes?: string | null;
-  // Client video 2026-10-06: per-line tax override (Y/N icon), defaults to the item_type rule
-  // (labor untaxed, material taxed) when left unset.
+  // Client video 2026-10-06: per-line tax override (Y/N icon), defaults to the item_type rule (labor untaxed, material taxed) when left unset.
   taxable?: boolean;
 };
 
@@ -64,9 +61,7 @@ type Business = {
   state: string | null;
   zip: string | null;
   invoice_business_name: string | null;
-  // Client text 2026-10-15: real per-tenant sales tax rate (replaces a hardcoded 8.25% literal) --
-  // only populated on the public (no-login) estimate/invoice bundles, which can't call the
-  // authenticated /api/settings/tax-rate endpoint the rest of the app uses (see useTaxRate()).
+  // Client text 2026-10-15: real per-tenant sales tax rate (replaces a hardcoded 8.25% literal) -- only populated on the public (no-login)
   tax_rate?: number | null;
   logo_url?: string | null;
 };
@@ -79,8 +74,7 @@ export type InvoiceDetailBundle = {
   job: { scheduled_date: string | null; created_at: string; completed_at: string | null; description: string | null; tech_notes: string | null; type: string } | null;
   photos: { id: string; url: string; label: string | null }[];
   serviceNotes: { text: string; author: string | null; created_at: string }[];
-  // Client doc 2026-10-05: a combined/bulk invoice has no single job (invoice.job_id is null) --
-  // these are the real jobs its line items (grouped by line.job_id) came from, oldest first.
+  // Client doc 2026-10-05: a combined/bulk invoice has no single job (invoice.job_id is null) -- these are the real jobs its
   bulkJobs: { id: string; type: string; description: string | null; scheduled_date: string | null; tech_notes: string | null }[];
 };
 
@@ -105,8 +99,7 @@ export const invoicingApi = {
     lineItems?: LineItemInput[];
   }) => api.post<Invoice>("/api/invoices", data),
 
-  // Client doc 2026-10-05: bulk/"Combine Completed Jobs" invoices now copy each job's real line
-  // items server-side (grouped by job_id) instead of one flattened line per job client-side.
+  // Client doc 2026-10-05: bulk/"Combine Completed Jobs" invoices now copy each job's real line items server-side (grouped by job_id) instead of
   createBulk: (data: { customerId: string; jobIds: string[]; number?: string; issueDate: string }) =>
     api.post<Invoice>("/api/invoices/bulk", data),
 
@@ -184,8 +177,7 @@ export const invoicingApi = {
     api.post<EstimateTemplate>("/api/invoices/estimate-templates", data),
   deleteEstimateTemplate: (id: string) => api.del(`/api/invoices/estimate-templates/${id}`),
 
-  // Public "Approve Estimation" link (backend/src/routes/public.ts) — no login required, so these
-  // hit an unauthenticated route (apiClient just omits the Bearer header when there's no session).
+  // Public "Approve Estimation" link (backend/src/routes/public.ts) — no login required, so these hit an unauthenticated route (apiClient just omits the Bearer
   publicEstimate: (token: string) => api.get<PublicEstimate>(`/api/public/estimates/${token}`),
   respondToEstimate: (token: string, decision: "Accepted" | "Declined") =>
     api.post<{ id: string; status: string; approved_at: string | null }>(`/api/public/estimates/${token}/respond`, { decision }),
@@ -195,8 +187,7 @@ export const invoicingApi = {
   payInvoicePublic: (token: string, opaqueData: { dataDescriptor: string; dataValue: string }) =>
     api.post<Invoice>(`/api/public/invoices/${token}/pay`, { opaqueData }),
 
-  // Client video 2026-10-06: real "Send via Email" — fails with a clear message (not a silent
-  // no-op) until the SMTP password is configured on the server.
+  // Client video 2026-10-06: real "Send via Email" — fails with a clear message (not a silent no-op) until the SMTP
   sendInvoiceEmail: (id: string, data: SendDocumentEmail = {}) => api.post<{ sent: true }>(`/api/invoices/${id}/send-email`, data),
   finalizeInvoice: (id: string) => api.patch<Invoice>(`/api/invoices/${id}/finalize`, {}),
   bulkSendInvoiceEmail: (invoiceIds: string[]) => api.post<{ sent: number; to: string }>("/api/invoices/bulk-send-email", { invoiceIds }),

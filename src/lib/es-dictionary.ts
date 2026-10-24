@@ -1,7 +1,4 @@
-// Hand-checked Spanish for UI strings (2026-09-25 language QA). Anything listed here shows in Spanish
-// instantly -- strings NOT listed fall back to the live auto-translate, which first renders English for a
-// moment and can pick the wrong sense of short words (e.g. "Wed" -> "Casarse"). Add every new t("...")
-// string here when building a feature. Keys must match the English passed to t() exactly.
+// Hand-checked Spanish for UI strings (2026-09-25 language QA).
 export const esDictionary: Record<string, string> = {
   "Access Notes": "Notas de acceso",
   "Account #": "Cuenta #",
@@ -722,8 +719,7 @@ export const esDictionary: Record<string, string> = {
   // POS header cards (2026-09-25 QA: "Transactions" auto-translated to "Actas", "Avg Ticket" to "Boleto promedio").
   "Last 7 Days": "Últimos 7 días", "Avg Ticket (7 days)": "Ticket promedio (7 días)", "Sales Today": "Ventas hoy",
   "Transactions": "Transacciones", "Avg Ticket": "Ticket promedio",
-  // Client video 2026-09-29: form-notes-not-saving fix + read-only form submission preview + real
-  // Documents/Receipts/Before-After tabs on JobDetail.
+  // Client video 2026-09-29: form-notes-not-saving fix + read-only form submission preview + real Documents/Receipts/Before-After tabs on JobDetail.
   "Add notes about this job...": "Agregue notas sobre este trabajo...",
   "Notes": "Notas",
   "The original form was deleted — showing raw submitted answers.": "El formulario original fue eliminado — mostrando las respuestas enviadas.",
@@ -758,8 +754,7 @@ export const esDictionary: Record<string, string> = {
   "Deleting...": "Eliminando...",
   "Delete Permanently": "Eliminar permanentemente",
 
-  // 2026-09-30: inventory valuation as-of date, POS serial-after-payment, receipt line
-  // identifier setting, POS tax toggle, walk-in previous sales.
+  // 2026-09-30: inventory valuation as-of date, POS serial-after-payment, receipt line identifier setting, POS tax toggle, walk-in previous sales.
   "Showing current on-hand quantities. Pick an earlier date above to see what stock was worth then (reconstructed from sales, job parts used, write-offs and received purchase orders since that date — cost is always today's cost, since per-purchase cost history isn't tracked).":
     "Mostrando las cantidades actuales en existencia. Elige una fecha anterior arriba para ver cuánto valía el inventario en ese momento (reconstruido a partir de ventas, piezas usadas en trabajos, bajas de inventario y órdenes de compra recibidas desde esa fecha — el costo siempre es el costo de hoy, ya que no se registra el historial de costo por compra).",
   "Reconstructed for the date above from sales, job parts used, write-offs and received purchase orders since then. Cost is always today's cost, since per-purchase cost history isn't tracked.":
@@ -1186,4 +1181,9 @@ export const esDictionary: Record<string, string> = {
   "Remove email": "Quitar correo",
   "Could not save the vendor": "No se pudo guardar el proveedor",
   "Search vendor, contact, email, address, or phone...": "Buscar proveedor, contacto, correo, dirección o teléfono...",
+  "Send Purchase Order": "Enviar orden de compra",
+  "Attach the purchase order as a PDF": "Adjuntar la orden de compra en PDF",
+  "Below your message the email adds the PO #, date, payment terms and the list of products.": "Debajo de su mensaje, el correo agrega el n.º de OC, la fecha, los términos de pago y la lista de productos.",
+  "Sent to": "Enviado a",
+  "This vendor has no email yet — add one under Vendors › pencil › Email, or type it in the Send popup.": "Este proveedor aún no tiene correo: agréguelo en Proveedores › lápiz › Correo, o escríbalo en la ventana de envío.",
 };

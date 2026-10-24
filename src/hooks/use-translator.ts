@@ -8,10 +8,7 @@ type TranslateState = {
   error: string | null;
 };
 
-/**
- * Real working translator using Google's free translate endpoint.
- * No API key required. Translates between English and Spanish.
- */
+/** Real working translator using Google's free translate endpoint. No API key required. Translates between English and Spanish. */
 export function useTranslator() {
   const [states, setStates] = useState<Record<Lang, TranslateState>>({
     en: { translation: "", loading: false, error: null },

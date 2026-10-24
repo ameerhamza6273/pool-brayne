@@ -42,8 +42,7 @@ const statusColors: Record<string, string> = {
   Converted: "bg-[#0891B2]/10 text-[#0891B2]",
 };
 
-// MM/DD/YYYY, matching InvoiceDetail.tsx so the two documents look the same. Date-only strings
-// are split rather than parsed so a timezone cannot shift the day.
+// MM/DD/YYYY, matching InvoiceDetail.tsx so the two documents look the same.
 const fmtDate = (d?: string | null) => {
   if (!d) return "—";
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
@@ -72,9 +71,7 @@ export default function EstimateDetail() {
   const [photos, setPhotos] = useState<EstimateAttachment[]>([]);
   const [photosUploading, setPhotosUploading] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
-  // Client video 2026-10-06: real "Send via Email" now exists (backend/src/lib/mailer.ts) --
-  // replaces the old mailto: fallback. Fails with a clear message until the server's SMTP
-  // password is configured.
+  // Client video 2026-10-06: real "Send via Email" now exists (backend/src/lib/mailer.ts) -- replaces the old mailto: fallback.
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendEmailResult, setSendEmailResult] = useState<string | null>(null);
   // Client video 2026-10-23: same Send Email popup as invoices.
@@ -95,8 +92,7 @@ export default function EstimateDetail() {
     inventoryApi.summary().then((data) => setInventoryItems(data?.items ?? []));
   }, []);
 
-  // Client feedback 2026-09-11: "link to select a document from the document folder" -- these
-  // are typically the client's scope-of-work PDFs already sitting in the Library.
+  // Client feedback 2026-09-11: "link to select a document from the document folder" -- these are typically the client's scope-of-work PDFs
   const [libraryDocuments, setLibraryDocuments] = useState<LibraryDocument[]>([]);
   useEffect(() => {
     libraryApi.list().then(setLibraryDocuments);
@@ -158,20 +154,17 @@ export default function EstimateDetail() {
   const items: { description: string; sku?: string | null; item_type?: string; notes?: string | null; quantity: number; rate: number; cost?: number; amount: number; taxable?: boolean }[] =
     lineItems.length > 0 ? lineItems : [{ description: `Estimate - ${estimate.customers?.name ?? ""}`, quantity: 1, rate: estimate.amount, amount: estimate.amount }];
   const subtotal = items.reduce((sum, li) => sum + li.amount, 0);
-  // Client sample estimate PDF (2026-09-06): "Parts & Materials" and "Labor" shown as separate
-  // subtotal lines, not one combined Subtotal.
+  // Client sample estimate PDF (2026-09-06): "Parts & Materials" and "Labor" shown as separate subtotal lines, not one combined Subtotal.
   const materialsSubtotal = items.filter((li) => li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const laborSubtotal = items.filter((li) => li.item_type === "labor").reduce((sum, li) => sum + li.amount, 0);
-  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only. Client
-  // video 2026-10-06: now a real per-line `taxable` override, not just the material/labor split.
+  // Client SMS 2026-09-21: labor is not taxed -- tax applies to Parts & Materials only.
   const taxableSubtotal = items.filter((li) => li.taxable ?? li.item_type !== "labor").reduce((sum, li) => sum + li.amount, 0);
   const tax = taxableSubtotal * taxRate;
   const total = subtotal + tax;
   const downPayment = estimate.down_payment ?? 0;
   const remainingBalance = total - downPayment;
   const totalCost = items.reduce((sum, li) => sum + (li.cost ?? 0) * li.quantity, 0);
-  // customers.address is one free-text string ("street, city, ST, zip") -- street on line 1, rest
-  // on line 2, matching InvoiceDetail.tsx's Billing Address box.
+  // customers.address is one free-text string ("street, city, ST, zip") -- street on line 1, rest on line 2, matching InvoiceDetail.tsx's
   const customerAddressLines = (() => {
     const a = estimate.customers?.address;
     if (!a) return [] as string[];
@@ -222,8 +215,6 @@ export default function EstimateDetail() {
   };
 
   // Client question 2026-09-03: "How to convert an estimate to a Job".
-  // Client video 2026-10-18: a converted job had no date and nowhere obvious to set one -- ask
-  // for date / time / tech right here (all optional; the Job page can still schedule it later).
   const openConvertToJob = () => {
     setConvertJob({ date: "", time: "", techId: "", jobType: configLists.lists.job_types[0]?.label ?? "" });
     setConvertJobOpen(true);
@@ -238,9 +229,7 @@ export default function EstimateDetail() {
     navigate(`/jobs/${jobId}`, { state: { openSchedule: !convertJob.date } });
   };
 
-  // Client request 2026-09-03: Documents section on an estimate — reuses the same
-  // job-attachments bucket (its RLS only checks the tenant_id path segment) under an
-  // `estimates/` sub-path instead of a job id.
+  // Client request 2026-09-03: Documents section on an estimate — reuses the same job-attachments bucket (its RLS only checks the tenant_id
   const handleUploadDocument = async (file: File, label: string) => {
     if (!id || !tenantId) return;
     setDocsUploading(true);
@@ -256,8 +245,7 @@ export default function EstimateDetail() {
     }
   };
 
-  // Client sample estimate PDF (2026-09-06): a "Trip Photos" gallery on the estimate itself,
-  // distinct from the generic Documents list below.
+  // Client sample estimate PDF (2026-09-06): a "Trip Photos" gallery on the estimate itself, distinct from the generic Documents list below.
   const handleUploadPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !id || !tenantId) return;
@@ -408,10 +396,7 @@ export default function EstimateDetail() {
         </Card>
       )}
 
-      {/* Estimate Document — mirrors InvoiceDetail.tsx's layout exactly (client ask, 2026-10-02:
-          "make the customer estimates look like the customer invoice") so the two documents read
-          as one consistent system: dark header band with Business / Client Details / Billing
-          Address / Service Details boxes, then a Breakdown of Services. */}
+      {/* Estimate Document — mirrors InvoiceDetail.tsx's layout exactly (client ask, 2026-10-02: "make the customer estimates look like the customer invoice") so */}
       <SendEmailDialog
         open={emailOpen}
         onOpenChange={setEmailOpen}
@@ -477,8 +462,7 @@ export default function EstimateDetail() {
 
           <h3 className="font-bold text-[#0F172A] mt-6 mb-2 text-sm">{t("Breakdown of Services")}</h3>
 
-          {/* Job Description + Trip Photos (estimates aren't tied to a completed job yet, so
-              photos are uploaded directly on the estimate rather than pulled from job_attachments). */}
+          {/* Job Description + Trip Photos (estimates aren't tied to a completed job yet, so photos are uploaded directly on the */}
           <div className="rounded-xl border border-[#E2E8F0] bg-white p-4 mb-3 space-y-3">
               {estimate.job_description && (
                 <div>

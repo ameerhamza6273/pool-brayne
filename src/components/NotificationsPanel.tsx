@@ -24,12 +24,7 @@ function timeAgo(iso: string, t: (s: string) => string): string {
   return `${days} ${days === 1 ? t("day ago") : t("days ago")}`;
 }
 
-// Client bug report 2026-09-04: this was entirely fake (hardcoded array, one link even pointed
-// at a stale mock id "/jobs/j3" that 404s against real data) -- now computed live on the backend
-// from real recent activity (completed jobs, payments, low stock, SMS replies, fleet alerts). No
-// push/SMS/email channel exists to *create* notifications, so there's nothing to persist beyond
-// the source tables -- "read" state is tracked client-side only (localStorage), same pattern as
-// the Dashboard restock-list checkmarks.
+// Client bug report 2026-09-04: this was entirely fake (hardcoded array, one link even pointed at a stale mock id "/jobs/j3"
 const READ_STORAGE_KEY = "poolbrayne_read_notification_ids";
 
 function loadReadIds(): Set<string> {

@@ -26,11 +26,7 @@ export default async function profilesRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client SMS 2026-09-09: "able to add, edit, delete techs". There's no email service wired
-  // (no SendGrid) to send a real invite link, so adding a tech works the same way the seed
-  // script creates staff -- an admin-created login with a password the admin sets and hands to
-  // the tech directly, joining the caller's existing tenant (handle_new_user_join_tenant trigger)
-  // rather than creating a new one.
+  // Client SMS 2026-09-09: "able to add, edit, delete techs".
   app.post<{ Body: { name: string; email: string; password: string; role: string } }>("/", async (req, reply) => {
     const { name, email, password, role } = req.body;
     const tenantId = await withTenantContext(req.userId, async (tx) => {
@@ -53,10 +49,7 @@ export default async function profilesRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client video 2026-10-15: per-person extra page access for technician/contractor logins
-  // (`permissions`, see migration 20261015210000). Only office roles may change anyone's role or
-  // permissions -- RLS alone lets any tenant member update profiles, so a tech could otherwise
-  // grant themselves access through the API.
+  // Client video 2026-10-15: per-person extra page access for technician/contractor logins (`permissions`, see migration 20261015210000).
   app.patch<{
     Params: { id: string };
     Body: { name: string; role: string; permissions?: string[]; email?: string; phone?: string | null; hourlyRate?: number | null; employmentType?: "Employee" | "Contractor" };
@@ -65,9 +58,7 @@ export default async function profilesRoutes(app: FastifyInstance) {
     const { name, role } = req.body;
     const allowed = ["customers", "library", "directory"];
     const permissions = Array.isArray(req.body.permissions) ? req.body.permissions.filter((p) => allowed.includes(p)) : null;
-    // Client video 2026-10-23: "not able to edit ... other criteria that are needed when you're
-    // adding a tech" -- email (also the login, so auth.users is updated first), phone, hourly rate
-    // (used by the payroll reports), employment type.
+    // Client video 2026-10-23: "not able to edit ...
     const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : null;
     const check = await withTenantContext(req.userId, async (tx) => {
       const [caller] = await tx`select role from profiles where id = ${req.userId} limit 1` as unknown as { role: string }[];
@@ -98,8 +89,7 @@ export default async function profilesRoutes(app: FastifyInstance) {
     });
   });
 
-  // Client video 2026-10-23: "need to be able to change a password if we have to" -- office staff
-  // set a new password for a teammate (no email reset flow; same hand-it-to-them model as Add Tech).
+  // Client video 2026-10-23: "need to be able to change a password if we have to" -- office staff set a
   app.post<{ Params: { id: string }; Body: { password: string } }>("/:id/password", async (req, reply) => {
     const { id } = req.params;
     const password = req.body?.password ?? "";
@@ -123,9 +113,7 @@ export default async function profilesRoutes(app: FastifyInstance) {
       reply.code(400).send({ error: "You can't delete your own login." });
       return;
     }
-    // Guard: only allow deleting a profile that actually belongs to the caller's own tenant --
-    // this route calls the admin API directly (auth.users, not RLS-scoped), so the tenant check
-    // has to happen explicitly here instead of relying on withTenantContext's row filtering.
+    // Guard: only allow deleting a profile that actually belongs to the caller's own tenant -- this route calls the admin
     const belongsToTenant = await withTenantContext(req.userId, async (tx) => {
       const [row] = await tx`select id from profiles where id = ${id} and tenant_id = current_tenant_id()`;
       return !!row;

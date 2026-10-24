@@ -40,8 +40,7 @@ export const recurringJobsApi = {
     endDate: string | null; active: boolean; nextJobNotes: string | null; selectedFormIds: string[]; startTime: string | null;
   }>) => api.patch<RecurringJob>(`/api/recurring-jobs/${id}`, data),
 
-  // Convert an existing job into the first occurrence of a new recurring series, or dissolve a series
-  // back into a one-time job.
+  // Convert an existing job into the first occurrence of a new recurring series, or dissolve a series back into a
   fromJob: (jobId: string, data: { frequency: "weekly" | "biweekly" | "monthly"; dayOfWeek?: number | null; dayOfMonth?: number | null; endDate?: string | null }) =>
     api.post<RecurringJob>(`/api/recurring-jobs/from-job/${jobId}`, data),
   // Give one tech's stops for a day their standard times (and their series', so the order repeats weekly).

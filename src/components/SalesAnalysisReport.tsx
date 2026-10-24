@@ -10,9 +10,7 @@ import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
 import { toCsv, downloadCsv } from "@/lib/csv";
 
-// Client xlsx 2026-10-15 ("sample sales analysis report.xlsx" from their old ServiceWorks): "lists
-// all sales for a specified date range and includes the columns as shown". Same columns, same
-// grouping (by payment type with a total per group, Grand Total, then a by-mode summary).
+// Client xlsx 2026-10-15 ("sample sales analysis report.xlsx" from their old ServiceWorks): "lists all sales for a specified date range and..."
 const TYPE_ORDER: SalesAnalysisRow["paymentType"][] = ["Cash", "Check", "Credit Card", "Other", "Refund"];
 
 type NumKey = "amount" | "delivered" | "salesCheck" | "diffAr" | "labor" | "itemCost" | "laborCost" | "customerDeposit" | "merch" | "inStoreLabor" | "jobLabor" | "discount" | "tax";
@@ -32,8 +30,7 @@ const NUM_COLS: { key: NumKey; label: string }[] = [
   { key: "tax", label: "Sales Tax" },
 ];
 
-// Client video 2026-10-18: "spin these around so we can adjust these fields up and down" -- click
-// any column header to sort (rows stay grouped by payment type, sorted inside each group).
+// Client video 2026-10-18: "spin these around so we can adjust these fields up and down" -- click any column header
 type TextKey = "ref" | "paidDate" | "jobType" | "status" | "accountNumber" | "customerName" | "paymentType" | "paymentMode" | "combinedInvoice" | "payoutId";
 type SortKey = TextKey | NumKey;
 const PLAIN_MODES = new Set(["Cash", "Check", "Card", "ACH", "Split", "Other", ""]);

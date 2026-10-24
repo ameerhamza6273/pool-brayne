@@ -1,8 +1,6 @@
 import { useState } from "react";
 
-// Client meeting 2026-09: "a way to sort these reports by clicking higher to lower" (built for
-// Reports first); client video 2026-10-18: "not all the fields are spinnable in all categories" --
-// moved here so every list table (Invoicing tabs, Inventory tabs, Reports) shares one click-to-sort.
+// Client meeting 2026-09: "a way to sort these reports by clicking higher to lower" (built for Reports first); client video
 export type TableSort<T> = { sorted: T[]; sortKey: string | null; sortDir: "asc" | "desc"; toggleSort: (key: string) => void };
 
 const asNumber = (v: string | number) => (typeof v === "number" ? v : v.trim() !== "" && /^-?[\d,]*\.?\d+$/.test(v.trim()) ? Number(v.replace(/,/g, "")) : NaN);

@@ -7,9 +7,7 @@ import { useLanguage } from "@/lib/language-context";
 import ViewToggle, { useViewMode } from "@/components/ViewToggle";
 import { useSort, sortHeader } from "@/components/SortableTh";
 
-// Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list") — distinct
-// manufacturers already recorded on inventory items, with a count each; clicking one jumps to
-// the Catalog filtered to that manufacturer's items via a search-box prefill.
+// Sidebar restructure (client PDF 2026-09-06, "Data > Manufacture list") — distinct manufacturers already recorded on inventory items, with a count
 export default function Manufacturers() {
   const [manufacturers, setManufacturers] = useState<{ manufacturer: string; item_count: number }[]>([]);
   const [isLoading, setIsLoading] = useState(true);

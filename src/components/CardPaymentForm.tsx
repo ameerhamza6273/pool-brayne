@@ -6,8 +6,7 @@ import { Label } from "@/components/ui/label";
 import { tokenizeCard } from "@/lib/authorizenet";
 import { useLanguage } from "@/lib/language-context";
 
-// Real card entry via Authorize.net Accept.js — the card number/CVV are tokenized client-side
-// and never sent to our own backend, only the resulting opaque payment nonce is.
+// Real card entry via Authorize.net Accept.js — the card number/CVV are tokenized client-side and never sent to our own backend
 export default function CardPaymentForm({
   amount,
   onCharge,
