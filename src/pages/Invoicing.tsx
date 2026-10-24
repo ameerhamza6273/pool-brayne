@@ -732,7 +732,7 @@ export default function Invoicing() {
                 <Copy className="w-4 h-4" /> {t("New Estimate")}
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start">
+            <DialogContent className="w-[90vw] max-w-[90vw] max-h-[90vh] overflow-y-auto content-start">
               <DialogHeader><DialogTitle>{t("Create New Estimate")}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 {estimateTemplates.length > 0 && (
@@ -1119,7 +1119,7 @@ export default function Invoicing() {
                   <Plus className="w-4 h-4" /> {t("New Task")}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start">
+              <DialogContent className="w-[90vw] max-w-[90vw] max-h-[90vh] overflow-y-auto content-start">
                 <DialogHeader><DialogTitle>{editTask ? t("Edit Task") : t("New Task")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   <div>

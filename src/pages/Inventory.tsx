@@ -1188,7 +1188,7 @@ export default function Inventory() {
               <DialogTrigger asChild>
                 <Button className="bg-[#0891B2] hover:bg-[#0E7490] text-white gap-2 h-10"><Plus className="w-4 h-4" /> {t("New PO")}</Button>
               </DialogTrigger>
-              <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
+              <DialogContent className="w-[90vw] max-w-[90vw] max-h-[90vh] overflow-y-auto content-start"><DialogHeader><DialogTitle>{t("New Purchase Order")}</DialogTitle></DialogHeader>
                 <div className="space-y-4 pt-2">
                   {/* QA sweep 2026-09-30: made server-assigned (not typed) to stop duplicate PO numbers (date+count guessed client-side). */}
                   <div><Label>{t("PO Number")}</Label>
@@ -1241,7 +1241,7 @@ export default function Inventory() {
           </div>
 
           <Dialog open={!!poDetail} onOpenChange={(open) => !open && setPoDetail(null)}>
-            <DialogContent className="w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] overflow-y-auto content-start">
+            <DialogContent className="w-[90vw] max-w-[90vw] max-h-[90vh] overflow-y-auto content-start">
               <DialogHeader><DialogTitle>{t("Purchase Order")} {poDetail?.number}</DialogTitle></DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="flex flex-wrap items-center justify-end gap-2">

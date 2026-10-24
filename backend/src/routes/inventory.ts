@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import type postgres from "postgres";
 import { withTenantContext } from "../db.js";
 import { withQuickbooksConnection, getChartOfAccounts } from "../lib/quickbooks.js";
 import { nextDocNumber, peekNextDocNumber } from "../lib/numbering.js";
@@ -374,9 +375,24 @@ export default async function inventoryRoutes(app: FastifyInstance) {
   app.get("/purchase-orders/next-number", async (req) => {
     return withTenantContext(req.userId, async (tx) => {
       const [tenant] = await tx`select current_tenant_id() as id`;
-      return { number: await peekNextDocNumber(tx, tenant.id, "PO") };
+      return { number: await peekFreePoNumber(tx, tenant.id) };
     });
   });
+
+  // Client video 2026-10-24: "it starts back at 0001, not rolling over" -- skip numbers already used by a PO.
+  const poNumberTaken = async (tx: postgres.TransactionSql, number: string) =>
+    ((await tx`select 1 from purchase_orders where number = ${number} limit 1`) as unknown as unknown[]).length > 0;
+  async function peekFreePoNumber(tx: postgres.TransactionSql, tenantId: string) {
+    const first = await peekNextDocNumber(tx, tenantId, "PO");
+    let n = Number(first.slice(3));
+    while (await poNumberTaken(tx, `PO-${String(n).padStart(4, "0")}`)) n++;
+    return `PO-${String(n).padStart(4, "0")}`;
+  }
+  async function allocateFreePoNumber(tx: postgres.TransactionSql, tenantId: string) {
+    let number = await nextDocNumber(tx, tenantId, "PO");
+    while (await poNumberTaken(tx, number)) number = await nextDocNumber(tx, tenantId, "PO");
+    return number;
+  }
 
   // QA sweep 2026-09-30: the PO number used to be guessed client-side from the locally-loaded list's length (Inventory.tsx) -- it drifts
   app.post<{ Body: { supplierId: string; locationId?: string | null; lineItems?: PoLineItemInput[]; paymentTerms?: string; number?: string } }>("/purchase-orders", async (req) => {
@@ -385,21 +401,21 @@ export default async function inventoryRoutes(app: FastifyInstance) {
       const [tenant] = await tx`select current_tenant_id() as id`;
       const itemCount = lineItems?.length ?? 0;
       const total = (lineItems ?? []).reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
-      let row: Record<string, unknown> & { id: string } | undefined;
-      let number = req.body.number?.trim() || (await nextDocNumber(tx, tenant.id, "PO"));
-      for (let attempt = 0; attempt < 5 && !row; attempt++) {
-        try {
-          [row] = (await tx`
-            insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total, payment_terms)
-            values (${tenant.id}, ${number}, ${supplierId}, 'Pending', ${locationId ?? null}, ${itemCount}, ${total}, ${paymentTerms || "Net 30"})
-            returning *
-          `) as unknown as (Record<string, unknown> & { id: string })[];
-        } catch (e) {
-          if ((e as { code?: string }).code !== "23505") throw e; // not a unique-violation, don't retry
-          number = await nextDocNumber(tx, tenant.id, "PO"); // the number was taken -- generate a fresh one and retry
-        }
+      let number = req.body.number?.trim() || "";
+      if (!number || (await poNumberTaken(tx, number))) number = await allocateFreePoNumber(tx, tenant.id);
+      const [row] = (await tx`
+        insert into purchase_orders (tenant_id, number, supplier_id, status, location_id, item_count, total, payment_terms)
+        values (${tenant.id}, ${number}, ${supplierId}, 'Pending', ${locationId ?? null}, ${itemCount}, ${total}, ${paymentTerms || "Net 30"})
+        returning *
+      `) as unknown as (Record<string, unknown> & { id: string })[];
+      // Keep the counter ahead of a typed or suggested PO-#### number so the next suggestion moves on.
+      const typed = /^PO-(\d+)$/.exec(number);
+      if (typed) {
+        await tx`
+          insert into tenant_number_sequences (tenant_id, prefix, next_value) values (${tenant.id}, 'PO', ${Number(typed[1]) + 1})
+          on conflict (tenant_id, prefix) do update set next_value = greatest(tenant_number_sequences.next_value, excluded.next_value)
+        `;
       }
-      if (!row) throw new Error("Could not allocate a unique PO number, please retry");
       if (lineItems && lineItems.length > 0) {
         for (const li of lineItems) {
           await tx`
