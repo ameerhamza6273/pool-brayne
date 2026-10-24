@@ -515,8 +515,8 @@ export default function Inventory() {
           <td>${li.description}</td>
           <td>${li.sku ?? ""}</td>
           <td style="text-align:right">${li.quantity}</td>
-          <td style="text-align:right">${li.unitCost.toFixed(2)}</td>
-          <td style="text-align:right">${(li.quantity * li.unitCost).toFixed(2)}</td>
+          <td style="text-align:right">$${li.unitCost.toFixed(2)}</td>
+          <td style="text-align:right">$${(li.quantity * li.unitCost).toFixed(2)}</td>
         </tr>`
     )
     .join("");
@@ -540,7 +540,7 @@ export default function Inventory() {
         <thead><tr>${["Description", "SKU", "Qty", "Unit Cost", "Amount"].map((h, i) => `<th style="${cell};background:#F8FAFC;text-transform:uppercase;font-size:11px;color:#64748B;${i > 1 ? "text-align:right" : ""}">${h}</th>`).join("")}</tr></thead>
         <tbody>${poRowsHtml().replace(/<td>/g, `<td style="${cell}">`).replace(/<td style="text-align:right">/g, `<td style="${cell};text-align:right">`)}</tbody>
       </table>
-      <div style="text-align:right;font-size:16px;font-weight:bold;margin-top:16px">Total: ${poTotal().toFixed(2)}</div>`;
+      <div style="text-align:right;font-size:16px;font-weight:bold;margin-top:16px">Total: $${poTotal().toFixed(2)}</div>`;
     document.body.appendChild(el);
     try {
       return await elementToPdfBase64(el);

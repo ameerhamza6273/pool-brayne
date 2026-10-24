@@ -829,12 +829,12 @@ export default async function invoicingRoutes(app: FastifyInstance) {
       const grand = totals.reduce((s, x) => s + x.total, 0);
       const list = rows.map((r, i) => {
         const url = `${PUBLIC_APP_URL}/invoice/${r.payment_token}`;
-        return `<li>Invoice ${r.number} — <strong>${totals[i].total.toFixed(2)}</strong> — <a href="${url}">view &amp; pay</a></li>`;
+        return `<li>Invoice ${r.number} — <strong>$${totals[i].total.toFixed(2)}</strong> — <a href="${url}">view &amp; pay</a></li>`;
       }).join("");
       await sendMailOrFail({
         to,
-        subject: `${rows.length} open invoices from ${rows[0].business_name} — ${grand.toFixed(2)}`,
-        html: `<p>Hi ${rows[0].customer_name},</p><p>Here are your open invoices (total <strong>${grand.toFixed(2)}</strong>). Each one can be viewed and paid online:</p><ul>${list}</ul><p>Thank you!<br/>${rows[0].business_name}</p>`,
+        subject: `${rows.length} open invoices from ${rows[0].business_name} — $${grand.toFixed(2)}`,
+        html: `<p>Hi ${rows[0].customer_name},</p><p>Here are your open invoices (total <strong>$${grand.toFixed(2)}</strong>). Each one can be viewed and paid online:</p><ul>${list}</ul><p>Thank you!<br/>${rows[0].business_name}</p>`,
       });
       await tx`update invoices set status = 'Sent' where id in ${tx(invoiceIds)} and status in ('Draft', 'Open')`;
       return { sent: rows.length, to };

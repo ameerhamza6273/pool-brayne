@@ -44,7 +44,7 @@ export function purchaseOrderEmailHtml(opts: {
   total: number;
   pdfAttached?: boolean;
 }) {
-  const money = (n: number) => `${n.toFixed(2)}`;
+  const money = (n: number) => `$${n.toFixed(2)}`;
   const row = (label: string, value: string | null) =>
     value ? `<p style="margin:0 0 10px;font-size:16px"><strong>${esc(label)}:</strong> ${esc(value)}</p>` : "";
   const td = "padding:8px;border-bottom:1px solid #E2E8F0;font-size:14px";

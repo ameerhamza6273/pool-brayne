@@ -132,7 +132,7 @@ export default function PointOfSale() {
   }, [costShown]);
   const costOf = (itemId: string | null) => {
     const prod = itemId ? products.find((x) => x.id === itemId) : undefined;
-    return prod ? `${t("Cost")}: ${Number(prod.unit_cost ?? 0).toFixed(2)}` : t("No cost (custom item)");
+    return prod ? `${t("Cost")}: $${Number(prod.unit_cost ?? 0).toFixed(2)}` : t("No cost (custom item)");
   };
   const priceContext = (key: string) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -607,7 +607,7 @@ export default function PointOfSale() {
                       <p className="text-sm font-semibold text-[#0F172A] leading-snug mb-1 line-clamp-2">{p.name}</p>
                       <p className="text-[10px] text-[#64748B] font-mono">{p.sku}</p>
                       <p className="text-base font-bold text-[#0891B2] mt-2" onContextMenu={priceContext(`p:${p.id}`)} title={t("Right-click to see the cost")}>
-                        {costShown === `p:${p.id}` ? <span className="text-[#F59E0B]">{costOf(p.id)}</span> : `${(p.price ?? 0).toFixed(2)}`}
+                        {costShown === `p:${p.id}` ? <span className="text-[#F59E0B]">{costOf(p.id)}</span> : `$${(p.price ?? 0).toFixed(2)}`}
                       </p>
                       {showCost && <p className="text-[11px] text-[#F59E0B] font-medium -mt-1">{costOf(p.id)}</p>}
                     </button>
@@ -650,7 +650,7 @@ export default function PointOfSale() {
                             )}
                           </td>
                           <td className="text-right py-2 px-3 font-semibold text-[#0891B2]" onContextMenu={priceContext(`p:${p.id}`)} title={t("Right-click to see the cost")}>
-                            {costShown === `p:${p.id}` ? <span className="text-[#F59E0B] whitespace-nowrap">{costOf(p.id)}</span> : `${(p.price ?? 0).toFixed(2)}`}
+                            {costShown === `p:${p.id}` ? <span className="text-[#F59E0B] whitespace-nowrap">{costOf(p.id)}</span> : `$${(p.price ?? 0).toFixed(2)}`}
                             {showCost && <div className="text-[11px] text-[#F59E0B] font-medium whitespace-nowrap">{costOf(p.id)}</div>}
                           </td>
                         </tr>
