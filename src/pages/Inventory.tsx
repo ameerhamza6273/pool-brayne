@@ -14,6 +14,7 @@ import { SearchableSelect } from "@/components/SearchableSelect";
 import CategoryPicker from "@/components/CategoryPicker";
 import PoLineItemsEditor from "@/components/PoLineItemsEditor";
 import { inventoryApi } from "@/lib/api/inventory";
+import { settingsApi } from "@/lib/api/settings";
 import { useLanguage } from "@/lib/language-context";
 import { matchesQuery } from "@/lib/search";
 import { useSort, sortHeader } from "@/components/SortableTh";
@@ -506,41 +507,73 @@ export default function Inventory() {
     setPoEmailOpen(true);
   };
 
-  // Client PDF 2026-09-15: "review or view purchase order on pdf screen (full screen)".
-  const poRowsHtml = () => poDetailLineItems
-    .filter((li) => li.description.trim())
-    .map(
-      (li) => `
-        <tr>
-          <td>${li.description}</td>
-          <td>${li.sku ?? ""}</td>
-          <td style="text-align:right">${li.quantity}</td>
-          <td style="text-align:right">$${li.unitCost.toFixed(2)}</td>
-          <td style="text-align:right">$${(li.quantity * li.unitCost).toFixed(2)}</td>
-        </tr>`
-    )
-    .join("");
-  const poTotal = () => poDetailLineItems.reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
+  // Client video 2026-10-24: the PO PDF had no company name -- header with logo, name, address, phone.
+  type PoBusiness = { name: string; phone: string; address: string; cityLine: string; logoUrl: string | null };
+  const [poBusiness, setPoBusiness] = useState<PoBusiness | null>(null);
+  const loadPoBusiness = async (): Promise<PoBusiness | null> => {
+    if (poBusiness) return poBusiness;
+    try {
+      const st = await settingsApi.all();
+      const biz = {
+        name: st.invoiceBusinessName || st.tenantName,
+        phone: st.phone,
+        address: st.address,
+        cityLine: [[st.city, st.state].filter(Boolean).join(", "), st.zip ?? ""].filter(Boolean).join(" "),
+        logoUrl: st.logoUrl,
+      };
+      setPoBusiness(biz);
+      return biz;
+    } catch {
+      return null;
+    }
+  };
+
+  const escHtml = (v: unknown) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  // One PO document (inline styles) shared by View PDF and the PDF attached to the PO email.
+  const poDocumentHtml = (biz: PoBusiness | null) => {
+    const cell = "border-bottom:1px solid #E2E8F0;padding:8px;font-size:13px;text-align:left";
+    const th = (h: string, right = false) => `<th style="${cell};background:#F8FAFC;text-transform:uppercase;font-size:11px;color:#64748B;${right ? "text-align:right" : ""}">${h}</th>`;
+    const lines = poDetailLineItems.filter((li) => li.description.trim());
+    const rows = lines
+      .map((li) => `<tr><td style="${cell}">${escHtml(li.description)}</td><td style="${cell}">${escHtml(li.sku)}</td><td style="${cell};text-align:right">${li.quantity}</td><td style="${cell};text-align:right">$${li.unitCost.toFixed(2)}</td><td style="${cell};text-align:right">$${(li.quantity * li.unitCost).toFixed(2)}</td></tr>`)
+      .join("");
+    const total = lines.reduce((sum, li) => sum + li.quantity * li.unitCost, 0);
+    const logo = biz?.logoUrl ?? user?.logoUrl ?? null;
+    const small = "font-size:13px;color:#475569;margin-top:2px";
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;border-bottom:3px solid #0891B2;padding-bottom:16px;margin-bottom:20px">
+        <div>
+          ${logo ? `<img src="${escHtml(logo)}" crossorigin="anonymous" style="height:60px;display:block;margin-bottom:8px" />` : ""}
+          <div style="font-size:18px;font-weight:bold;color:#0F172A">${escHtml(biz?.name ?? user?.company ?? "")}</div>
+          ${biz?.address ? `<div style="${small}">${escHtml(biz.address)}</div>` : ""}
+          ${biz?.cityLine ? `<div style="${small}">${escHtml(biz.cityLine)}</div>` : ""}
+          ${biz?.phone ? `<div style="${small}">Phone: ${escHtml(biz.phone)}</div>` : ""}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:24px;font-weight:bold;color:#0C2A3A;letter-spacing:1px">PURCHASE ORDER</div>
+          <div style="font-size:14px;margin-top:6px"><strong>PO #:</strong> ${escHtml(poDetailDraft.number)}</div>
+          <div style="font-size:14px;margin-top:2px"><strong>Date:</strong> ${escHtml(poDetail?.order_date)}</div>
+          <div style="font-size:14px;margin-top:2px"><strong>Payment Terms:</strong> ${escHtml(poDetailDraft.paymentTerms)}</div>
+        </div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#64748B">Vendor</div>
+        <div style="font-size:15px;font-weight:bold;color:#0F172A">${escHtml(poVendor?.name ?? "—")}</div>
+        ${poVendor?.phone ? `<div style="${small}">Phone: ${escHtml(poVendor.phone)}</div>` : ""}
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>${th("Description")}${th("SKU")}${th("Qty", true)}${th("Unit Cost", true)}${th("Amount", true)}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="text-align:right;font-size:16px;font-weight:bold;margin-top:16px">Total: $${total.toFixed(2)}</div>`;
+  };
 
   // PDF attached to the PO email: the same document as View PDF, rendered off-screen and captured.
   const poPdfBase64 = async () => {
-    const supplierName = poVendor?.name ?? "—";
+    const biz = await loadPoBusiness();
     const el = document.createElement("div");
     el.style.cssText = "position:fixed;left:-10000px;top:0;width:780px;background:#fff;padding:40px;font-family:Arial,sans-serif;color:#0F172A";
-    const cell = "border-bottom:1px solid #E2E8F0;padding:8px;font-size:13px;text-align:left";
-    el.innerHTML = `
-      ${user?.logoUrl ? `<img src="${user.logoUrl}" crossorigin="anonymous" style="height:60px;margin-bottom:16px" />` : ""}
-      <h1 style="font-size:22px;margin:0 0 4px">Purchase Order ${poDetailDraft.number}</h1>
-      <div style="color:#64748B;font-size:13px;margin-bottom:24px">
-        <div><strong>Vendor:</strong> ${supplierName}</div>
-        <div><strong>Date:</strong> ${poDetail?.order_date ?? ""}</div>
-        <div><strong>Payment Terms:</strong> ${poDetailDraft.paymentTerms}</div>
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <thead><tr>${["Description", "SKU", "Qty", "Unit Cost", "Amount"].map((h, i) => `<th style="${cell};background:#F8FAFC;text-transform:uppercase;font-size:11px;color:#64748B;${i > 1 ? "text-align:right" : ""}">${h}</th>`).join("")}</tr></thead>
-        <tbody>${poRowsHtml().replace(/<td>/g, `<td style="${cell}">`).replace(/<td style="text-align:right">/g, `<td style="${cell};text-align:right">`)}</tbody>
-      </table>
-      <div style="text-align:right;font-size:16px;font-weight:bold;margin-top:16px">Total: $${poTotal().toFixed(2)}</div>`;
+    el.innerHTML = poDocumentHtml(biz);
     document.body.appendChild(el);
     try {
       return await elementToPdfBase64(el);
@@ -549,42 +582,20 @@ export default function Inventory() {
     }
   };
 
-  const handleViewPoPdf = () => {
+  // Client PDF 2026-09-15: "review or view purchase order on pdf screen (full screen)".
+  const handleViewPoPdf = async () => {
     if (!poDetail) return;
-    const supplierName = suppliers.find((s) => s.id === poDetailDraft.supplierId)?.name ?? "—";
     const win = window.open("", "_blank");
     if (!win || !win.document) return;
-    const rowsHtml = poRowsHtml();
-    const total = poTotal();
+    const biz = await loadPoBusiness();
     win.document.write(`
       <html>
         <head>
-          <title>${poDetailDraft.number}</title>
-          <style>
-            @page { margin: 0; }
-            body { font-family: Arial, sans-serif; margin: 0; padding: 0.6in; color: #0F172A; }
-            h1 { font-size: 22px; margin-bottom: 4px; }
-            .meta { color: #64748B; font-size: 13px; margin-bottom: 24px; }
-            .meta div { margin-bottom: 2px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-            th, td { border-bottom: 1px solid #E2E8F0; padding: 8px; font-size: 13px; text-align: left; }
-            th { background: #F8FAFC; text-transform: uppercase; font-size: 11px; color: #64748B; }
-            .total { text-align: right; font-size: 16px; font-weight: bold; margin-top: 16px; }
-          </style>
+          <title>${escHtml(poDetailDraft.number)}</title>
+          <style>@page { margin: 0; } body { font-family: Arial, sans-serif; margin: 0; padding: 0.6in; color: #0F172A; }</style>
         </head>
         <body>
-          <h1>Purchase Order ${poDetailDraft.number}</h1>
-          <div class="meta">
-            <div><strong>Vendor:</strong> ${supplierName}</div>
-            <div><strong>Status:</strong> ${poDetailDraft.status}</div>
-            <div><strong>Payment Terms:</strong> ${poDetailDraft.paymentTerms}</div>
-            ${poDetailDraft.receivedDate ? `<div><strong>Received:</strong> ${poDetailDraft.receivedDate}</div>` : ""}
-          </div>
-          <table>
-            <thead><tr><th>Description</th><th>SKU</th><th>Qty</th><th>Unit Cost</th><th>Amount</th></tr></thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-          <div class="total">Total: $${total.toFixed(2)}</div>
+          ${poDocumentHtml(biz)}
           <script>window.onload = () => window.print();</script>
         </body>
       </html>
